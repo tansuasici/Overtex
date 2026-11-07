@@ -252,6 +252,11 @@
           "minimum": 0,
           "markdownDescription": "Word target for the document, shown as `1,234 / 5,000 words` with progress in the tooltip. `0` means no goal."
         },
+        "overtex.highlights.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Highlight `TODO`, `FIXME` and `XXX` comments and `\\todo{…}` notes, and dim text TeX skips: `\\iffalse … \\fi` and `comment` environments."
+        },
         "overtex.submission.pageLimit": {
           "type": "integer",
           "default": 0,
@@ -265,6 +270,18 @@
         }
       }
     },
+    "colors": [
+      {
+        "id": "overtex.todoBackground",
+        "description": "Background of TODO, FIXME and XXX notes in LaTeX sources, also used for their scroll bar marks.",
+        "defaults": {
+          "dark": "#E5C07B40",
+          "light": "#F2C94C66",
+          "highContrast": "#E5C07B60",
+          "highContrastLight": "#F2C94C80"
+        }
+      }
+    ],
     "walkthroughs": [
       {
         "id": "overtex.gettingStarted",
