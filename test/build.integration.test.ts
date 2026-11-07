@@ -1,4 +1,4 @@
-// Runs the real latexmk and synctex. Skipped when no TeX distribution is installed.
+// Runs the real latexmk and synctex. Skipped when no TeX distribution is installed (unless OVERTEX_REQUIRE_TEX is set).
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as cp from 'child_process';
 import * as fs from 'fs';
@@ -18,6 +18,11 @@ const hasTex = (() => {
 
 const tmp = path.resolve(__dirname, '.tmp');
 const settings: BuildSettings = { latexmk: 'latexmk', engine: 'pdflatex', outDir: '', extraArgs: [] };
+
+// CI sets OVERTEX_REQUIRE_TEX so a broken TeX install fails the run instead of silently skipping.
+if (!hasTex && process.env.OVERTEX_REQUIRE_TEX) {
+  throw new Error('OVERTEX_REQUIRE_TEX is set but latexmk/synctex are not on PATH.');
+}
 
 describe.skipIf(!hasTex)('build + synctex (real TeX)', () => {
   let result: BuildResult;

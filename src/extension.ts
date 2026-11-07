@@ -6,6 +6,7 @@ import type { OvertexApi } from './api';
 import { buildSettings, settings } from './config';
 import { registerBibCompletion } from './latex/bibCompletion';
 import { BuildResult, Builder, outputPaths } from './latex/builder';
+import { LATEX_WORKSHOP_ID, LW_AUTOBUILD_SETTING, hasBuildConflict } from './latex/conflicts';
 import { BuildDiagnostics } from './latex/diagnostics';
 import { findMainFile } from './latex/mainFile';
 import { BuildStatus } from './statusBar';
@@ -53,7 +54,25 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
 
   let savingForBuild = false;
 
+  /** latexmk can run arbitrary Perl from a project's .latexmkrc, so never run it in an untrusted workspace. */
+  function requireTrust(action: string): boolean {
+    if (vscode.workspace.isTrusted) {
+      return true;
+    }
+    void vscode.window
+      .showWarningMessage(`Overtex: ${action} is disabled because this workspace is not trusted.`, 'Manage Workspace Trust')
+      .then((choice) => {
+        if (choice) {
+          void vscode.commands.executeCommand('workbench.trust.manage');
+        }
+      });
+    return false;
+  }
+
   async function build(target?: string): Promise<BuildResult | undefined> {
+    if (!requireTrust('Building')) {
+      return undefined;
+    }
     const main = target ?? mainFile();
     if (!main) {
       void vscode.window.showWarningMessage('Overtex: no LaTeX document found to build.');
@@ -182,7 +201,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.showLog', () => output.show()),
     vscode.commands.registerCommand('overtex.clean', async () => {
       const main = mainFile();
-      if (main) {
+      if (main && requireTrust('Cleaning')) {
         await builder.clean(main);
         diagnostics.clear();
         void vscode.window.setStatusBarMessage('Overtex: auxiliary files removed', 3000);
@@ -190,7 +209,8 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
       const isSource = TEX_LANGUAGES.has(doc.languageId) || doc.languageId === 'bibtex';
-      if (isSource && doc.uri.scheme === 'file' && !savingForBuild && settings.buildOnSave()) {
+      // Untrusted workspaces skip build-on-save silently instead of warning on every save.
+      if (isSource && doc.uri.scheme === 'file' && !savingForBuild && vscode.workspace.isTrusted && settings.buildOnSave()) {
         void build();
       }
     })
@@ -219,20 +239,42 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   };
 }
 
-/** Both extensions building on save would run TeX twice on every save. */
+/**
+ * Both extensions building on save would run TeX twice on every save. Offer to turn off one
+ * of the two auto-builds; stays quiet once either is off.
+ */
 function warnAboutLatexWorkshop(context: vscode.ExtensionContext): void {
   const key = 'overtex.latexWorkshopWarningDismissed';
-  if (!vscode.extensions.getExtension('James-Yu.latex-workshop') || context.globalState.get(key)) {
+  if (context.globalState.get(key)) {
     return;
   }
+  const lw = vscode.workspace.getConfiguration('latex-workshop');
+  const conflict = hasBuildConflict({
+    latexWorkshopInstalled: vscode.extensions.getExtension(LATEX_WORKSHOP_ID) !== undefined,
+    latexWorkshopAutoBuild: lw.get<string>(LW_AUTOBUILD_SETTING),
+    overtexBuildOnSave: settings.buildOnSave(),
+  });
+  if (!conflict) {
+    return;
+  }
+  const target = vscode.workspace.workspaceFolders?.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+  const disableLw = 'Turn Off LaTeX Workshop Auto-Build';
+  const disableOvertex = 'Turn Off Overtex Build on Save';
+  const dismiss = "Don't Show Again";
   void vscode.window
     .showWarningMessage(
-      'Overtex: LaTeX Workshop is also installed. Both will build on save; consider disabling one of them for this workspace.',
-      "Don't Show Again"
+      'Overtex: LaTeX Workshop also builds on save, so every save would run TeX twice. Turn off one of them?',
+      disableLw,
+      disableOvertex,
+      dismiss
     )
-    .then((choice) => {
-      if (choice) {
-        void context.globalState.update(key, true);
+    .then(async (choice) => {
+      if (choice === disableLw) {
+        await lw.update(LW_AUTOBUILD_SETTING, 'never', target);
+      } else if (choice === disableOvertex) {
+        await vscode.workspace.getConfiguration('overtex').update('build.onSave', false, target);
+      } else if (choice === dismiss) {
+        await context.globalState.update(key, true);
       }
     });
 }

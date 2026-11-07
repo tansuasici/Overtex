@@ -30,6 +30,17 @@
     "onLanguage:bibtex",
     "workspaceContains:**/*.tex"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Building runs latexmk, which can execute code from a project's .latexmkrc, so building and cleaning are disabled until the workspace is trusted. Viewing an existing PDF still works.",
+      "restrictedConfigurations": [
+        "overtex.latex.latexmkPath",
+        "overtex.latex.extraArgs",
+        "overtex.synctex.path"
+      ]
+    }
+  },
   "contributes": {
     "commands": [
       {
