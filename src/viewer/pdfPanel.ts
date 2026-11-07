@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { toStandaloneArrayBuffer } from '../shared/bytes';
 import { isE2eMessage } from '../shared/messages';
+import { parseColorScheme, toggledScheme } from '../shared/colorScheme';
+import type { ColorScheme } from '../shared/colorScheme';
 import type { E2eFromViewerMessage, E2eToViewerMessage, FromViewerMessage, PageRect, ToViewerMessage } from '../shared/messages';
 
 /** A single PDF preview tab rendered with PDF.js inside a webview. */
@@ -19,6 +21,7 @@ export class PdfPanel implements vscode.Disposable {
     extensionUri: vscode.Uri,
     private readonly onInverseSearch: (pdfFile: string, page: number, x: number, y: number) => void,
     private readonly log: (text: string) => void,
+    private readonly colorScheme: () => ColorScheme,
     /** Receives the viewer's test messages; set only by the end-to-end tests. */
     private readonly onE2eMessage?: (msg: E2eFromViewerMessage) => void
   ) {
@@ -62,6 +65,25 @@ export class PdfPanel implements vscode.Disposable {
     } else {
       this.pendingReveal = target;
     }
+  }
+
+  /** Sends the current `overtex.viewer.colorScheme` to the open preview. */
+  updateColorScheme(): void {
+    this.post({ type: 'colorScheme', scheme: this.colorScheme() });
+  }
+
+  /**
+   * Flips the preview between light and dark pages by writing `overtex.viewer.colorScheme`,
+   * in the workspace when it is set there, else in the user settings.
+   */
+  async toggleColorScheme(): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration('overtex');
+    const inspected = cfg.inspect('viewer.colorScheme');
+    const kind = vscode.window.activeColorTheme.kind;
+    const themeIsDark = kind === vscode.ColorThemeKind.Dark || kind === vscode.ColorThemeKind.HighContrast;
+    const next = toggledScheme(parseColorScheme(cfg.get('viewer.colorScheme')), themeIsDark);
+    const target = inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+    await cfg.update('viewer.colorScheme', next, target);
   }
 
   /** End-to-end tests only. */
@@ -136,6 +158,9 @@ export class PdfPanel implements vscode.Disposable {
       case 'error':
         this.log(`PDF viewer: ${msg.message}\n`);
         break;
+      case 'toggleColorScheme':
+        await this.toggleColorScheme();
+        break;
     }
   }
 
@@ -171,7 +196,8 @@ export class PdfPanel implements vscode.Disposable {
   data-cmaps="${asset('cmaps/')}"
   data-fonts="${asset('standard_fonts/')}"
   data-wasm="${asset('wasm/')}"
-  data-modifier="${isMac ? 'meta' : 'ctrl'}"${this.onE2eMessage ? ' data-e2e' : ''}>
+  data-modifier="${isMac ? 'meta' : 'ctrl'}"
+  data-scheme="${this.colorScheme()}"${this.onE2eMessage ? ' data-e2e' : ''}>
   <div class="toolbar" role="toolbar">
     <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
     <select id="zoom" aria-label="Zoom">
@@ -184,6 +210,7 @@ export class PdfPanel implements vscode.Disposable {
       <option value="2">200%</option>
     </select>
     <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+    <button id="dark-mode" title="Dark pages" aria-label="Dark pages" aria-pressed="false">&#9680;</button>
     <span class="spacer"></span>
     <span id="page-info" aria-live="polite"></span>
     <span class="hint">${isMac ? '⌘' : 'Ctrl'}+click to jump to source</span>

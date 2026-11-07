@@ -3,6 +3,7 @@ import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import type { FromViewerMessage, PageRect, ToViewerMessage } from '../src/shared/messages';
 import { toBytes } from '../src/shared/bytes';
 import { startBlobWorker } from '../src/shared/blobWorker';
+import { isDarkScheme, isDarkThemeKind, parseColorScheme } from '../src/shared/colorScheme';
 import './pdfViewer.css';
 
 declare function acquireVsCodeApi(): {
@@ -369,6 +370,23 @@ function stepZoom(direction: 1 | -1): void {
   applyZoom(next);
 }
 
+// Dark pages: the scheme comes from the setting, `auto` follows the theme kind VS Code keeps on <body>.
+const darkButton = document.getElementById('dark-mode') as HTMLButtonElement;
+
+function applyColorScheme(): void {
+  const dark = isDarkScheme(parseColorScheme(body.scheme), isDarkThemeKind(body.vscodeThemeKind));
+  document.body.classList.toggle('dark-pages', dark);
+  darkButton.setAttribute('aria-pressed', String(dark));
+  darkButton.title = dark ? 'Light pages' : 'Dark pages';
+  if (e2e) {
+    vscode.postMessage({ type: 'e2e:colorScheme', dark });
+  }
+}
+
+darkButton.addEventListener('click', () => vscode.postMessage({ type: 'toggleColorScheme' }));
+new MutationObserver(applyColorScheme).observe(document.body, { attributes: true, attributeFilter: ['data-vscode-theme-kind'] });
+applyColorScheme();
+
 document.getElementById('zoom-in')!.addEventListener('click', () => stepZoom(1));
 document.getElementById('zoom-out')!.addEventListener('click', () => stepZoom(-1));
 zoomSelect.addEventListener('change', () => {
@@ -412,6 +430,10 @@ window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
     }
     case 'reveal':
       reveal(msg.target);
+      break;
+    case 'colorScheme':
+      body.scheme = msg.scheme;
+      applyColorScheme();
       break;
     case 'e2e:click':
       if (e2e) {

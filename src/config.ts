@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { BuildSettings, Engine } from './latex/builder';
+import { parseColorScheme } from './shared/colorScheme';
 
 function section(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('overtex');
@@ -20,4 +21,5 @@ export const settings = {
   synctexPath: () => section().get<string>('synctex.path') || 'synctex',
   buildOnSave: () => section().get<boolean>('build.onSave', true),
   autoOpenViewer: () => section().get<boolean>('viewer.autoOpen', true),
+  viewerColorScheme: () => parseColorScheme(section().get('viewer.colorScheme')),
 };

@@ -114,6 +114,11 @@
         "command": "overtex.checkSubmission",
         "title": "Check Submission",
         "category": "Overtex"
+      },
+      {
+        "command": "overtex.viewer.toggleDarkMode",
+        "title": "Toggle Dark PDF Preview",
+        "category": "Overtex"
       }
     ],
     "menus": {
@@ -215,6 +220,21 @@
           "type": "boolean",
           "default": true,
           "description": "Open the PDF preview after a successful build."
+        },
+        "overtex.viewer.colorScheme": {
+          "type": "string",
+          "enum": [
+            "light",
+            "dark",
+            "auto"
+          ],
+          "enumDescriptions": [
+            "Show the PDF as it is.",
+            "Invert the pages' brightness: light text on a dark page. Hues are kept, but images are inverted too.",
+            "Dark pages with a dark or high contrast theme, light pages otherwise."
+          ],
+          "default": "light",
+          "markdownDescription": "How the PDF preview draws pages. Only the preview changes; the PDF file is untouched. **Toggle Dark PDF Preview** and the preview's toolbar button switch between light and dark."
         },
         "overtex.submission.pageLimit": {
           "type": "integer",

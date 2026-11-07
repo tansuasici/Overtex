@@ -110,6 +110,21 @@ body {
   display: block;
 }
 
+/* Dark pages: invert brightness, then turn the hues back so colored text and links keep their color.
+   0.9 instead of 1 leaves the page dark gray rather than black, which is easier on the eyes. */
+.dark-pages .page {
+  background: #1a1a1a;
+}
+
+.dark-pages .page canvas {
+  filter: invert(0.9) hue-rotate(180deg);
+}
+
+.toolbar button[aria-pressed='true'] {
+  background: var(--vscode-inputOption-activeBackground, var(--vscode-toolbar-activeBackground));
+  border-color: var(--vscode-inputOption-activeBorder, transparent);
+}
+
 #empty {
   margin: 48px auto;
   text-align: center;

@@ -37,7 +37,7 @@ You also need a TeX distribution; see [Requirements](#requirements).
 
 - **Build** with latexmk using pdfLaTeX, XeLaTeX or LuaLaTeX. BibTeX/Biber passes run automatically. Builds run on save, and a build requested while another is running is queued, not started in parallel.
 - **Problems panel**: TeX errors and warnings are mapped to the right file and line, including files pulled in with `\input`.
-- **PDF preview** beside the editor. It reloads after each build and keeps your place.
+- **PDF preview** beside the editor. It reloads after each build and keeps your place. **Dark pages** (the toolbar's ◐ button, **Toggle Dark PDF Preview**, or `overtex.viewer.colorScheme`) show light text on a dark gray page; colors keep their hue, but figures and photos are inverted too. Set it to `auto` to follow the VS Code theme.
 - **SyncTeX**: `⌘⌥J` / `Ctrl+Alt+J` jumps from the cursor to the PDF; `⌘`/`Ctrl`+click in the PDF jumps back to the source.
 - **Live checking and completion** with [TexLab](https://github.com/latex-lsp/texlab), when it is installed: errors such as unbalanced braces, mismatched environments and undefined references appear as you type, before any build, and completion covers commands, environments, `\ref` labels and `\cite` keys. Hover and go to definition come with it.
 - **Citation completion** inside `\cite{…}` from the workspace's `.bib` files, searchable by key, title and author, when TexLab is not available.
@@ -60,7 +60,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | Overtex: Build | `⌘⌥B` / `Ctrl+Alt+B` |
 | Overtex: View PDF | `⌘⌥V` / `Ctrl+Alt+V` |
 | Overtex: Jump to PDF (forward search) | `⌘⌥J` / `Ctrl+Alt+J` |
-| Overtex: Cancel Build, Clean Auxiliary Files, Show Build Log | |
+| Overtex: Cancel Build, Clean Auxiliary Files, Show Build Log, Toggle Dark PDF Preview | |
 | Overtex: Add Citation from DOI or arXiv, Export for arXiv, Check Submission | |
 | Overtex: Check LaTeX Installation, New LaTeX Document, Getting Started | |
 
@@ -77,6 +77,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | `overtex.texlab.chktex` | `false` | Show ChkTeX style warnings while typing (through TexLab). |
 | `overtex.build.onSave` | `true` | Build when a `.tex` or `.bib` file is saved. |
 | `overtex.viewer.autoOpen` | `true` | Open the preview after a successful build. |
+| `overtex.viewer.colorScheme` | `light` | `light`, `dark` (inverted pages) or `auto` (dark with a dark theme). |
 | `overtex.submission.pageLimit` | `0` | Page limit for **Check Submission**; `0` means none. |
 | `overtex.submission.anonymous` | `false` | Also look for author information, for double-blind review. |
 

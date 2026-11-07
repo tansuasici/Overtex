@@ -118,6 +118,21 @@ export async function run(): Promise<void> {
     assert.ok(report.pages && report.pages > 0, `pages: ${report.pages}`);
   });
 
+  await step('dark mode setting and toggle reach the preview', async () => {
+    const cfg = () => vscode.workspace.getConfiguration('overtex');
+    try {
+      let applied = nextMessage(e2e!, 'e2e:colorScheme');
+      await cfg().update('viewer.colorScheme', 'dark', vscode.ConfigurationTarget.Global);
+      assert.strictEqual((await applied).dark, true, 'dark setting');
+      applied = nextMessage(e2e!, 'e2e:colorScheme');
+      await vscode.commands.executeCommand('overtex.viewer.toggleDarkMode');
+      assert.strictEqual((await applied).dark, false, 'after toggle');
+      assert.strictEqual(cfg().get('viewer.colorScheme'), 'light');
+    } finally {
+      await cfg().update('viewer.colorScheme', undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
   await step('getting started walkthrough is registered', async () => {
     await vscode.commands.executeCommand('overtex.gettingStarted');
   });

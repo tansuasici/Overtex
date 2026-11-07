@@ -42,6 +42,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     context.extensionUri,
     (pdfFile, page, x, y) => void inverseSearch(pdfFile, page, x, y),
     log,
+    settings.viewerColorScheme,
     e2eEvents && ((msg) => e2eEvents.fire(msg))
   );
   if (e2eEvents) {
@@ -242,6 +243,12 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.addCitation', () => addCitation(mainFile)),
     vscode.commands.registerCommand('overtex.exportArxiv', () => exportArxiv(mainFile, build)),
     vscode.commands.registerCommand('overtex.checkSubmission', () => submission.run()),
+    vscode.commands.registerCommand('overtex.viewer.toggleDarkMode', () => pdfPanel.toggleColorScheme()),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('overtex.viewer.colorScheme')) {
+        pdfPanel.updateColorScheme();
+      }
+    }),
     vscode.commands.registerCommand('overtex.clean', async () => {
       const main = mainFile();
       if (main && requireTrust('Cleaning')) {
