@@ -42,11 +42,12 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Building runs latexmk, which can execute code from a project's .latexmkrc, so building and cleaning are disabled until the workspace is trusted. Viewing an existing PDF still works.",
+      "description": "Building runs latexmk, which can execute code from a project's .latexmkrc, so building and cleaning are disabled until the workspace is trusted, and the TexLab language server is not started. Viewing an existing PDF still works.",
       "restrictedConfigurations": [
         "overtex.latex.latexmkPath",
         "overtex.latex.extraArgs",
-        "overtex.synctex.path"
+        "overtex.synctex.path",
+        "overtex.texlab.path"
       ]
     }
   },
@@ -160,6 +161,21 @@
           "default": "synctex",
           "description": "Path to the synctex executable."
         },
+        "overtex.texlab.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the TexLab language server for live diagnostics, completion (commands, environments, labels, citations), hover and go to definition. Needs `texlab` to be installed; skipped when the TexLab extension is installed."
+        },
+        "overtex.texlab.path": {
+          "type": "string",
+          "default": "texlab",
+          "description": "Path to the texlab executable."
+        },
+        "overtex.texlab.chktex": {
+          "type": "boolean",
+          "default": false,
+          "description": "Have TexLab run ChkTeX while you type and show its style warnings."
+        },
         "overtex.build.onSave": {
           "type": "boolean",
           "default": true,
@@ -182,7 +198,8 @@
     "package": "vsce package"
   },
   "dependencies": {
-    "pdfjs-dist": "^6.5.438"
+    "pdfjs-dist": "^6.5.438",
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

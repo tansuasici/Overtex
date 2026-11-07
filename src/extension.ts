@@ -9,11 +9,14 @@ import { BuildResult, Builder, outputPaths } from './latex/builder';
 import { LATEX_WORKSHOP_ID, LW_AUTOBUILD_SETTING, hasBuildConflict } from './latex/conflicts';
 import { BuildDiagnostics } from './latex/diagnostics';
 import { findMainFile } from './latex/mainFile';
+import { Texlab } from './latex/texlab';
 import { BuildStatus } from './statusBar';
 import { SyncTex } from './synctex/synctex';
 import { PdfPanel } from './viewer/pdfPanel';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
+
+let texlab: Texlab | undefined;
 
 export function activate(context: vscode.ExtensionContext): OvertexApi {
   const output = vscode.window.createOutputChannel('Overtex');
@@ -28,7 +31,13 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
 
   const pdfPanel = new PdfPanel(context.extensionUri, (pdfFile, page, x, y) => void inverseSearch(pdfFile, page, x, y), log);
 
-  context.subscriptions.push(output, diagnostics, status, pdfPanel, onDidStartBuild, onDidEndBuild, registerBibCompletion());
+  texlab = new Texlab(context, log);
+  const server = texlab;
+  // TexLab completes citations too; the built-in completion is the fallback when it is not running.
+  const bibCompletion = registerBibCompletion(() => !server.isRunning);
+
+  context.subscriptions.push(output, diagnostics, status, pdfPanel, onDidStartBuild, onDidEndBuild, texlab, bibCompletion);
+  void texlab.start();
 
   // ---- Main file and output paths ----
 
@@ -279,4 +288,6 @@ function warnAboutLatexWorkshop(context: vscode.ExtensionContext): void {
     });
 }
 
-export function deactivate(): void {}
+export function deactivate(): Promise<void> | undefined {
+  return texlab?.stop();
+}

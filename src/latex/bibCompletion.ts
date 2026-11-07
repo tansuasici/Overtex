@@ -4,7 +4,7 @@ import { BibEntry, parseBib } from './bibParser';
 const CITE_BEFORE_CURSOR = /\\[A-Za-z]*cite[A-Za-z]*\*?(?:\[[^\]]*\]){0,2}\{[^}]*$/;
 
 /** `\cite{` key completion from the workspace's .bib files, cached until they change. */
-export function registerBibCompletion(): vscode.Disposable {
+export function registerBibCompletion(isEnabled: () => boolean = () => true): vscode.Disposable {
   let cache: Promise<BibEntry[]> | null = null;
   const invalidate = () => {
     cache = null;
@@ -27,6 +27,9 @@ export function registerBibCompletion(): vscode.Disposable {
     { language: 'latex' },
     {
       async provideCompletionItems(document, position) {
+        if (!isEnabled()) {
+          return undefined;
+        }
         const before = document.lineAt(position).text.substring(0, position.character);
         if (!CITE_BEFORE_CURSOR.test(before)) {
           return undefined;

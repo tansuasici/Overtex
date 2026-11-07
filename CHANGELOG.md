@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- TexLab language server integration: live diagnostics while typing, completion for commands, environments, labels and citations, hover and go to definition. Optional; starts only in trusted workspaces and stays off when the TexLab extension is installed. New settings `overtex.texlab.enabled`, `overtex.texlab.path`, `overtex.texlab.chktex`.
+
 ## 0.1.0
 
 - Build with latexmk (pdfLaTeX, XeLaTeX, LuaLaTeX), automatic BibTeX/Biber passes, build on save, cancel.
