@@ -5,6 +5,11 @@
   "version": "0.1.0",
   "publisher": "tansuasici",
   "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1f3a5f",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -24,6 +29,10 @@
     "type": "git",
     "url": "https://github.com/tansuasici/Overtex"
   },
+  "bugs": {
+    "url": "https://github.com/tansuasici/Overtex/issues"
+  },
+  "homepage": "https://github.com/tansuasici/Overtex#readme",
   "main": "./out/extension.js",
   "activationEvents": [
     "onLanguage:latex",

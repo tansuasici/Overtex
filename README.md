@@ -35,7 +35,13 @@ A TeX distribution that provides `latexmk` and `synctex`: [TeX Live](https://tug
 | `overtex.build.onSave` | `true` | Build when a `.tex` or `.bib` file is saved. |
 | `overtex.viewer.autoOpen` | `true` | Open the preview after a successful build. |
 
-If LaTeX Workshop is also installed, disable one of the two for the workspace so files are not built twice on every save.
+## LaTeX Workshop
+
+If LaTeX Workshop is installed and both extensions build on save, every save would run TeX twice. Overtex detects this and offers to turn off either LaTeX Workshop's auto-build or its own build on save.
+
+## Workspace Trust
+
+latexmk can run code from a project's `.latexmkrc`, so in an [untrusted workspace](https://code.visualstudio.com/docs/editor/workspace-trust) Overtex does not build or clean, and ignores workspace values of `overtex.latex.latexmkPath`, `overtex.latex.extraArgs` and `overtex.synctex.path`. Opening an existing PDF still works. Trust the folder to enable building.
 
 ## License
 

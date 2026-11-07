@@ -8,3 +8,5 @@
 - SyncTeX forward search (editor → PDF) and inverse search (⌘/Ctrl+click in the PDF → editor).
 - Main file detection: setting, `% !TEX root`, `\documentclass`, workspace search.
 - Citation key completion from the workspace's `.bib` files.
+- Workspace Trust: building and cleaning are disabled in untrusted workspaces.
+- Detects a double build with LaTeX Workshop and offers to turn off one of the two.
