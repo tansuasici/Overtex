@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { toStandaloneArrayBuffer } from '../shared/bytes';
 import { isE2eMessage } from '../shared/messages';
-import { parseColorScheme, toggledScheme } from '../shared/colorScheme';
+import { toggledScheme } from '../shared/colorScheme';
 import type { ColorScheme } from '../shared/colorScheme';
 import type { E2eFromViewerMessage, E2eToViewerMessage, FromViewerMessage, PageRect, ToViewerMessage } from '../shared/messages';
 
@@ -16,6 +16,8 @@ export class PdfPanel implements vscode.Disposable {
   private pendingReveal: PageRect | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly mediaRoot: vscode.Uri;
+  /** Set when the setting could not be written; the preview shows it until the setting changes. */
+  private schemeOverride: ColorScheme | undefined;
 
   constructor(
     extensionUri: vscode.Uri,
@@ -69,21 +71,37 @@ export class PdfPanel implements vscode.Disposable {
 
   /** Sends the current `overtex.viewer.colorScheme` to the open preview. */
   updateColorScheme(): void {
-    this.post({ type: 'colorScheme', scheme: this.colorScheme() });
+    this.schemeOverride = undefined;
+    this.post({ type: 'colorScheme', scheme: this.currentScheme() });
+  }
+
+  private currentScheme(): ColorScheme {
+    return this.schemeOverride ?? this.colorScheme();
   }
 
   /**
    * Flips the preview between light and dark pages by writing `overtex.viewer.colorScheme`,
-   * in the workspace when it is set there, else in the user settings.
+   * in the workspace when it is set there, else in the user settings. If the setting cannot be
+   * written (VS Code does not know it until the window is reloaded after an update), the open
+   * preview still flips.
    */
   async toggleColorScheme(): Promise<void> {
     const cfg = vscode.workspace.getConfiguration('overtex');
     const inspected = cfg.inspect('viewer.colorScheme');
     const kind = vscode.window.activeColorTheme.kind;
     const themeIsDark = kind === vscode.ColorThemeKind.Dark || kind === vscode.ColorThemeKind.HighContrast;
-    const next = toggledScheme(parseColorScheme(cfg.get('viewer.colorScheme')), themeIsDark);
+    const next = toggledScheme(this.currentScheme(), themeIsDark);
     const target = inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-    await cfg.update('viewer.colorScheme', next, target);
+    try {
+      await cfg.update('viewer.colorScheme', next, target);
+    } catch (err) {
+      this.log(`Could not save overtex.viewer.colorScheme: ${err instanceof Error ? err.message : String(err)}\n`);
+      this.schemeOverride = next;
+      this.post({ type: 'colorScheme', scheme: next });
+      void vscode.window
+        .showWarningMessage('Overtex could not save the page color setting. Reload the window to fix this.', 'Reload Window')
+        .then((choice) => choice && vscode.commands.executeCommand('workbench.action.reloadWindow'));
+    }
   }
 
   /** End-to-end tests only. */
@@ -197,7 +215,7 @@ export class PdfPanel implements vscode.Disposable {
   data-fonts="${asset('standard_fonts/')}"
   data-wasm="${asset('wasm/')}"
   data-modifier="${isMac ? 'meta' : 'ctrl'}"
-  data-scheme="${this.colorScheme()}"${this.onE2eMessage ? ' data-e2e' : ''}>
+  data-scheme="${this.currentScheme()}"${this.onE2eMessage ? ' data-e2e' : ''}>
   <div class="toolbar" role="toolbar">
     <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
     <select id="zoom" aria-label="Zoom">

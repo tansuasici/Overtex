@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Math hover preview: hovering over inline or display math, or an `equation`, `align`, `gather`, `multline` or similar environment, shows it rendered with MathJax 4. Macros from `\newcommand`, `\renewcommand`, `\providecommand`, `\DeclareMathOperator` and `\def` in the file and the main file are applied; TeX errors are shown in place of the image. MathJax is bundled separately and loaded on the first hover. `overtex.mathPreview.enabled` and `overtex.mathPreview.scale` control it.
+- Fixed the PDF preview's dark pages button doing nothing when VS Code could not save `overtex.viewer.colorScheme` (as happens after an update until the window is reloaded). The preview now flips anyway and offers to reload the window.
 
 ## 0.2.0 (2026-11-08)
 
