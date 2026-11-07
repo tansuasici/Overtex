@@ -17,6 +17,7 @@ import { SyncTex } from './synctex/synctex';
 import { PdfPanel } from './viewer/pdfPanel';
 import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setupCheck';
 import { NEW_DOCUMENT_TEMPLATE } from './latex/setup';
+import { addCitation } from './addCitation';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 
@@ -233,6 +234,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.checkSetup', () => checkSetupCommand(output)),
     vscode.commands.registerCommand('overtex.gettingStarted', openWalkthrough),
     vscode.commands.registerCommand('overtex.newDocument', newDocument),
+    vscode.commands.registerCommand('overtex.addCitation', () => addCitation(mainFile)),
     vscode.commands.registerCommand('overtex.clean', async () => {
       const main = mainFile();
       if (main && requireTrust('Cleaning')) {

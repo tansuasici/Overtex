@@ -80,6 +80,7 @@ describe('parseBib', () => {
         author: 'Albert Einstein',
         year: '1905',
         abstract: '',
+        doi: '',
       },
     ]);
   });

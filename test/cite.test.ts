@@ -50,6 +50,7 @@ describe('citationHoverMarkdown', () => {
     author: 'Smith, John and Doe, Jane',
     year: '2020',
     abstract: '',
+    doi: '',
   };
 
   it('shows title, authors, year and entry type', () => {

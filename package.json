@@ -99,6 +99,11 @@
         "command": "overtex.gettingStarted",
         "title": "Getting Started",
         "category": "Overtex"
+      },
+      {
+        "command": "overtex.addCitation",
+        "title": "Add Citation from DOI or arXiv",
+        "category": "Overtex"
       }
     ],
     "menus": {

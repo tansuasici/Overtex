@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Add Citation from DOI or arXiv** command: fetches the BibTeX record from doi.org (arXiv papers through their DataCite DOI), gives it a key like `vaswani2017attention`, appends it to the bibliography the main file names (or the workspace's `.bib`, or a new `refs.bib`) and inserts `\cite{key}` at the cursor. A DOI already in the bibliography reuses its entry. The input box is filled from the clipboard when it holds a DOI or arXiv ID.
 - **Check LaTeX Installation** command: finds latexmk, the engine, synctex and TexLab with the same `PATH` lookup the build uses, spots TeX that is installed but not on VS Code's `PATH`, and gives install steps for macOS, Windows and Linux. Offered once on startup when latexmk is missing, and from build or SyncTeX errors caused by a missing program.
 - **Getting Started** walkthrough on the Welcome page: install TeX, open or create a document, build, preview and SyncTeX, optional TexLab.
 - Hovering a key in `\cite{...}` (and natbib/biblatex variants) shows the entry's title, authors, year and abstract from the workspace's `.bib` files. Like `\cite` completion, it is off while TexLab runs, which has its own citation hover.

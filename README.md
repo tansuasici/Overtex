@@ -41,6 +41,7 @@ You also need a TeX distribution; see [Requirements](#requirements).
 - **SyncTeX**: `⌘⌥J` / `Ctrl+Alt+J` jumps from the cursor to the PDF; `⌘`/`Ctrl`+click in the PDF jumps back to the source.
 - **Live checking and completion** with [TexLab](https://github.com/latex-lsp/texlab), when it is installed: errors such as unbalanced braces, mismatched environments and undefined references appear as you type, before any build, and completion covers commands, environments, `\ref` labels and `\cite` keys. Hover and go to definition come with it.
 - **Citation completion** inside `\cite{…}` from the workspace's `.bib` files, searchable by key, title and author, when TexLab is not available.
+- **Add Citation from DOI or arXiv**: paste a DOI (`10.1103/PhysRev.47.777`) or an arXiv ID (`arXiv:1706.03762`, or the abs URL) and Overtex fetches the BibTeX from doi.org, adds it to your `.bib` with a readable key, and inserts the `\cite` at the cursor. This is the only Overtex feature that uses the network, and only when you run it.
 
 ## Requirements
 
@@ -58,6 +59,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | Overtex: View PDF | `⌘⌥V` / `Ctrl+Alt+V` |
 | Overtex: Jump to PDF (forward search) | `⌘⌥J` / `Ctrl+Alt+J` |
 | Overtex: Cancel Build, Clean Auxiliary Files, Show Build Log | |
+| Overtex: Add Citation from DOI or arXiv | |
 | Overtex: Check LaTeX Installation, New LaTeX Document, Getting Started | |
 
 ## Settings
