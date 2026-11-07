@@ -34,16 +34,26 @@ for (const [name, text] of Object.entries(files)) {
   fs.writeFileSync(path.join(workspace, name), text);
 }
 
+// A fresh profile with the walkthrough's open-on-install off: the walkthrough editor would otherwise
+// open at a random point during the run and take focus from the viewer steps.
+const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-e2e-user-'));
+fs.mkdirSync(path.join(userData, 'User'), { recursive: true });
+fs.writeFileSync(
+  path.join(userData, 'User', 'settings.json'),
+  JSON.stringify({ 'workbench.welcomePage.walkthroughs.openOnInstall': false, 'workbench.startupEditor': 'none' })
+);
+
 try {
   await runTests({
     extensionDevelopmentPath: root,
     extensionTestsPath: path.join(root, 'out-e2e', 'suite.js'),
     extensionTestsEnv: { OVERTEX_E2E: '1' },
-    launchArgs: [workspace, '--disable-extensions', '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes'],
+    launchArgs: [workspace, '--disable-extensions', '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', `--user-data-dir=${userData}`],
   });
 } catch (err) {
   console.error(err instanceof Error ? err.message : err);
   process.exitCode = 1;
 } finally {
   fs.rmSync(workspace, { recursive: true, force: true });
+  fs.rmSync(userData, { recursive: true, force: true });
 }

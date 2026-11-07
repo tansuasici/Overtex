@@ -84,6 +84,21 @@
         "command": "overtex.showLog",
         "title": "Show Build Log",
         "category": "Overtex"
+      },
+      {
+        "command": "overtex.checkSetup",
+        "title": "Check LaTeX Installation",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.newDocument",
+        "title": "New LaTeX Document",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.gettingStarted",
+        "title": "Getting Started",
+        "category": "Overtex"
       }
     ],
     "menus": {
@@ -187,7 +202,75 @@
           "description": "Open the PDF preview after a successful build."
         }
       }
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "overtex.gettingStarted",
+        "title": "Get Started with Overtex",
+        "description": "Install TeX, build your first document, and jump between the source and the PDF.",
+        "featuredFor": [
+          "**/*.tex"
+        ],
+        "steps": [
+          {
+            "id": "install",
+            "title": "Install a TeX distribution",
+            "description": "Overtex needs latexmk and a TeX engine from TeX Live, MacTeX or MiKTeX.\n[Check Installation](command:overtex.checkSetup)",
+            "media": {
+              "markdown": "media/walkthrough/install.md"
+            },
+            "completionEvents": [
+              "onContext:overtex.canBuild"
+            ]
+          },
+          {
+            "id": "document",
+            "title": "Open or create a document",
+            "description": "Open a folder with your .tex files, or start from a template.\n[New Document](command:overtex.newDocument)",
+            "media": {
+              "markdown": "media/walkthrough/document.md"
+            },
+            "completionEvents": [
+              "onCommand:overtex.newDocument",
+              "onLanguage:latex"
+            ]
+          },
+          {
+            "id": "build",
+            "title": "Build the PDF",
+            "description": "Saving builds the project. Errors go to the Problems panel.\n[Build Now](command:overtex.build)",
+            "media": {
+              "markdown": "media/walkthrough/build.md"
+            },
+            "completionEvents": [
+              "onCommand:overtex.build"
+            ]
+          },
+          {
+            "id": "preview",
+            "title": "Preview and SyncTeX",
+            "description": "Jump from the cursor to the PDF, and Cmd/Ctrl+click the PDF to jump back.\n[Jump to PDF](command:overtex.forwardSearch)",
+            "media": {
+              "markdown": "media/walkthrough/preview.md"
+            },
+            "completionEvents": [
+              "onCommand:overtex.forwardSearch"
+            ]
+          },
+          {
+            "id": "texlab",
+            "title": "Live checking with TexLab (optional)",
+            "description": "Install TexLab for live diagnostics and completion.\n[Install TexLab](https://github.com/latex-lsp/texlab#installation)",
+            "media": {
+              "markdown": "media/walkthrough/texlab.md"
+            },
+            "completionEvents": [
+              "onLink:https://github.com/latex-lsp/texlab#installation"
+            ]
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build -- --production",

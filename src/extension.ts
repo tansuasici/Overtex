@@ -15,6 +15,8 @@ import { BuildStatus } from './statusBar';
 import { toWorkspacePath } from './synctex/paths';
 import { SyncTex } from './synctex/synctex';
 import { PdfPanel } from './viewer/pdfPanel';
+import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setupCheck';
+import { NEW_DOCUMENT_TEMPLATE } from './latex/setup';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 
@@ -132,8 +134,13 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     if (!result.success) {
       const errors = result.entries.filter((e) => e.severity === 'error');
       const first = errors[0]?.message ?? 'see the build log';
-      const choice = await vscode.window.showErrorMessage(`Overtex: build failed: ${first}`, 'Show Problems', 'Show Log');
-      if (choice === 'Show Problems') {
+      // A missing latexmk shows up as a spawn error; point at the setup check instead of the log.
+      const notInstalled = errors.some((e) => e.message.startsWith('Could not run "') && e.message.includes('Install a TeX distribution'));
+      const buttons = notInstalled ? ['Check Setup', 'Show Log'] : ['Show Problems', 'Show Log'];
+      const choice = await vscode.window.showErrorMessage(`Overtex: build failed: ${first}`, ...buttons);
+      if (choice === 'Check Setup') {
+        void vscode.commands.executeCommand('overtex.checkSetup');
+      } else if (choice === 'Show Problems') {
         void vscode.commands.executeCommand('workbench.actions.view.problems');
       } else if (choice === 'Show Log') {
         output.show(true);
@@ -209,7 +216,9 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     const message = err instanceof Error ? err.message : String(err);
     log(`${message}\n`);
     if ((err as NodeJS.ErrnoException)?.code === 'ENOENT' || /ENOENT/.test(message)) {
-      void vscode.window.showErrorMessage('Overtex: could not run synctex. Install TeX Live/MiKTeX or set overtex.synctex.path.');
+      void vscode.window
+        .showErrorMessage('Overtex: could not run synctex. Install TeX Live/MiKTeX or set overtex.synctex.path.', 'Check Setup')
+        .then((choice) => choice && vscode.commands.executeCommand('overtex.checkSetup'));
     }
   }
 
@@ -221,6 +230,9 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.viewPdf', viewPdf),
     vscode.commands.registerCommand('overtex.forwardSearch', forwardSearch),
     vscode.commands.registerCommand('overtex.showLog', () => output.show()),
+    vscode.commands.registerCommand('overtex.checkSetup', () => checkSetupCommand(output)),
+    vscode.commands.registerCommand('overtex.gettingStarted', openWalkthrough),
+    vscode.commands.registerCommand('overtex.newDocument', newDocument),
     vscode.commands.registerCommand('overtex.clean', async () => {
       const main = mainFile();
       if (main && requireTrust('Cleaning')) {
@@ -250,6 +262,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(updateStatusVisibility));
 
   warnAboutLatexWorkshop(context);
+  nudgeIfSetupMissing(context);
 
   const e2e: OvertexE2e | undefined = e2eEvents && {
     onViewerMessage: e2eEvents.event,
@@ -265,6 +278,22 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     viewPdf,
     forwardSearch,
   };
+}
+
+/** Creates main.tex in the first workspace folder, or an untitled document when no folder is open. */
+async function newDocument(): Promise<void> {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: NEW_DOCUMENT_TEMPLATE });
+    await vscode.window.showTextDocument(doc);
+    return;
+  }
+  let target = vscode.Uri.joinPath(folder.uri, 'main.tex');
+  for (let n = 2; fs.existsSync(target.fsPath); n++) {
+    target = vscode.Uri.joinPath(folder.uri, `main-${n}.tex`);
+  }
+  await vscode.workspace.fs.writeFile(target, Buffer.from(NEW_DOCUMENT_TEMPLATE, 'utf8'));
+  await vscode.window.showTextDocument(target);
 }
 
 /**

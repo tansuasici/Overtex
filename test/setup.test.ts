@@ -1,0 +1,107 @@
+import { describe, expect, it } from 'vitest';
+import { SetupInput, checkSetup, formatReport, standardTexDirs, texInstallHint } from '../src/latex/setup';
+
+function input(files: string[], overrides: Partial<SetupInput> = {}): SetupInput {
+  const set = new Set(files);
+  const dirs: Record<string, string[]> = {
+    '/usr/local/texlive': ['2023', '2025', 'texmf-local'],
+    '/usr/local/texlive/2025/bin': ['x86_64-linux'],
+    '/usr/local/texlive/2023/bin': ['x86_64-linux'],
+  };
+  return {
+    latexmk: 'latexmk',
+    engine: 'pdflatex',
+    synctex: 'synctex',
+    env: { PATH: '/usr/bin:/bin' },
+    platform: 'linux',
+    isFile: (p) => set.has(p),
+    listDir: (d) => dirs[d] ?? [],
+    ...overrides,
+  };
+}
+
+describe('checkSetup', () => {
+  it('reports a complete installation', () => {
+    const report = checkSetup(input(['/usr/bin/latexmk', '/usr/bin/pdflatex', '/usr/bin/synctex']));
+    expect(report.canBuild).toBe(true);
+    expect(report.missingRequired).toEqual([]);
+    expect(report.missingOptional).toEqual([]);
+    expect(report.tools.map((t) => t.resolved)).toEqual(['/usr/bin/latexmk', '/usr/bin/pdflatex', '/usr/bin/synctex']);
+  });
+
+  it('cannot build without latexmk or the engine', () => {
+    const report = checkSetup(input(['/usr/bin/pdflatex'], { engine: 'xelatex' }));
+    expect(report.canBuild).toBe(false);
+    expect(report.missingRequired.map((t) => t.name)).toEqual(['latexmk', 'xelatex']);
+    expect(report.missingOptional.map((t) => t.name)).toEqual(['synctex']);
+  });
+
+  it('checks texlab only when asked, as optional', () => {
+    const files = ['/usr/bin/latexmk', '/usr/bin/pdflatex', '/usr/bin/synctex'];
+    expect(checkSetup(input(files)).tools.map((t) => t.name)).not.toContain('texlab');
+    const report = checkSetup(input(files, { texlab: 'texlab' }));
+    expect(report.canBuild).toBe(true);
+    expect(report.missingOptional.map((t) => t.name)).toEqual(['texlab']);
+  });
+
+  it('finds TeX Live installed but not on PATH, newest year first', () => {
+    const report = checkSetup(
+      input([
+        '/usr/local/texlive/2023/bin/x86_64-linux/latexmk',
+        '/usr/local/texlive/2025/bin/x86_64-linux/latexmk',
+        '/usr/local/texlive/2025/bin/x86_64-linux/pdflatex',
+      ])
+    );
+    expect(report.canBuild).toBe(false);
+    expect(report.missingRequired[0].foundOutsidePath).toBe('/usr/local/texlive/2025/bin/x86_64-linux/latexmk');
+    expect(formatReport(report, 'linux')).toContain('restart VS Code');
+  });
+
+  it('finds MacTeX outside a Dock-launched PATH', () => {
+    const report = checkSetup(input(['/Library/TeX/texbin/latexmk', '/Library/TeX/texbin/pdflatex'], { platform: 'darwin' }));
+    expect(report.missingRequired.map((t) => t.foundOutsidePath)).toEqual(['/Library/TeX/texbin/latexmk', '/Library/TeX/texbin/pdflatex']);
+  });
+
+  it('does not search elsewhere for an explicit path that does not exist', () => {
+    const report = checkSetup(input(['/Library/TeX/texbin/latexmk'], { latexmk: '/opt/tex/latexmk', platform: 'darwin' }));
+    expect(report.tools[0].resolved).toBeUndefined();
+    expect(report.tools[0].foundOutsidePath).toBeUndefined();
+  });
+
+  it('honours PATHEXT on Windows', () => {
+    const report = checkSetup(
+      input(['C:\\tex\\latexmk.EXE', 'C:\\tex\\pdflatex.EXE'], {
+        platform: 'win32',
+        env: { Path: 'C:\\tex', PATHEXT: '.EXE' },
+      })
+    );
+    expect(report.canBuild).toBe(true);
+  });
+
+  it('finds MiKTeX in Program Files on Windows', () => {
+    const report = checkSetup(
+      input(['C:\\Program Files\\MiKTeX\\miktex\\bin\\x64\\latexmk.exe'], {
+        platform: 'win32',
+        env: { Path: 'C:\\Windows', ProgramFiles: 'C:\\Program Files' },
+      })
+    );
+    expect(report.tools[0].foundOutsidePath).toBe('C:\\Program Files\\MiKTeX\\miktex\\bin\\x64\\latexmk.exe');
+  });
+});
+
+describe('standardTexDirs', () => {
+  it('lists versioned TeX Live directories on Linux', () => {
+    expect(standardTexDirs('linux', {}, input([]).listDir)).toEqual([
+      '/usr/local/texlive/2025/bin/x86_64-linux',
+      '/usr/local/texlive/2023/bin/x86_64-linux',
+    ]);
+  });
+});
+
+describe('texInstallHint', () => {
+  it('names the usual distribution per platform', () => {
+    expect(texInstallHint('darwin').text).toContain('MacTeX');
+    expect(texInstallHint('win32').text).toContain('MiKTeX');
+    expect(texInstallHint('linux').text).toContain('apt');
+  });
+});

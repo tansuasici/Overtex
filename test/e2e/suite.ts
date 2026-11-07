@@ -103,6 +103,18 @@ export async function run(): Promise<void> {
   await step('forward search: \\input file line -> page 3', () => forward(part, 1, 3));
   await step('inverse search: click on page 2 -> main.tex:5', () => inverse(targets['main.tex'], main, 4));
   await step('inverse search: click on page 3 -> chapters/part.tex:2', () => inverse(targets['part.tex'], part, 1));
+  // Last: these show a notification and open an editor, which would get in the way of the viewer steps above.
+  await step('setup check finds latexmk and the engine', async () => {
+    const report = await vscode.commands.executeCommand<import('../../src/latex/setup').SetupReport>('overtex.checkSetup');
+    assert.ok(report, 'no report returned');
+    if (process.env.OVERTEX_REQUIRE_TEX) {
+      assert.ok(report.canBuild, `missing: ${report.missingRequired.map((t) => t.name).join(', ')}`);
+    }
+  });
+
+  await step('getting started walkthrough is registered', async () => {
+    await vscode.commands.executeCommand('overtex.gettingStarted');
+  });
 
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);

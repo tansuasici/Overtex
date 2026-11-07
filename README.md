@@ -15,6 +15,8 @@ A LaTeX writing environment inside VS Code: build, live PDF preview and SyncTeX,
 
 A TeX distribution that provides `latexmk` and `synctex`: [TeX Live](https://tug.org/texlive/), [MacTeX](https://tug.org/mactex/) or [MiKTeX](https://miktex.org/) (MiKTeX also needs Perl for latexmk).
 
+**Overtex: Check LaTeX Installation** looks for latexmk, the selected engine, synctex and TexLab, and says what is missing and how to install it on your system. It also notices TeX that is installed but not yet on VS Code's `PATH`, which usually means VS Code needs a restart. If latexmk is missing when Overtex starts, it offers this check once. **Overtex: Getting Started** opens a short walkthrough: install, open a document, build, preview and SyncTeX.
+
 Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live checking and completion (`brew install texlab`, `cargo install texlab`, or a release binary on `PATH`). If the official TexLab extension is installed, Overtex leaves the language server to it.
 
 ## Commands
@@ -25,6 +27,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | Overtex: View PDF | `⌘⌥V` / `Ctrl+Alt+V` |
 | Overtex: Jump to PDF (forward search) | `⌘⌥J` / `Ctrl+Alt+J` |
 | Overtex: Cancel Build, Clean Auxiliary Files, Show Build Log | |
+| Overtex: Check LaTeX Installation, New LaTeX Document, Getting Started | |
 
 ## Settings
 

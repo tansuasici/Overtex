@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Check LaTeX Installation** command: finds latexmk, the engine, synctex and TexLab with the same `PATH` lookup the build uses, spots TeX that is installed but not on VS Code's `PATH`, and gives install steps for macOS, Windows and Linux. Offered once on startup when latexmk is missing, and from build or SyncTeX errors caused by a missing program.
+- **Getting Started** walkthrough on the Welcome page: install TeX, open or create a document, build, preview and SyncTeX, optional TexLab.
+- **New LaTeX Document** command: creates `main.tex` from a template in the open folder, or an untitled document.
+
 ## 0.1.1 (2026-11-07)
 
 - Releases are published to the Marketplace with trusted publishing (GitHub OIDC) instead of a personal access token. No changes to the extension itself.
