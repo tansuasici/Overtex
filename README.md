@@ -1,6 +1,37 @@
-# Overtex
+<p align="center">
+  <img src="media/icon.png" width="96" alt="Overtex icon">
+</p>
 
-A LaTeX writing environment inside VS Code: build, live PDF preview and SyncTeX, with no extra setup beyond a TeX distribution.
+<h1 align="center">Overtex</h1>
+
+<p align="center">
+  A LaTeX writing environment inside VS Code: build, PDF preview and SyncTeX, with nothing to set up beyond a TeX distribution.
+</p>
+
+<p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=tansuasici.overtex"><img src="https://img.shields.io/visual-studio-marketplace/v/tansuasici.overtex?label=Marketplace" alt="Marketplace version"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=tansuasici.overtex"><img src="https://img.shields.io/visual-studio-marketplace/i/tansuasici.overtex" alt="Installs"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
+
+## Install
+
+Install **Overtex** from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=tansuasici.overtex), or run:
+
+```bash
+code --install-extension tansuasici.overtex
+```
+
+You also need a TeX distribution; see [Requirements](#requirements).
+
+## Quick start
+
+1. Run **Overtex: Check LaTeX Installation** to confirm latexmk and your engine are found.
+2. Open a folder with a `.tex` file, or run **Overtex: New LaTeX Document**.
+3. Save. Overtex builds with latexmk and opens the PDF beside the editor.
+4. Press `⌘⌥J` / `Ctrl+Alt+J` to jump to the cursor's spot in the PDF, and `⌘`/`Ctrl`+click in the PDF to jump back.
+
+**Overtex: Getting Started** walks through the same steps on the Welcome page.
 
 ## Features
 
@@ -50,6 +81,18 @@ If LaTeX Workshop is installed and both extensions build on save, every save wou
 ## Workspace Trust
 
 latexmk can run code from a project's `.latexmkrc`, so in an [untrusted workspace](https://code.visualstudio.com/docs/editor/workspace-trust) Overtex does not build, clean or start TexLab, and ignores workspace values of `overtex.latex.latexmkPath`, `overtex.latex.extraArgs`, `overtex.synctex.path` and `overtex.texlab.path`. Opening an existing PDF still works. Trust the folder to enable building.
+
+## Development
+
+```bash
+npm ci
+npm run build       # bundle the extension and the PDF viewer into out/
+npm run typecheck
+npm test            # unit tests (vitest)
+npm run test:e2e    # runs VS Code with the extension; needs latexmk and synctex on PATH
+```
+
+After a build, `code --extensionDevelopmentPath="$PWD" path/to/project` opens a VS Code window that runs this checkout. Bugs and ideas go to [GitHub Issues](https://github.com/tansuasici/Overtex/issues); see the [changelog](CHANGELOG.md) for what changed in each release.
 
 ## License
 
