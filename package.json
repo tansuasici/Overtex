@@ -1,0 +1,175 @@
+{
+  "name": "overtex",
+  "displayName": "Overtex",
+  "description": "A complete LaTeX writing environment inside VS Code: build, live PDF preview and SyncTeX.",
+  "version": "0.1.0",
+  "publisher": "tansuasici",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "latex",
+    "tex",
+    "pdf",
+    "synctex",
+    "bibtex",
+    "latexmk"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tansuasici/Overtex"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:latex",
+    "onLanguage:bibtex",
+    "workspaceContains:**/*.tex"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "overtex.build",
+        "title": "Build LaTeX Project",
+        "category": "Overtex",
+        "icon": "$(play)"
+      },
+      {
+        "command": "overtex.cancelBuild",
+        "title": "Cancel Build",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.viewPdf",
+        "title": "View PDF",
+        "category": "Overtex",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "overtex.forwardSearch",
+        "title": "SyncTeX: Jump to PDF",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.clean",
+        "title": "Clean Auxiliary Files",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.showLog",
+        "title": "Show Build Log",
+        "category": "Overtex"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "overtex.build",
+          "when": "editorLangId == latex",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overtex.viewPdf",
+          "when": "editorLangId == latex",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "overtex.build",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b",
+        "when": "editorLangId == latex"
+      },
+      {
+        "command": "overtex.viewPdf",
+        "key": "ctrl+alt+v",
+        "mac": "cmd+alt+v",
+        "when": "editorLangId == latex"
+      },
+      {
+        "command": "overtex.forwardSearch",
+        "key": "ctrl+alt+j",
+        "mac": "cmd+alt+j",
+        "when": "editorLangId == latex"
+      }
+    ],
+    "configuration": {
+      "title": "Overtex",
+      "properties": {
+        "overtex.latex.mainFile": {
+          "type": "string",
+          "default": "",
+          "description": "Main .tex file, relative to the workspace root. Auto-detected when empty (`% !TEX root` comment, then `\\documentclass`)."
+        },
+        "overtex.latex.engine": {
+          "type": "string",
+          "enum": [
+            "pdflatex",
+            "xelatex",
+            "lualatex"
+          ],
+          "default": "pdflatex",
+          "description": "TeX engine latexmk drives. BibTeX/Biber passes are run automatically."
+        },
+        "overtex.latex.outDir": {
+          "type": "string",
+          "default": "",
+          "description": "Output directory for build artifacts, relative to the main file. Empty means next to the main file."
+        },
+        "overtex.latex.extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments passed to latexmk."
+        },
+        "overtex.latex.latexmkPath": {
+          "type": "string",
+          "default": "latexmk",
+          "description": "Path to the latexmk executable."
+        },
+        "overtex.synctex.path": {
+          "type": "string",
+          "default": "synctex",
+          "description": "Path to the synctex executable."
+        },
+        "overtex.build.onSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Build when a .tex or .bib file is saved."
+        },
+        "overtex.viewer.autoOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the PDF preview after a successful build."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build -- --production",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p webview",
+    "test": "vitest run",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^6.5.438"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

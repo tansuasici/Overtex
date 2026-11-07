@@ -1,0 +1,23 @@
+This is pdfTeX, Version 3.14159265-2.6-1.40.21 (TeX Live 2020) (preloaded format=pdflatex 2020.5.1)  25 FEB 2026 10:30
+entering extended mode
+**main.tex
+(./main.tex
+LaTeX2e <2020-02-02> patch level 5
+(/usr/local/texlive/2020/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2019/12/20 v1.4l Standard LaTeX document class
+)
+(./main.aux)
+
+! Undefined control sequence.
+l.15 \badcommand
+                 {test}
+The control sequence at the end of the top line
+of your error message was never \def'ed.
+
+! Missing $ inserted.
+l.22 The formula x^2
+                     + y^2 = z^2 should be in math mode.
+
+(./main.aux) )
+No pages of output.
+Transcript written on main.log.

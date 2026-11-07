@@ -1,0 +1,132 @@
+:root {
+  --toolbar-height: 32px;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.toolbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--toolbar-height);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  background: var(--vscode-editorWidget-background);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, transparent);
+  z-index: 10;
+}
+
+.toolbar button,
+.toolbar select {
+  height: 22px;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.toolbar button {
+  min-width: 24px;
+}
+
+.toolbar select {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border-color: var(--vscode-dropdown-border, transparent);
+}
+
+.toolbar button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.toolbar button:focus-visible,
+.toolbar select:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+#page-info,
+.hint {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.hint {
+  margin-left: 12px;
+}
+
+@media (max-width: 420px) {
+  .hint {
+    display: none;
+  }
+}
+
+#viewer {
+  position: absolute;
+  inset: var(--toolbar-height) 0 0 0;
+  overflow: auto;
+  outline: none;
+}
+
+#pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.page {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  flex: none;
+}
+
+.page canvas {
+  display: block;
+}
+
+#empty {
+  margin: 48px auto;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+.synctex-marker {
+  position: absolute;
+  pointer-events: none;
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 200, 0, 0.4));
+  border-radius: 2px;
+  animation: synctex-fade 1.6s ease-out forwards;
+}
+
+@keyframes synctex-fade {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
