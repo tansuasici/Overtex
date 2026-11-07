@@ -82,6 +82,9 @@ body {
   position: absolute;
   inset: var(--toolbar-height) 0 0 0;
   overflow: auto;
+  /* Reserve the scrollbar's space so fit-width does not change the width it fits to,
+     which would loop: scrollbar appears, page shrinks, scrollbar goes, page grows. */
+  scrollbar-gutter: stable;
   outline: none;
 }
 
