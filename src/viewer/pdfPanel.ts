@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { toStandaloneArrayBuffer } from '../shared/bytes';
 import type { FromViewerMessage, PageRect, ToViewerMessage } from '../shared/messages';
 
 /** A single PDF preview tab rendered with PDF.js inside a webview. */
@@ -97,10 +98,7 @@ export class PdfPanel implements vscode.Disposable {
     }
     try {
       const data = await vscode.workspace.fs.readFile(vscode.Uri.file(pdfFile));
-      // Copy into a fresh ArrayBuffer: readFile may return a Buffer that is a view
-      // into a larger pool, which does not survive postMessage as a Uint8Array.
-      const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-      this.post({ type: 'load', data: buffer, fileName: path.basename(pdfFile) });
+      this.post({ type: 'load', data: toStandaloneArrayBuffer(data), fileName: path.basename(pdfFile) });
     } catch (err) {
       this.log(`Could not read ${pdfFile}: ${err instanceof Error ? err.message : String(err)}\n`);
     }

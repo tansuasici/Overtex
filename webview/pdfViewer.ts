@@ -1,6 +1,8 @@
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import type { FromViewerMessage, PageRect, ToViewerMessage } from '../src/shared/messages';
+import { toBytes } from '../src/shared/bytes';
+import { startBlobWorker } from '../src/shared/blobWorker';
 import './pdfViewer.css';
 
 declare function acquireVsCodeApi(): {
@@ -31,18 +33,14 @@ const vscode = acquireVsCodeApi();
 const body = document.body.dataset;
 pdfjs.GlobalWorkerOptions.workerSrc = body.worker!;
 
-// Webview resources are served from a different origin than the webview document,
-// and browsers refuse to start a (module) worker from a cross-origin URL. Load the
-// worker source ourselves and start it from a same-origin blob: URL instead.
+// The worker URL is cross-origin to the webview, so start it from a blob: (see startBlobWorker).
 const workerReady: Promise<void> = (async () => {
   try {
-    const res = await fetch(body.worker!);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    const blob = new Blob([await res.text()], { type: 'text/javascript' });
-    const worker = new Worker(URL.createObjectURL(blob), { type: 'module' });
-    pdfjs.GlobalWorkerOptions.workerPort = worker;
+    pdfjs.GlobalWorkerOptions.workerPort = await startBlobWorker(body.worker!, {
+      fetch: (url) => fetch(url),
+      createObjectURL: (blob) => URL.createObjectURL(blob),
+      createWorker: (url, options) => new Worker(url, options),
+    });
   } catch (err) {
     // Fall back to workerSrc; PDF.js then tries a direct worker or its main-thread fallback.
     vscode.postMessage({ type: 'error', message: `Could not start PDF worker from blob: ${String(err)}` });
@@ -354,26 +352,6 @@ new ResizeObserver(() => {
 }).observe(viewer);
 
 /** Normalises PDF bytes from postMessage: ArrayBuffer, typed array, or a JSON-ified Buffer. */
-function toBytes(data: unknown): Uint8Array | undefined {
-  if (data instanceof ArrayBuffer) {
-    return new Uint8Array(data);
-  }
-  if (ArrayBuffer.isView(data)) {
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  }
-  if (data && typeof data === 'object') {
-    const obj = data as { type?: string; data?: unknown };
-    if (obj.type === 'Buffer' && Array.isArray(obj.data)) {
-      return Uint8Array.from(obj.data as number[]);
-    }
-    const values = Object.values(data);
-    if (values.length > 0 && values.every((v) => typeof v === 'number')) {
-      return Uint8Array.from(values as number[]);
-    }
-  }
-  return undefined;
-}
-
 window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
   const msg = event.data;
   switch (msg.type) {
