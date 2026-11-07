@@ -1,16 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="56" fill="#1f3a5f"/>
-  <!-- page -->
-  <path d="M78 48h74l38 38v122a10 10 0 0 1-10 10H78a10 10 0 0 1-10-10V58a10 10 0 0 1 10-10z" fill="#f5f1e8"/>
-  <path d="M152 48v28a10 10 0 0 0 10 10h28z" fill="#d9d2c3"/>
-  <!-- text lines -->
-  <rect x="88" y="150" width="82" height="8" rx="4" fill="#c7bfae"/>
-  <rect x="88" y="168" width="64" height="8" rx="4" fill="#c7bfae"/>
-  <rect x="88" y="186" width="74" height="8" rx="4" fill="#c7bfae"/>
-  <!-- TeX mark -->
-  <g font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-weight="700" fill="#1f3a5f">
-    <text x="80" y="128" font-size="54">T</text>
-    <text x="111" y="139" font-size="46">E</text>
-    <text x="136" y="128" font-size="54">X</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<rect width="512" height="512" rx="112" fill="#15171C"/>
+<path d="M268,104 A152,152 0 0 1 268,408 Z" fill="#F1ECE2"/>
+<path d="M244,104 L244.00,104 A152,152 0 0 0 141.24,144 L244,144 Z" fill="#F1ECE2"/>
+<path d="M244,170 L118.67,170 A152,152 0 0 0 99.13,210 L244,210 Z" fill="#F1ECE2"/>
+<path d="M244,236 L93.32,236 A152,152 0 0 0 93.32,276 L244,276 Z" fill="#FF5A36"/>
+<path d="M244,302 L99.13,302 A152,152 0 0 0 118.67,342 L244,342 Z" fill="#F1ECE2"/>
+<path d="M244,368 L141.24,368 A152,152 0 0 0 244.00,408 L244,408 Z" fill="#F1ECE2"/>
+<path d="M268,236 L418.68,236 A152,152 0 0 1 418.68,276 L268,276 Z" fill="#FF5A36"/>
 </svg>
