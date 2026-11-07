@@ -1,9 +1,13 @@
 import * as vscode from 'vscode';
 import { BibEntry, parseBib } from './bibParser';
+import { citationHoverMarkdown, citeKeyAt, escapeMarkdown as escape } from './cite';
 
 const CITE_BEFORE_CURSOR = /\\[A-Za-z]*cite[A-Za-z]*\*?(?:\[[^\]]*\]){0,2}\{[^}]*$/;
 
-/** `\cite{` key completion from the workspace's .bib files, cached until they change. */
+/**
+ * `\cite{` key completion and citation hovers from the workspace's .bib files, cached until they change.
+ * Both stay off while `isEnabled` is false (TexLab running), so the two never show twice.
+ */
 export function registerBibCompletion(isEnabled: () => boolean = () => true): vscode.Disposable {
   let cache: Promise<BibEntry[]> | null = null;
   const invalidate = () => {
@@ -52,9 +56,27 @@ export function registerBibCompletion(isEnabled: () => boolean = () => true): vs
     ','
   );
 
-  return vscode.Disposable.from(watcher, provider);
-}
+  const hover = vscode.languages.registerHoverProvider(
+    { language: 'latex' },
+    {
+      async provideHover(document, position) {
+        if (!isEnabled()) {
+          return undefined;
+        }
+        const cite = citeKeyAt(document.lineAt(position).text, position.character);
+        if (!cite) {
+          return undefined;
+        }
+        cache ??= load();
+        const entry = (await cache).find((e) => e.key === cite.key);
+        if (!entry) {
+          return undefined;
+        }
+        const range = new vscode.Range(position.line, cite.start, position.line, cite.end);
+        return new vscode.Hover(new vscode.MarkdownString(citationHoverMarkdown(entry)), range);
+      },
+    }
+  );
 
-function escape(text: string): string {
-  return text.replace(/[\\`*_{}[\]()#+\-.!|<>]/g, '\\$&');
+  return vscode.Disposable.from(watcher, provider, hover);
 }

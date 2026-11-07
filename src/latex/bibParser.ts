@@ -4,6 +4,7 @@ export interface BibEntry {
   title: string;
   author: string;
   year: string;
+  abstract: string;
 }
 
 const IGNORED_TYPES = new Set(['string', 'comment', 'preamble']);
@@ -26,6 +27,7 @@ export function parseBib(content: string): BibEntry[] {
       title: field(body, 'title'),
       author: field(body, 'author'),
       year: field(body, 'year'),
+      abstract: field(body, 'abstract'),
     });
     head.lastIndex = m.index + m[0].length + body.length;
   }

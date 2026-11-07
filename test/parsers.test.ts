@@ -79,6 +79,7 @@ describe('parseBib', () => {
         title: 'Zur Elektrodynamik bewegter K\\"orper',
         author: 'Albert Einstein',
         year: '1905',
+        abstract: '',
       },
     ]);
   });
