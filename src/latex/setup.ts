@@ -54,7 +54,7 @@ export function standardTexDirs(platform: NodeJS.Platform, env: NodeJS.ProcessEn
     }
     const texlive = env.SystemDrive ? `${env.SystemDrive}\\texlive` : 'C:\\texlive';
     for (const year of newestFirst(listDir(texlive))) {
-      dirs.push(path.win32.join(texlive, year, 'bin', 'windows'), path.win32.join(texlive, year, 'bin', 'win64'));
+      dirs.push(path.win32.join(texlive, year, 'bin', 'windows'), path.win32.join(texlive, year, 'bin', 'win32'));
     }
     return dirs;
   }
