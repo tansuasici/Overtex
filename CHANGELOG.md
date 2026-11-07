@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 (2026-11-07)
+
+- Releases are published to the Marketplace with trusted publishing (GitHub OIDC) instead of a personal access token. No changes to the extension itself.
+
 ## 0.1.0 (2026-11-07)
 
 First release.
