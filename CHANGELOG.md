@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-08)
 
 - Editor highlights for LaTeX: `TODO`, `FIXME` and `XXX` comments and `\todo{…}` notes get a background and a scroll bar mark (color `overtex.todoBackground`), and text TeX skips, `\iffalse … \fi` and `comment` environments, is dimmed. `overtex.highlights.enabled` turns them off.
 - Word count in the status bar: after each successful build, `texcount` counts the document with its `\input`/`\include` files. `overtex.wordCount.goal` shows progress toward a target (`1,234 / 5,000 words`); the tooltip splits text, headings and captions and shows the words added this session. **Count Words** runs it on demand; `overtex.wordCount.enabled` turns it off.
