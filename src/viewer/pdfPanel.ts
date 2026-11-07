@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { toStandaloneArrayBuffer } from '../shared/bytes';
-import type { FromViewerMessage, PageRect, ToViewerMessage } from '../shared/messages';
+import { isE2eMessage } from '../shared/messages';
+import type { E2eFromViewerMessage, E2eToViewerMessage, FromViewerMessage, PageRect, ToViewerMessage } from '../shared/messages';
 
 /** A single PDF preview tab rendered with PDF.js inside a webview. */
 export class PdfPanel implements vscode.Disposable {
@@ -17,7 +18,9 @@ export class PdfPanel implements vscode.Disposable {
   constructor(
     extensionUri: vscode.Uri,
     private readonly onInverseSearch: (pdfFile: string, page: number, x: number, y: number) => void,
-    private readonly log: (text: string) => void
+    private readonly log: (text: string) => void,
+    /** Receives the viewer's test messages; set only by the end-to-end tests. */
+    private readonly onE2eMessage?: (msg: E2eFromViewerMessage) => void
   ) {
     this.mediaRoot = vscode.Uri.joinPath(extensionUri, 'out', 'webview');
   }
@@ -59,6 +62,11 @@ export class PdfPanel implements vscode.Disposable {
     } else {
       this.pendingReveal = target;
     }
+  }
+
+  /** End-to-end tests only. */
+  postE2e(msg: E2eToViewerMessage): void {
+    this.post(msg);
   }
 
   private create(): void {
@@ -105,6 +113,10 @@ export class PdfPanel implements vscode.Disposable {
   }
 
   private async onMessage(msg: FromViewerMessage): Promise<void> {
+    if (isE2eMessage(msg)) {
+      this.onE2eMessage?.(msg);
+      return;
+    }
     switch (msg.type) {
       case 'ready':
         this.ready = true;
@@ -159,7 +171,7 @@ export class PdfPanel implements vscode.Disposable {
   data-cmaps="${asset('cmaps/')}"
   data-fonts="${asset('standard_fonts/')}"
   data-wasm="${asset('wasm/')}"
-  data-modifier="${isMac ? 'meta' : 'ctrl'}">
+  data-modifier="${isMac ? 'meta' : 'ctrl'}"${this.onE2eMessage ? ' data-e2e' : ''}>
   <div class="toolbar" role="toolbar">
     <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
     <select id="zoom" aria-label="Zoom">

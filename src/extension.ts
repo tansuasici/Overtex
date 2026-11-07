@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { OvertexApi } from './api';
+import type { OvertexApi, OvertexE2e } from './api';
+import type { E2eFromViewerMessage } from './shared/messages';
 import { buildSettings, settings } from './config';
 import { registerBibCompletion } from './latex/bibCompletion';
 import { BuildResult, Builder, outputPaths } from './latex/builder';
@@ -11,6 +12,7 @@ import { BuildDiagnostics } from './latex/diagnostics';
 import { findMainFile } from './latex/mainFile';
 import { Texlab } from './latex/texlab';
 import { BuildStatus } from './statusBar';
+import { toWorkspacePath } from './synctex/paths';
 import { SyncTex } from './synctex/synctex';
 import { PdfPanel } from './viewer/pdfPanel';
 
@@ -29,7 +31,17 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const onDidStartBuild = new vscode.EventEmitter<{ mainFile: string }>();
   const onDidEndBuild = new vscode.EventEmitter<BuildResult>();
 
-  const pdfPanel = new PdfPanel(context.extensionUri, (pdfFile, page, x, y) => void inverseSearch(pdfFile, page, x, y), log);
+  // OVERTEX_E2E is set only by the end-to-end test runner (test/e2e).
+  const e2eEvents = process.env.OVERTEX_E2E ? new vscode.EventEmitter<E2eFromViewerMessage>() : undefined;
+  const pdfPanel = new PdfPanel(
+    context.extensionUri,
+    (pdfFile, page, x, y) => void inverseSearch(pdfFile, page, x, y),
+    log,
+    e2eEvents && ((msg) => e2eEvents.fire(msg))
+  );
+  if (e2eEvents) {
+    context.subscriptions.push(e2eEvents);
+  }
 
   texlab = new Texlab(context, log);
   const server = texlab;
@@ -179,7 +191,8 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
       if (!source) {
         return;
       }
-      const doc = await vscode.workspace.openTextDocument(source.file);
+      const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+      const doc = await vscode.workspace.openTextDocument(toWorkspacePath(source.file, folders, fs.realpathSync.native));
       const position = new vscode.Position(source.line - 1, source.column);
       const viewColumn =
         vscode.window.visibleTextEditors.find((e) => e.document.uri.fsPath === doc.uri.fsPath)?.viewColumn ??
@@ -238,8 +251,14 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
 
   warnAboutLatexWorkshop(context);
 
+  const e2e: OvertexE2e | undefined = e2eEvents && {
+    onViewerMessage: e2eEvents.event,
+    sendToViewer: (msg) => pdfPanel.postE2e(msg),
+  };
+
   return {
     version: 1,
+    ...(e2e && { e2e }),
     build: (main?: string) => build(main),
     onDidStartBuild: onDidStartBuild.event,
     onDidEndBuild: onDidEndBuild.event,

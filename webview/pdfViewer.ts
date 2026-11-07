@@ -47,6 +47,8 @@ const workerReady: Promise<void> = (async () => {
   }
 })();
 const modifierKey = body.modifier === 'meta' ? 'metaKey' : 'ctrlKey';
+/** Set only when the extension host runs the end-to-end tests. */
+const e2e = body.e2e !== undefined;
 
 const viewer = document.getElementById('viewer') as HTMLDivElement;
 const pagesEl = document.getElementById('pages') as HTMLDivElement;
@@ -123,6 +125,9 @@ async function load(data: Uint8Array): Promise<void> {
   restoreAnchor(anchor);
   updatePageInfo();
   void previous?.loadingTask.destroy();
+  if (e2e) {
+    vscode.postMessage({ type: 'e2e:loaded', pages: pages.length });
+  }
 }
 
 function rebuildPageElements(): void {
@@ -292,6 +297,47 @@ function reveal(target: PageRect): void {
   marker.style.height = `${Math.max(target.height, 8) * scale}px`;
   view.el.appendChild(marker);
   marker.addEventListener('animationend', () => marker.remove());
+  if (e2e) {
+    void reportReveal(view, target, Math.max(target.height, 8));
+  }
+}
+
+// ---- End-to-end test hooks ----
+
+/** Resolves once a smooth scroll has stopped moving (or after 5 s). */
+async function scrollSettled(): Promise<void> {
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const end = performance.now() + 5000;
+  let last = viewer.scrollTop;
+  let still = 0;
+  while (still < 10 && performance.now() < end) {
+    await frame();
+    still = viewer.scrollTop === last ? still + 1 : 0;
+    last = viewer.scrollTop;
+  }
+}
+
+async function reportReveal(view: PageView, target: PageRect, height: number): Promise<void> {
+  await scrollSettled();
+  const top = view.el.offsetTop + target.y * scale - viewer.scrollTop;
+  const bottom = top + height * scale;
+  vscode.postMessage({ type: 'e2e:revealed', target, inView: top >= 0 && bottom <= viewer.clientHeight });
+}
+
+/** Clicks like a user would: scrolls the point into view and dispatches a modifier-click there. */
+async function e2eClick(page: number, x: number, y: number): Promise<void> {
+  const view = pages[page - 1];
+  if (!view) {
+    report(`e2e:click: no page ${page}`);
+    return;
+  }
+  viewer.scrollTop = view.el.offsetTop + y * scale - viewer.clientHeight / 2;
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  const rect = view.el.getBoundingClientRect();
+  const clientX = rect.left + x * scale;
+  const clientY = rect.top + y * scale;
+  const target = document.elementFromPoint(clientX, clientY) ?? view.el;
+  target.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX, clientY, [modifierKey]: true }));
 }
 
 pagesEl.addEventListener('click', (event) => {
@@ -366,6 +412,11 @@ window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
     }
     case 'reveal':
       reveal(msg.target);
+      break;
+    case 'e2e:click':
+      if (e2e) {
+        void e2eClick(msg.page, msg.x, msg.y);
+      }
       break;
   }
 });

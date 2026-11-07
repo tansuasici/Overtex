@@ -4,6 +4,7 @@ import * as path from 'path';
 import { parseLog } from '../src/latex/logParser';
 import { parseBib } from '../src/latex/bibParser';
 import { parseEditOutput, parseViewOutput } from '../src/synctex/synctex';
+import { toWorkspacePath } from '../src/synctex/paths';
 import { findMainFile } from '../src/latex/mainFile';
 import { latexmkArgs } from '../src/latex/builder';
 
@@ -167,5 +168,29 @@ describe('latexmkArgs', () => {
       '-shell-escape',
       'main.tex',
     ]);
+  });
+});
+
+describe('toWorkspacePath', () => {
+  const real = (links: Record<string, string>) => (p: string) => links[p] ?? p;
+
+  it('maps a symlink-resolved path back under the workspace folder', () => {
+    const realpath = real({ '/var/proj': '/private/var/proj' });
+    expect(toWorkspacePath('/private/var/proj/chapters/a.tex', ['/var/proj'], realpath)).toBe(
+      path.join('/var/proj', 'chapters', 'a.tex')
+    );
+  });
+
+  it('leaves paths alone when the folder is not a symlink or the file is outside it', () => {
+    expect(toWorkspacePath('/home/me/proj/a.tex', ['/home/me/proj'], real({}))).toBe('/home/me/proj/a.tex');
+    const realpath = real({ '/var/proj': '/private/var/proj' });
+    expect(toWorkspacePath('/private/var/other/a.tex', ['/var/proj'], realpath)).toBe('/private/var/other/a.tex');
+  });
+
+  it('skips folders that no longer exist', () => {
+    const realpath = (p: string) => {
+      throw new Error(`ENOENT ${p}`);
+    };
+    expect(toWorkspacePath('/x/a.tex', ['/gone'], realpath)).toBe('/x/a.tex');
   });
 });

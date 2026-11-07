@@ -195,6 +195,7 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p webview",
     "test": "vitest run",
+    "test:e2e": "npm run build && esbuild test/e2e/suite.ts --bundle --platform=node --format=cjs --external:vscode --outfile=out-e2e/suite.js --log-level=warning && node test/e2e/run.mjs",
     "package": "vsce package"
   },
   "dependencies": {
@@ -204,6 +205,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.6.0",

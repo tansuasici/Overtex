@@ -1,0 +1,110 @@
+// Runs inside the VS Code extension host (see run.mjs). Drives build, forward search and inverse
+// search through the real PDF viewer webview, using the test hooks enabled by OVERTEX_E2E.
+import * as assert from 'assert';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import type { OvertexApi, OvertexE2e } from '../../src/api';
+import type { E2eFromViewerMessage, PageRect } from '../../src/shared/messages';
+
+type ViewerMessage<T extends E2eFromViewerMessage['type']> = Extract<E2eFromViewerMessage, { type: T }>;
+
+function nextMessage<T extends E2eFromViewerMessage['type']>(e2e: OvertexE2e, type: T, timeoutMs = 30000): Promise<ViewerMessage<T>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      sub.dispose();
+      reject(new Error(`timed out waiting for ${type}`));
+    }, timeoutMs);
+    const sub = e2e.onViewerMessage((msg) => {
+      if (msg.type === type) {
+        clearTimeout(timer);
+        sub.dispose();
+        resolve(msg as ViewerMessage<T>);
+      }
+    });
+  });
+}
+
+async function waitFor(what: string, check: () => boolean, timeoutMs = 15000): Promise<void> {
+  const end = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > end) {
+      throw new Error(`timed out waiting for ${what}`);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+async function openAt(file: string, line: number): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument(file);
+  const pos = new vscode.Position(line, 0);
+  await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, selection: new vscode.Range(pos, pos) });
+}
+
+function cursorAt(file: string, line: number): boolean {
+  const editor = vscode.window.activeTextEditor;
+  return editor?.document.uri.fsPath === file && editor.selection.active.line === line;
+}
+
+export async function run(): Promise<void> {
+  const api = await vscode.extensions.getExtension<OvertexApi>('tansuasici.overtex')!.activate();
+  const e2e = api.e2e;
+  assert.ok(e2e, 'OVERTEX_E2E hooks are missing');
+
+  const root = vscode.workspace.workspaceFolders![0].uri.fsPath;
+  const main = path.join(root, 'main.tex');
+  const part = path.join(root, 'chapters', 'part.tex');
+  const targets: Record<string, PageRect> = {};
+  let failed = 0;
+
+  async function step(name: string, fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+      console.log(`  ✓ ${name}`);
+    } catch (err) {
+      failed++;
+      console.log(`  ✗ ${name}\n    ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function forward(file: string, line: number, expectedPage: number): Promise<void> {
+    await openAt(file, line);
+    const revealed = nextMessage(e2e!, 'e2e:revealed');
+    await vscode.commands.executeCommand('overtex.forwardSearch');
+    const msg = await revealed;
+    assert.strictEqual(msg.target.page, expectedPage, 'page');
+    assert.ok(msg.inView, 'the target box is scrolled into view');
+    targets[path.basename(file)] = msg.target;
+  }
+
+  async function inverse(target: PageRect | undefined, file: string, line: number): Promise<void> {
+    assert.ok(target, 'needs the forward search result');
+    const width = target.width > 0 ? target.width : 40;
+    e2e!.sendToViewer({ type: 'e2e:click', page: target.page, x: target.x + width / 2, y: target.y + target.height / 2 });
+    const where = () => {
+      const e = vscode.window.activeTextEditor;
+      return e ? `${e.document.uri.fsPath}:${e.selection.active.line + 1}` : 'no editor';
+    };
+    await waitFor(`the cursor at ${path.basename(file)}:${line + 1}`, () => cursorAt(file, line)).catch((err: Error) => {
+      throw new Error(`${err.message} (cursor is at ${where()}; clicked ${JSON.stringify(target)})`);
+    });
+  }
+
+  console.log('Overtex end-to-end');
+
+  await step('builds and shows the PDF in the preview', async () => {
+    await openAt(main, 0);
+    const loaded = nextMessage(e2e, 'e2e:loaded', 120000);
+    const result = await api.build(main);
+    assert.ok(result?.success, 'build succeeded');
+    assert.strictEqual((await loaded).pages, 3);
+  });
+
+  await step('forward search: main file line -> page 2', () => forward(main, 4, 2));
+  await step('forward search: \\input file line -> page 3', () => forward(part, 1, 3));
+  await step('inverse search: click on page 2 -> main.tex:5', () => inverse(targets['main.tex'], main, 4));
+  await step('inverse search: click on page 3 -> chapters/part.tex:2', () => inverse(targets['part.tex'], part, 1));
+
+  if (failed) {
+    throw new Error(`${failed} end-to-end step(s) failed`);
+  }
+}

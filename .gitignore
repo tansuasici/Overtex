@@ -4,3 +4,4 @@ node_modules/
 *.vsix
 .DS_Store
 test/.tmp/
+out-e2e/

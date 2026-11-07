@@ -37,6 +37,14 @@ jobs:
       - run: npm test
       - run: npm run build
 
+      # Build, forward search and inverse search through the PDF preview in a real VS Code.
+      - name: End-to-end tests
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e
+      - name: End-to-end tests
+        if: runner.os != 'Linux'
+        run: npm run test:e2e
+
       - name: Package extension
         if: matrix.os == 'ubuntu-latest'
         run: npx vsce package --out overtex.vsix

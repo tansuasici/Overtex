@@ -1,5 +1,6 @@
 import type * as vscode from 'vscode';
 import type { BuildResult } from './latex/builder';
+import type { E2eFromViewerMessage, E2eToViewerMessage } from './shared/messages';
 
 export type { BuildResult };
 
@@ -16,4 +17,11 @@ export interface OvertexApi {
   readonly onDidEndBuild: vscode.Event<BuildResult>;
   viewPdf(): Promise<void>;
   forwardSearch(): Promise<void>;
+  /** Present only when the extension host was started by the end-to-end tests. Not part of the public API. */
+  readonly e2e?: OvertexE2e;
+}
+
+export interface OvertexE2e {
+  readonly onViewerMessage: vscode.Event<E2eFromViewerMessage>;
+  sendToViewer(msg: E2eToViewerMessage): void;
 }
