@@ -112,6 +112,12 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('submission check reports the page count', async () => {
+    const report = await vscode.commands.executeCommand<import('../../src/latex/submission').SubmissionReport>('overtex.checkSubmission');
+    assert.ok(report, 'no report returned');
+    assert.ok(report.pages && report.pages > 0, `pages: ${report.pages}`);
+  });
+
   await step('getting started walkthrough is registered', async () => {
     await vscode.commands.executeCommand('overtex.gettingStarted');
   });

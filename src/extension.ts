@@ -19,6 +19,7 @@ import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setup
 import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
 import { exportArxiv } from './exportArxiv';
+import { SubmissionCheck } from './checkSubmission';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 
@@ -53,6 +54,9 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const bibCompletion = registerBibCompletion(() => !server.isRunning);
 
   context.subscriptions.push(output, diagnostics, status, pdfPanel, onDidStartBuild, onDidEndBuild, texlab, bibCompletion);
+  // Submission findings describe one build; the next build clears them.
+  const submission = new SubmissionCheck(mainFile, build);
+  context.subscriptions.push(submission, onDidStartBuild.event(() => submission.clear()));
   void texlab.start();
 
   // ---- Main file and output paths ----
@@ -237,6 +241,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.newDocument', newDocument),
     vscode.commands.registerCommand('overtex.addCitation', () => addCitation(mainFile)),
     vscode.commands.registerCommand('overtex.exportArxiv', () => exportArxiv(mainFile, build)),
+    vscode.commands.registerCommand('overtex.checkSubmission', () => submission.run()),
     vscode.commands.registerCommand('overtex.clean', async () => {
       const main = mainFile();
       if (main && requireTrust('Cleaning')) {

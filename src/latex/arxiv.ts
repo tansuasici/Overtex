@@ -119,7 +119,7 @@ export function stripComments(tex: string): string {
 }
 
 /** Index of the `%` that starts a comment, or -1. */
-function commentStart(line: string): number {
+export function commentStart(line: string): number {
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '\\') {

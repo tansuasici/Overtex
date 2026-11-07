@@ -43,6 +43,7 @@ You also need a TeX distribution; see [Requirements](#requirements).
 - **Citation completion** inside `\cite{…}` from the workspace's `.bib` files, searchable by key, title and author, when TexLab is not available.
 - **Add Citation from DOI or arXiv**: paste a DOI (`10.1103/PhysRev.47.777`) or an arXiv ID (`arXiv:1706.03762`, or the abs URL) and Overtex fetches the BibTeX from doi.org, adds it to your `.bib` with a readable key, and inserts the `\cite` at the cursor. This is the only Overtex feature that uses the network, and only when you run it.
 - **Export for arXiv**: builds the project and writes `main-arxiv.zip` beside the main file with exactly the files TeX read: your `.tex` sources, figures, local `.sty`/`.cls` files and the generated `.bbl` (arXiv does not run BibTeX), without build leftovers. Comments are removed from `.tex` files, since arXiv publishes the source, and `\pdfoutput=1` is added for pdfLaTeX projects. It warns about things arXiv may reject: a biber `.bbl`, a missing `.bbl`, a XeLaTeX or LuaLaTeX build, or inputs from outside the main file's folder.
+- **Check Submission**: builds the project and lists what reviewers and arXiv tend to reject: more pages than `overtex.submission.pageLimit`, the `draft` class option, undefined references and citations (`??`), bitmap (Type 3) fonts, and `\todo`/TODO/FIXME left in the text. For double-blind review, turn on `overtex.submission.anonymous` and it also points at author names, affiliations, `\thanks`, acknowledgments and `pdfauthor`. Findings go to the Problems panel and are cleared by the next build. Fonts inside included PDF figures are not checked.
 
 ## Requirements
 
@@ -60,7 +61,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | Overtex: View PDF | `⌘⌥V` / `Ctrl+Alt+V` |
 | Overtex: Jump to PDF (forward search) | `⌘⌥J` / `Ctrl+Alt+J` |
 | Overtex: Cancel Build, Clean Auxiliary Files, Show Build Log | |
-| Overtex: Add Citation from DOI or arXiv, Export for arXiv | |
+| Overtex: Add Citation from DOI or arXiv, Export for arXiv, Check Submission | |
 | Overtex: Check LaTeX Installation, New LaTeX Document, Getting Started | |
 
 ## Settings
@@ -76,6 +77,8 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | `overtex.texlab.chktex` | `false` | Show ChkTeX style warnings while typing (through TexLab). |
 | `overtex.build.onSave` | `true` | Build when a `.tex` or `.bib` file is saved. |
 | `overtex.viewer.autoOpen` | `true` | Open the preview after a successful build. |
+| `overtex.submission.pageLimit` | `0` | Page limit for **Check Submission**; `0` means none. |
+| `overtex.submission.anonymous` | `false` | Also look for author information, for double-blind review. |
 
 ## LaTeX Workshop
 

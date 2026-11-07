@@ -109,6 +109,11 @@
         "command": "overtex.exportArxiv",
         "title": "Export for arXiv",
         "category": "Overtex"
+      },
+      {
+        "command": "overtex.checkSubmission",
+        "title": "Check Submission",
+        "category": "Overtex"
       }
     ],
     "menus": {
@@ -210,6 +215,17 @@
           "type": "boolean",
           "default": true,
           "description": "Open the PDF preview after a successful build."
+        },
+        "overtex.submission.pageLimit": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Page limit that **Check Submission** warns about. `0` means no limit; the page count is reported either way."
+        },
+        "overtex.submission.anonymous": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "The paper goes to double-blind review: **Check Submission** also points at author names, affiliations, `\\thanks`, acknowledgments and `pdfauthor`."
         }
       }
     },
