@@ -89,15 +89,15 @@ describe('anonymityFindings', () => {
 
 describe('checkSubmission', () => {
   const files: Record<string, string> = {
-    '/p/main.tex': '\\documentclass[draft]{article}\n\\author{Ada}\n\\begin{document}\n\\input{sec}\n\\end{document}\n',
-    '/p/sec.tex': 'Text \\todo{x}\n',
+    [path.resolve('/p/main.tex')]: '\\documentclass[draft]{article}\n\\author{Ada}\n\\begin{document}\n\\input{sec}\n\\end{document}\n',
+    [path.resolve('/p/sec.tex')]: 'Text \\todo{x}\n',
   };
   const base = {
     log: 'Output written on main.pdf (9 pages, 1 bytes).',
     fls: 'PWD /p\nINPUT main.tex\nINPUT main.aux\nINPUT sec.tex\nINPUT /tl/article.cls\n',
     entries: [],
-    mainFile: '/p/main.tex',
-    outDir: '/p',
+    mainFile: path.resolve('/p/main.tex'),
+    outDir: path.resolve('/p'),
     exists: (f: string) => f in files,
     read: (f: string) => files[f],
   };

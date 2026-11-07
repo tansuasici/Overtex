@@ -40,6 +40,7 @@ jobs:
             scheme-basic
             latexmk
             synctex
+            texcount
 
       - run: npm ci
       - run: npm run typecheck

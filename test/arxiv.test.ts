@@ -7,11 +7,13 @@ import * as zlib from 'zlib';
 import { crc32, createZip, packArxiv, parseFls, selectFiles, stripComments, withPdfOutput } from '../src/latex/arxiv';
 
 const ROOT = '/proj';
+// parseFls resolves paths with the platform's rules, so on Windows '/proj' becomes 'D:\\proj'.
+const abs = (p: string) => path.resolve(p);
 
 describe('parseFls', () => {
   it('resolves relative inputs against PWD and drops duplicates and outputs', () => {
     const fls = ['PWD /proj', 'INPUT /usr/share/texmf/tex/latex/base/article.cls', 'INPUT main.tex', 'OUTPUT main.aux', 'INPUT ./chapters/intro.tex', 'INPUT main.tex'].join('\n');
-    expect(parseFls(fls)).toEqual(['/usr/share/texmf/tex/latex/base/article.cls', '/proj/main.tex', '/proj/chapters/intro.tex']);
+    expect(parseFls(fls)).toEqual(['/usr/share/texmf/tex/latex/base/article.cls', '/proj/main.tex', '/proj/chapters/intro.tex'].map(abs));
   });
 });
 
@@ -73,13 +75,13 @@ describe('withPdfOutput', () => {
 
 describe('packArxiv', () => {
   const files: Record<string, string> = {
-    '/proj/main.tex': '% draft\n\\documentclass{article}\n\\begin{document}\nHi % todo\n\\bibliography{refs}\n\\end{document}\n',
-    '/proj/main.bbl': '% $ biblatex auxiliary file $\n',
+    [abs('/proj/main.tex')]: '% draft\n\\documentclass{article}\n\\begin{document}\nHi % todo\n\\bibliography{refs}\n\\end{document}\n',
+    [abs('/proj/main.bbl')]: '% $ biblatex auxiliary file $\n',
   };
   const base = {
     fls: 'PWD /proj\nINPUT /proj/main.tex\nINPUT /proj/main.aux\nINPUT /proj/main.bbl\n',
-    mainFile: '/proj/main.tex',
-    outDir: ROOT,
+    mainFile: abs('/proj/main.tex'),
+    outDir: abs(ROOT),
     exists: (f: string) => f in files,
     read: (f: string) => Buffer.from(files[f]),
   };
