@@ -18,6 +18,7 @@ import { PdfPanel } from './viewer/pdfPanel';
 import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setupCheck';
 import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
+import { exportArxiv } from './exportArxiv';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 
@@ -235,6 +236,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.gettingStarted', openWalkthrough),
     vscode.commands.registerCommand('overtex.newDocument', newDocument),
     vscode.commands.registerCommand('overtex.addCitation', () => addCitation(mainFile)),
+    vscode.commands.registerCommand('overtex.exportArxiv', () => exportArxiv(mainFile, build)),
     vscode.commands.registerCommand('overtex.clean', async () => {
       const main = mainFile();
       if (main && requireTrust('Cleaning')) {

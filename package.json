@@ -104,6 +104,11 @@
         "command": "overtex.addCitation",
         "title": "Add Citation from DOI or arXiv",
         "category": "Overtex"
+      },
+      {
+        "command": "overtex.exportArxiv",
+        "title": "Export for arXiv",
+        "category": "Overtex"
       }
     ],
     "menus": {
