@@ -7,7 +7,7 @@
 - **Getting Started** walkthrough on the Welcome page: install TeX, open or create a document, build, preview and SyncTeX, optional TexLab.
 - Hovering a key in `\cite{...}` (and natbib/biblatex variants) shows the entry's title, authors, year and abstract from the workspace's `.bib` files. Like `\cite` completion, it is off while TexLab runs, which has its own citation hover.
 - Fixed the PDF preview growing and shrinking without stopping in Fit width (or Fit page) mode when the page was just tall enough to need a scrollbar.
-- **New LaTeX Document** command: creates `main.tex` from a template in the open folder, or an untitled document.
+- **New LaTeX Document** command: starts a project from a template (Article, Thesis or Report with chapters in separate files, Beamer Presentation, Letter) in the open folder, or in a new subfolder when the files would overwrite something. With no folder open, a one-file template opens as an untitled document and the others ask for a folder.
 
 ## 0.1.1 (2026-11-07)
 

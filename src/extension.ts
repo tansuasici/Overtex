@@ -16,7 +16,7 @@ import { toWorkspacePath } from './synctex/paths';
 import { SyncTex } from './synctex/synctex';
 import { PdfPanel } from './viewer/pdfPanel';
 import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setupCheck';
-import { NEW_DOCUMENT_TEMPLATE } from './latex/setup';
+import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
@@ -284,18 +284,50 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
 
 /** Creates main.tex in the first workspace folder, or an untitled document when no folder is open. */
 async function newDocument(): Promise<void> {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) {
-    const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: NEW_DOCUMENT_TEMPLATE });
-    await vscode.window.showTextDocument(doc);
+  const pick = await vscode.window.showQuickPick(
+    TEMPLATES.map((t) => ({ label: t.label, description: t.description, template: t })),
+    { title: 'New LaTeX Document', placeHolder: 'Choose a template' }
+  );
+  if (!pick) {
     return;
   }
-  let target = vscode.Uri.joinPath(folder.uri, 'main.tex');
-  for (let n = 2; fs.existsSync(target.fsPath); n++) {
-    target = vscode.Uri.joinPath(folder.uri, `main-${n}.tex`);
+  const template = pick.template;
+
+  let root = vscode.workspace.workspaceFolders?.[0]?.uri;
+  const openAfter = !root;
+  if (!root) {
+    if (template.files.length === 1) {
+      const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: template.files[0].content });
+      await vscode.window.showTextDocument(doc);
+      return;
+    }
+    const chosen = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      openLabel: 'Create Project Here',
+      title: `New ${template.label}: choose a folder`,
+    });
+    if (!chosen?.[0]) {
+      return;
+    }
+    root = chosen[0];
   }
-  await vscode.workspace.fs.writeFile(target, Buffer.from(NEW_DOCUMENT_TEMPLATE, 'utf8'));
-  await vscode.window.showTextDocument(target);
+
+  const base = root;
+  const dir = placeTemplate(template, (rel) => fs.existsSync(path.join(base.fsPath, ...rel.split('/'))));
+  const projectDir = dir ? vscode.Uri.joinPath(base, dir) : base;
+  for (const file of template.files) {
+    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(projectDir, ...file.path.split('/')), Buffer.from(file.content, 'utf8'));
+  }
+
+  if (openAfter) {
+    await vscode.commands.executeCommand('vscode.openFolder', projectDir);
+    return;
+  }
+  await vscode.window.showTextDocument(vscode.Uri.joinPath(projectDir, template.main));
+  if (dir) {
+    void vscode.window.setStatusBarMessage(`Overtex: created the ${template.label.toLowerCase()} in ${dir}/`, 5000);
+  }
 }
 
 /**

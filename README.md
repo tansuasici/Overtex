@@ -27,7 +27,7 @@ You also need a TeX distribution; see [Requirements](#requirements).
 ## Quick start
 
 1. Run **Overtex: Check LaTeX Installation** to confirm latexmk and your engine are found.
-2. Open a folder with a `.tex` file, or run **Overtex: New LaTeX Document**.
+2. Open a folder with a `.tex` file, or run **Overtex: New LaTeX Document** and pick a template (Article, Thesis or Report, Presentation, Letter).
 3. Save. Overtex builds with latexmk and opens the PDF beside the editor.
 4. Press `⌘⌥J` / `Ctrl+Alt+J` to jump to the cursor's spot in the PDF, and `⌘`/`Ctrl`+click in the PDF to jump back.
 

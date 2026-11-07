@@ -157,20 +157,3 @@ export function formatReport(report: SetupReport, platform: NodeJS.Platform): st
   }
   return lines.join('\n') + '\n';
 }
-
-export const NEW_DOCUMENT_TEMPLATE = `\\documentclass{article}
-\\usepackage[utf8]{inputenc}
-\\usepackage{amsmath}
-
-\\title{Untitled}
-\\author{}
-\\date{\\today}
-
-\\begin{document}
-\\maketitle
-
-\\section{Introduction}
-Start writing here. Save to build, then Ctrl/Cmd+click in the PDF to jump back to the source.
-
-\\end{document}
-`;
