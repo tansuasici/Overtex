@@ -116,6 +116,11 @@
         "category": "Overtex"
       },
       {
+        "command": "overtex.countWords",
+        "title": "Count Words",
+        "category": "Overtex"
+      },
+      {
         "command": "overtex.viewer.toggleDarkMode",
         "title": "Toggle Dark PDF Preview",
         "category": "Overtex"
@@ -235,6 +240,17 @@
           ],
           "default": "light",
           "markdownDescription": "How the PDF preview draws pages. Only the preview changes; the PDF file is untouched. **Toggle Dark PDF Preview** and the preview's toolbar button switch between light and dark."
+        },
+        "overtex.wordCount.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the document's word count in the status bar, counted with `texcount` after each successful build. Needs `texcount`, which comes with TeX Live and MiKTeX."
+        },
+        "overtex.wordCount.goal": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Word target for the document, shown as `1,234 / 5,000 words` with progress in the tooltip. `0` means no goal."
         },
         "overtex.submission.pageLimit": {
           "type": "integer",

@@ -118,6 +118,11 @@ export async function run(): Promise<void> {
     assert.ok(report.pages && report.pages > 0, `pages: ${report.pages}`);
   });
 
+  await step('count words with texcount', async () => {
+    const count = await vscode.commands.executeCommand<import('../../src/latex/wordCount').WordCount>('overtex.countWords');
+    assert.ok(count && count.total > 0, `count: ${JSON.stringify(count)}`);
+  });
+
   await step('dark mode setting and toggle reach the preview', async () => {
     const cfg = () => vscode.workspace.getConfiguration('overtex');
     try {

@@ -20,6 +20,7 @@ import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
 import { exportArxiv } from './exportArxiv';
 import { SubmissionCheck } from './checkSubmission';
+import { WordCounter } from './wordCount';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 
@@ -58,6 +59,12 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   // Submission findings describe one build; the next build clears them.
   const submission = new SubmissionCheck(mainFile, build);
   context.subscriptions.push(submission, onDidStartBuild.event(() => submission.clear()));
+  const words = new WordCounter(mainFile);
+  context.subscriptions.push(
+    words,
+    onDidEndBuild.event((result) => result.success && void words.update(result.mainFile)),
+    vscode.workspace.onDidChangeConfiguration((e) => e.affectsConfiguration('overtex.wordCount') && words.refresh())
+  );
   void texlab.start();
 
   // ---- Main file and output paths ----
@@ -243,6 +250,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.addCitation', () => addCitation(mainFile)),
     vscode.commands.registerCommand('overtex.exportArxiv', () => exportArxiv(mainFile, build)),
     vscode.commands.registerCommand('overtex.checkSubmission', () => submission.run()),
+    vscode.commands.registerCommand('overtex.countWords', () => words.run()),
     vscode.commands.registerCommand('overtex.viewer.toggleDarkMode', () => pdfPanel.toggleColorScheme()),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('overtex.viewer.colorScheme')) {
