@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  # Marketplace trusted publishing: vsce exchanges the workflow's OIDC token for a short-lived credential.
+  id-token: write
 
 jobs:
   publish:
@@ -20,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Check that the tag matches package.json
@@ -48,9 +50,7 @@ jobs:
         run: npx vsce package --out overtex-${GITHUB_REF_NAME#v}.vsix
 
       - name: Publish to the Visual Studio Marketplace
-        run: npx vsce publish --packagePath overtex-${GITHUB_REF_NAME#v}.vsix
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --oidc --packagePath overtex-${GITHUB_REF_NAME#v}.vsix
 
       # Open VSX serves VSCodium, Cursor and other VS Code forks. Skipped until OVSX_PAT is set.
       - name: Publish to Open VSX
