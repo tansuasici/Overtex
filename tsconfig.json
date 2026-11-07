@@ -12,7 +12,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "noEmit": true
+    "noEmit": true,
+    // MathJax's exports map points js/* at cjs/ and mjs/; the types live under mjs/.
+    "paths": {
+      "@mathjax/src/js/*": ["./node_modules/@mathjax/src/mjs/*"],
+      "@mathjax/mathjax-tex-font/js/*": ["./node_modules/@mathjax/mathjax-tex-font/mjs/*"]
+    }
   },
   "include": ["src/**/*", "test/**/*"]
 }

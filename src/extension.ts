@@ -22,6 +22,7 @@ import { exportArxiv } from './exportArxiv';
 import { SubmissionCheck } from './checkSubmission';
 import { WordCounter } from './wordCount';
 import { Highlighter } from './highlighter';
+import { registerMathPreview } from './mathPreview';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 
@@ -66,7 +67,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     onDidEndBuild.event((result) => result.success && void words.update(result.mainFile)),
     vscode.workspace.onDidChangeConfiguration((e) => e.affectsConfiguration('overtex.wordCount') && words.refresh())
   );
-  context.subscriptions.push(new Highlighter());
+  context.subscriptions.push(new Highlighter(), registerMathPreview(context.extensionPath, mainFile));
   void texlab.start();
 
   // ---- Main file and output paths ----

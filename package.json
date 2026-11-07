@@ -257,6 +257,18 @@
           "default": true,
           "markdownDescription": "Highlight `TODO`, `FIXME` and `XXX` comments and `\\todo{…}` notes, and dim text TeX skips: `\\iffalse … \\fi` and `comment` environments."
         },
+        "overtex.mathPreview.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show math rendered with MathJax when hovering over `$…$`, `\\[…\\]`, `equation`, `align` and other math. Macros from `\\newcommand`, `\\DeclareMathOperator` and `\\def` in the file and the main file are used."
+        },
+        "overtex.mathPreview.scale": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.5,
+          "maximum": 4,
+          "markdownDescription": "Size of the math hover preview."
+        },
         "overtex.submission.pageLimit": {
           "type": "integer",
           "default": 0,
@@ -361,6 +373,8 @@
     "package": "vsce package"
   },
   "dependencies": {
+    "@mathjax/mathjax-tex-font": "4.1.3",
+    "@mathjax/src": "4.1.3",
     "pdfjs-dist": "^6.5.438",
     "vscode-languageclient": "^9.0.1"
   },

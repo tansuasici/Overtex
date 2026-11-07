@@ -183,3 +183,7 @@ https://github.com/mozilla/pdf.js, licensed under the Apache License 2.0:
       of your accepting any such warranty or additional liability.
 
    END OF TERMS AND CONDITIONS
+
+## MathJax (@mathjax/src 4.1.3, @mathjax/mathjax-tex-font 4.1.3)
+
+https://github.com/mathjax/MathJax-src and https://github.com/mathjax/MathJax-fonts, Copyright (c) The MathJax Consortium, licensed under the Apache License 2.0 (the same license text as above). Used for the math hover preview.

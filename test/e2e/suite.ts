@@ -142,6 +142,13 @@ export async function run(): Promise<void> {
     await vscode.commands.executeCommand('overtex.gettingStarted');
   });
 
+  await step('math hover renders with a macro from the file', async () => {
+    const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: '\\newcommand{\\R}{\\mathbb{R}}\nLet $x \\in \\R$.' });
+    const hovers = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', doc.uri, new vscode.Position(1, 6));
+    const text = hovers.flatMap((h) => h.contents.map((c) => (typeof c === 'string' ? c : c.value))).join('\n');
+    assert.match(text, /data:image\/svg\+xml;base64,/);
+  });
+
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
   }

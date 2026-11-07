@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Math hover preview: hovering over inline or display math, or an `equation`, `align`, `gather`, `multline` or similar environment, shows it rendered with MathJax 4. Macros from `\newcommand`, `\renewcommand`, `\providecommand`, `\DeclareMathOperator` and `\def` in the file and the main file are applied; TeX errors are shown in place of the image. MathJax is bundled separately and loaded on the first hover. `overtex.mathPreview.enabled` and `overtex.mathPreview.scale` control it.
+
 ## 0.2.0 (2026-11-08)
 
 - Editor highlights for LaTeX: `TODO`, `FIXME` and `XXX` comments and `\todo{…}` notes get a background and a scroll bar mark (color `overtex.todoBackground`), and text TeX skips, `\iffalse … \fi` and `comment` environments, is dimmed. `overtex.highlights.enabled` turns them off.
