@@ -61,6 +61,25 @@ describe.skipIf(!hasTex)('build + synctex (real TeX)', () => {
     expect(source!.line).toBe(3);
   });
 
+  it('finds the main file in the PDF', async () => {
+    const target = await synctex.forward(result.pdfFile!, main, 12, 0);
+    expect(target).not.toBeNull();
+    expect(target!.page).toBe(1);
+  });
+
+  it('finds the main file when another tool built with an absolute path', async () => {
+    const other = path.join(tmp, 'other');
+    fs.cpSync(project, other, { recursive: true });
+    const otherMain = path.join(other, 'main.tex');
+    cp.execFileSync('latexmk', ['-pdf', '-synctex=1', '-interaction=nonstopmode', otherMain], {
+      cwd: other,
+      stdio: 'ignore',
+    });
+    const target = await synctex.forward(path.join(other, 'main.pdf'), otherMain, 12, 0);
+    expect(target).not.toBeNull();
+    expect(target!.page).toBe(1);
+  });
+
   it('reports errors with file and line, and still keeps a PDF', async () => {
     const broken = await new Builder(() => settings).build(path.join(tmp, 'broken.tex'));
     expect(broken.success).toBe(false);

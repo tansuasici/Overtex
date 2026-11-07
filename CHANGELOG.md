@@ -3,6 +3,7 @@
 ## Unreleased
 
 - TexLab language server integration: live diagnostics while typing, completion for commands, environments, labels and citations, hover and go to definition. Optional; starts only in trusted workspaces and stays off when the TexLab extension is installed. New settings `overtex.texlab.enabled`, `overtex.texlab.path`, `overtex.texlab.chktex`.
+- Fix: SyncTeX forward search found nothing in the main file when the PDF had been built by another tool (or by hand) with an absolute path.
 
 ## 0.1.0
 

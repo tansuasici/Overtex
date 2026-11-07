@@ -20,9 +20,19 @@ export class SyncTex {
   /** Source position -> box on the PDF page. */
   async forward(pdfFile: string, texFile: string, line: number, column: number): Promise<PageRect | null> {
     const cwd = path.dirname(pdfFile);
-    const input = relativeIfInside(cwd, texFile);
-    const output = await this.run(['view', '-i', `${line}:${column + 1}:${input}`, '-o', pdfFile], cwd);
-    return parseViewOutput(output);
+    // How a file is named in the .synctex.gz depends on how TeX was invoked: Overtex's build
+    // records `<dir>/./main.tex`, which only a relative name matches, while a build started with
+    // an absolute path (another tool, a manual run) records `<dir>/main.tex`, which only the
+    // absolute name matches. Try both.
+    const candidates = [...new Set([relativeIfInside(cwd, texFile), texFile])];
+    for (const input of candidates) {
+      const output = await this.run(['view', '-i', `${line}:${column + 1}:${input}`, '-o', pdfFile], cwd);
+      const rect = parseViewOutput(output);
+      if (rect) {
+        return rect;
+      }
+    }
+    return null;
   }
 
   /** Point on a PDF page -> source position. */
