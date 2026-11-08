@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="media/icon.png" width="96" alt="Overtex icon">
+  <img src="https://raw.githubusercontent.com/tansuasici/Overtex/main/media/icon.png" width="96" alt="Overtex icon">
 </p>
 
 <h1 align="center">Overtex</h1>
@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=tansuasici.overtex"><img src="https://img.shields.io/visual-studio-marketplace/v/tansuasici.overtex?label=Marketplace" alt="Marketplace version"></a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=tansuasici.overtex"><img src="https://img.shields.io/visual-studio-marketplace/i/tansuasici.overtex" alt="Installs"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=tansuasici.overtex"><img src="https://vsmarketplacebadges.dev/version/tansuasici.overtex.svg" alt="Marketplace version"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=tansuasici.overtex"><img src="https://vsmarketplacebadges.dev/installs/tansuasici.overtex.svg" alt="Installs"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
 </p>
 
