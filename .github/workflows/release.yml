@@ -41,6 +41,9 @@ jobs:
             latexmk
             synctex
             texcount
+            latexdiff
+            ulem
+            listings
 
       - run: npm ci
       - run: npm run typecheck

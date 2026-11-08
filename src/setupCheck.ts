@@ -35,6 +35,7 @@ export function inspectSetup(): SetupReport {
     latexmk: build.latexmk,
     engine: build.engine,
     synctex: settings.synctexPath(),
+    latexdiff: settings.latexdiffPath(),
     texlab: texlabOurs ? texlabCfg.get<string>('path') || 'texlab' : undefined,
     env: process.env,
     platform: process.platform,

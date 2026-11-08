@@ -151,6 +151,24 @@ export async function run(): Promise<void> {
     assert.deepStrictEqual(report.findings, []);
   });
 
+  await step('compare versions marks up a change against another file', async () => {
+    const old = path.join(root, 'old-version.tex');
+    const text = Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(main))).toString('utf-8');
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(old), Buffer.from(text.replace('\\begin{document}', '\\begin{document}\nA sentence only the old version has.\n')));
+    await openAt(main, 0);
+    const loaded = nextMessage(e2e!, 'e2e:loaded', 120000);
+    const result = await vscode.commands.executeCommand<import('../../src/latex/latexdiff').CompareResult>('overtex.compareVersions', { old: { file: old } });
+    await vscode.workspace.fs.delete(vscode.Uri.file(old));
+    if (!result) {
+      // latexdiff is optional; CI installs it, so only a local run can get here.
+      loaded.catch(() => undefined);
+      assert.ok(!process.env.OVERTEX_REQUIRE_TEX, 'latexdiff did not run');
+      return;
+    }
+    assert.strictEqual(result.status, 'built');
+    assert.ok((await loaded).pages >= 1);
+  });
+
   await step('getting started walkthrough is registered', async () => {
     await vscode.commands.executeCommand('overtex.gettingStarted');
   });

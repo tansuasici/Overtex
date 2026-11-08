@@ -47,6 +47,7 @@ You also need a TeX distribution; see [Requirements](#requirements).
 - **Export for arXiv**: builds the project and writes `main-arxiv.zip` beside the main file with exactly the files TeX read: your `.tex` sources, figures, local `.sty`/`.cls` files and the generated `.bbl` (arXiv does not run BibTeX), without build leftovers. Comments are removed from `.tex` files, since arXiv publishes the source, and `\pdfoutput=1` is added for pdfLaTeX projects. It warns about things arXiv may reject: a biber `.bbl`, a missing `.bbl`, a XeLaTeX or LuaLaTeX build, or inputs from outside the main file's folder.
 - **Word count** in the status bar, counted with `texcount` across `\input`/`\include` files after each successful build. Set `overtex.wordCount.goal` to see `1,234 / 5,000 words`; the tooltip splits text, headings and captions and shows how many words you added this session. **Overtex: Count Words** counts on demand.
 - **Check Bibliography**: checks the `.bib` in the editor (or the ones the main file names) for entries missing fields their type needs, DOIs that do not exist, point at a different paper or repeat another entry's, and arXiv preprints that have since been published, with the journal and DOI to cite instead. It looks DOIs up on doi.org (Crossref and DataCite) and arXiv IDs on the arXiv API. Findings go to the Problems panel; entries that could not be reached are marked as unchecked, not wrong. Add Citation and Check Bibliography are the only Overtex features that use the network, and only when you run them.
+- **Compare Versions**: marks up what changed between two git commits, a commit and the files on disk, or two `.tex` files, with deleted and added text shown in the PDF. Changes in `\input` files are included. It runs [latexdiff](https://ctan.org/pkg/latexdiff), which comes with TeX Live and MiKTeX, and writes `main-diff.pdf`; your sources and git state are not touched.
 - **Check Submission**: builds the project and lists what reviewers and arXiv tend to reject: more pages than `overtex.submission.pageLimit`, the `draft` class option, undefined references and citations (`??`), bitmap (Type 3) fonts, and `\todo`/TODO/FIXME left in the text. For double-blind review, turn on `overtex.submission.anonymous` and it also points at author names, affiliations, `\thanks`, acknowledgments and `pdfauthor`. Findings go to the Problems panel and are cleared by the next build. Fonts inside included PDF figures are not checked.
 
 ## Requirements
@@ -65,7 +66,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | Overtex: View PDF | `⌘⌥V` / `Ctrl+Alt+V` |
 | Overtex: Jump to PDF (forward search) | `⌘⌥J` / `Ctrl+Alt+J` |
 | Overtex: Cancel Build, Clean Auxiliary Files, Show Build Log, Toggle Dark PDF Preview | |
-| Overtex: Add Citation from DOI or arXiv, Check Bibliography, Export for arXiv, Check Submission, Count Words | |
+| Overtex: Add Citation from DOI or arXiv, Check Bibliography, Compare Versions, Export for arXiv, Check Submission, Count Words | |
 | Overtex: Check LaTeX Installation, New LaTeX Document, Getting Started | |
 
 ## Settings
@@ -76,7 +77,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | `overtex.latex.engine` | `pdflatex` | `pdflatex`, `xelatex` or `lualatex`. |
 | `overtex.latex.outDir` | | Output directory, relative to the main file. |
 | `overtex.latex.extraArgs` | `[]` | Extra latexmk arguments, e.g. `-shell-escape`. |
-| `overtex.latex.latexmkPath`, `overtex.synctex.path`, `overtex.texlab.path` | | Executable paths when they are not on `PATH`. |
+| `overtex.latex.latexmkPath`, `overtex.synctex.path`, `overtex.latexdiff.path`, `overtex.texlab.path` | | Executable paths when they are not on `PATH`. |
 | `overtex.texlab.enabled` | `true` | Run the TexLab language server. |
 | `overtex.texlab.chktex` | `false` | Show ChkTeX style warnings while typing (through TexLab). |
 | `overtex.build.onSave` | `true` | Build when a `.tex` or `.bib` file is saved. |
@@ -96,7 +97,7 @@ If LaTeX Workshop is installed and both extensions build on save, every save wou
 
 ## Workspace Trust
 
-latexmk can run code from a project's `.latexmkrc`, so in an [untrusted workspace](https://code.visualstudio.com/docs/editor/workspace-trust) Overtex does not build, clean or start TexLab, and ignores workspace values of `overtex.latex.latexmkPath`, `overtex.latex.extraArgs`, `overtex.synctex.path` and `overtex.texlab.path`. Opening an existing PDF still works. Trust the folder to enable building.
+latexmk can run code from a project's `.latexmkrc`, so in an [untrusted workspace](https://code.visualstudio.com/docs/editor/workspace-trust) Overtex does not build, clean, compare versions or start TexLab, and ignores workspace values of `overtex.latex.latexmkPath`, `overtex.latex.extraArgs`, `overtex.synctex.path`, `overtex.latexdiff.path` and `overtex.texlab.path`. Opening an existing PDF still works. Trust the folder to enable building.
 
 ## Development
 

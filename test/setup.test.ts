@@ -21,6 +21,12 @@ function input(files: string[], overrides: Partial<SetupInput> = {}): SetupInput
 }
 
 describe('checkSetup', () => {
+  it('lists latexdiff as optional when asked to check it', () => {
+    const report = checkSetup(input(['/usr/bin/latexmk', '/usr/bin/pdflatex', '/usr/bin/synctex'], { latexdiff: 'latexdiff' }));
+    expect(report.canBuild).toBe(true);
+    expect(report.missingOptional.map((t) => t.name)).toContain('latexdiff');
+  });
+
   it('reports a complete installation', () => {
     const report = checkSetup(input(['/usr/bin/latexmk', '/usr/bin/pdflatex', '/usr/bin/synctex']));
     expect(report.canBuild).toBe(true);

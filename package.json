@@ -47,6 +47,7 @@
         "overtex.latex.latexmkPath",
         "overtex.latex.extraArgs",
         "overtex.synctex.path",
+        "overtex.latexdiff.path",
         "overtex.texlab.path"
       ]
     }
@@ -118,6 +119,11 @@
       {
         "command": "overtex.checkBibliography",
         "title": "Check Bibliography",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.compareVersions",
+        "title": "Compare Versions (latexdiff)",
         "category": "Overtex"
       },
       {
@@ -205,6 +211,11 @@
           "type": "string",
           "default": "synctex",
           "description": "Path to the synctex executable."
+        },
+        "overtex.latexdiff.path": {
+          "type": "string",
+          "default": "latexdiff",
+          "description": "Path to the latexdiff executable, used by Compare Versions."
         },
         "overtex.texlab.enabled": {
           "type": "boolean",

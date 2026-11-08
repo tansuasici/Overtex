@@ -19,6 +19,7 @@ export function buildSettings(): BuildSettings {
 export const settings = {
   mainFile: () => section().get<string>('latex.mainFile', ''),
   synctexPath: () => section().get<string>('synctex.path') || 'synctex',
+  latexdiffPath: () => section().get<string>('latexdiff.path') || 'latexdiff',
   buildOnSave: () => section().get<boolean>('build.onSave', true),
   autoOpenViewer: () => section().get<boolean>('viewer.autoOpen', true),
   viewerColorScheme: () => parseColorScheme(section().get('viewer.colorScheme')),

@@ -20,6 +20,8 @@ export interface SetupInput {
   latexmk: string;
   engine: string;
   synctex: string;
+  /** Omitted by callers that do not check it. */
+  latexdiff?: string;
   /** Undefined when TexLab is disabled or left to the TexLab extension. */
   texlab?: string;
   env: NodeJS.ProcessEnv;
@@ -99,6 +101,9 @@ export function checkSetup(input: SetupInput): SetupReport {
     check(input.engine, input.engine, true, 'the TeX engine latexmk calls'),
     check('synctex', input.synctex, false, 'jumps between the source and the PDF'),
   ];
+  if (input.latexdiff !== undefined) {
+    tools.push(check('latexdiff', input.latexdiff, false, 'compares versions of a document'));
+  }
   if (input.texlab !== undefined) {
     tools.push(check('texlab', input.texlab, false, 'live error checking and completion'));
   }

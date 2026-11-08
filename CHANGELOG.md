@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Compare Versions** command: picks an old version (a git commit touching the document's folder, or a `.tex` file) and a new one (the files on disk, a later commit, or another file), runs `latexdiff --flatten` on read-only copies, and builds the marked-up document with latexmk using the project's engine, figures and bibliography. The result opens in the preview and stays as `<main>-diff.pdf` beside the build output. Nothing is checked out and git state is not changed. Changes only in comments or the preamble build nothing. `overtex.latexdiff.path` sets the executable, and **Check LaTeX Installation** now lists latexdiff.
 - **Check Bibliography** command: checks the `.bib` in the editor, or those the main file names, and lists in the Problems panel entries missing fields their type needs (`journal` for `@article`, `booktitle` for `@inproceedings`, …), DOIs that do not exist, resolve to a paper with a different title, or repeat another entry's, and arXiv preprints whose arXiv record names a published version (with the journal reference and DOI). Verified DOIs also suggest a missing `volume` or `pages`. DOIs are looked up on doi.org (Crossref and DataCite), arXiv IDs in one batched arXiv API request; lookups that fail are reported as unchecked rather than wrong, and the check can be cancelled. Add Citation and this command are the only features that use the network, and only when run.
 
 ## 0.2.1 (2026-11-08)

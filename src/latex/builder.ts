@@ -33,7 +33,7 @@ const ENGINE_FLAG: Record<Engine, string> = {
 };
 
 // Stop TeX from wrapping log lines at 79 columns, which breaks log parsing.
-const TEX_ENV = { max_print_line: '10000', error_line: '254', half_error_line: '238' };
+export const TEX_ENV = { max_print_line: '10000', error_line: '254', half_error_line: '238' };
 
 export function outputPaths(mainFile: string, outDir: string) {
   const dir = path.resolve(path.dirname(mainFile), outDir || '.');

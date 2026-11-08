@@ -18,6 +18,7 @@ import { PdfPanel } from './viewer/pdfPanel';
 import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setupCheck';
 import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
+import { CompareArgs, compareVersionsCommand } from './compareVersions';
 import { exportArxiv } from './exportArxiv';
 import { SubmissionCheck } from './checkSubmission';
 import { BibliographyCheck } from './checkBib';
@@ -113,17 +114,8 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     return false;
   }
 
-  async function build(target?: string): Promise<BuildResult | undefined> {
-    if (!requireTrust('Building')) {
-      return undefined;
-    }
-    const main = target ?? mainFile();
-    if (!main) {
-      void vscode.window.showWarningMessage('Overtex: no LaTeX document found to build.');
-      return undefined;
-    }
-
-    // Unsaved edits in other files would otherwise be missing from the PDF.
+  /** Unsaved edits in other files would otherwise be missing from the PDF. */
+  async function saveSources(): Promise<void> {
     savingForBuild = true;
     try {
       await Promise.all(
@@ -134,6 +126,19 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     } finally {
       savingForBuild = false;
     }
+  }
+
+  async function build(target?: string): Promise<BuildResult | undefined> {
+    if (!requireTrust('Building')) {
+      return undefined;
+    }
+    const main = target ?? mainFile();
+    if (!main) {
+      void vscode.window.showWarningMessage('Overtex: no LaTeX document found to build.');
+      return undefined;
+    }
+
+    await saveSources();
 
     status.building();
     onDidStartBuild.fire({ mainFile: main });
@@ -259,6 +264,11 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.checkSubmission', () => submission.run()),
     vscode.commands.registerCommand('overtex.checkBibliography', (uri?: vscode.Uri) => bibCheck.run(uri instanceof vscode.Uri ? uri : undefined)),
     vscode.commands.registerCommand('overtex.countWords', () => words.run()),
+    vscode.commands.registerCommand('overtex.compareVersions', (args?: CompareArgs) =>
+      requireTrust('Comparing versions')
+        ? compareVersionsCommand({ mainFile, saveSources, showPdf: (pdf) => pdfPanel.show(pdf), log, showLog: () => output.show() }, args)
+        : undefined
+    ),
     vscode.commands.registerCommand('overtex.viewer.toggleDarkMode', () => pdfPanel.toggleColorScheme()),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('overtex.viewer.colorScheme')) {
