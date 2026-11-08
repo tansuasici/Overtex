@@ -86,7 +86,7 @@ const STOP_WORDS = new Set([
 ]);
 
 /** Folds accents and LaTeX escapes to plain lowercase ASCII letters and digits. */
-function fold(s: string): string {
+export function fold(s: string): string {
   return s
     .replace(/\\[a-zA-Z]+\s*/g, '')
     .replace(/\\./g, '')

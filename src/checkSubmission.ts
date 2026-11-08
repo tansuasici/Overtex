@@ -101,7 +101,7 @@ function readOrEmpty(file: string): string {
   }
 }
 
-async function showProblems(kind: 'error' | 'warning', message: string): Promise<void> {
+export async function showProblems(kind: 'error' | 'warning', message: string): Promise<void> {
   const show = kind === 'error' ? vscode.window.showErrorMessage : vscode.window.showWarningMessage;
   if (await show(message, 'Show Problems')) {
     await vscode.commands.executeCommand('workbench.actions.view.problems');

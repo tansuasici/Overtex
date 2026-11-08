@@ -138,6 +138,19 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('bibliography check runs on the project .bib (offline)', async () => {
+    // No DOI or arXiv ID, so nothing is looked up online.
+    const bib = vscode.Uri.file(path.join(root, 'refs.bib'));
+    const entry = '@article{einstein1905,\n  author = {Albert Einstein},\n  title = {Zur Elektrodynamik bewegter K{\\"o}rper},\n  journal = {Annalen der Physik},\n  year = 1905\n}\n';
+    await vscode.workspace.fs.writeFile(bib, Buffer.from(entry));
+    const reports = await vscode.commands.executeCommand<Map<string, import('../../src/latex/bibCheck').BibCheckReport>>('overtex.checkBibliography', bib);
+    const report = reports?.get(bib.fsPath);
+    assert.ok(report, 'no report returned');
+    assert.strictEqual(report.entries, 1);
+    assert.strictEqual(report.checked, 0);
+    assert.deepStrictEqual(report.findings, []);
+  });
+
   await step('getting started walkthrough is registered', async () => {
     await vscode.commands.executeCommand('overtex.gettingStarted');
   });

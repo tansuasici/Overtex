@@ -6,7 +6,16 @@ export interface BibEntry {
   year: string;
   abstract: string;
   doi: string;
+  /** 0-based line of the `@type{key,` head. */
+  line: number;
+  /** Other fields the bibliography check reads, by lowercase name; absent when empty. */
+  fields: Record<string, string>;
 }
+
+const EXTRA_FIELDS = [
+  'journal', 'booktitle', 'publisher', 'editor', 'school', 'institution', 'howpublished',
+  'volume', 'number', 'pages', 'date', 'journaltitle', 'eprint', 'archiveprefix', 'url', 'note',
+];
 
 const IGNORED_TYPES = new Set(['string', 'comment', 'preamble']);
 
@@ -15,6 +24,8 @@ export function parseBib(content: string): BibEntry[] {
   const entries: BibEntry[] = [];
   const head = /@(\w+)\s*[{(]\s*([^,\s]+)\s*,/g;
   let m: RegExpExecArray | null;
+  let line = 0;
+  let counted = 0;
 
   while ((m = head.exec(content)) !== null) {
     const type = m[1].toLowerCase();
@@ -22,6 +33,18 @@ export function parseBib(content: string): BibEntry[] {
       continue;
     }
     const body = entryBody(content, m.index + m[0].length);
+    for (; counted < m.index; counted++) {
+      if (content.charCodeAt(counted) === 10) {
+        line++;
+      }
+    }
+    const fields: Record<string, string> = {};
+    for (const name of EXTRA_FIELDS) {
+      const value = field(body, name);
+      if (value) {
+        fields[name] = value;
+      }
+    }
     entries.push({
       key: m[2],
       type,
@@ -30,6 +53,8 @@ export function parseBib(content: string): BibEntry[] {
       year: field(body, 'year'),
       abstract: field(body, 'abstract'),
       doi: field(body, 'doi'),
+      line,
+      fields,
     });
     head.lastIndex = m.index + m[0].length + body.length;
   }

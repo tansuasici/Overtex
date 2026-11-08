@@ -20,6 +20,7 @@ import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
 import { exportArxiv } from './exportArxiv';
 import { SubmissionCheck } from './checkSubmission';
+import { BibliographyCheck } from './checkBib';
 import { WordCounter } from './wordCount';
 import { Highlighter } from './highlighter';
 import { registerMathPreview } from './mathPreview';
@@ -60,6 +61,9 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   context.subscriptions.push(output, diagnostics, status, pdfPanel, onDidStartBuild, onDidEndBuild, texlab, bibCompletion);
   // Submission findings describe one build; the next build clears them.
   const submission = new SubmissionCheck(mainFile, build);
+  const version = (context.extension.packageJSON as { version?: string }).version ?? '';
+  const bibCheck = new BibliographyCheck(mainFile, `Overtex/${version} (https://github.com/tansuasici/Overtex)`);
+  context.subscriptions.push(bibCheck);
   context.subscriptions.push(submission, onDidStartBuild.event(() => submission.clear()));
   const words = new WordCounter(mainFile);
   context.subscriptions.push(
@@ -253,6 +257,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.addCitation', () => addCitation(mainFile)),
     vscode.commands.registerCommand('overtex.exportArxiv', () => exportArxiv(mainFile, build)),
     vscode.commands.registerCommand('overtex.checkSubmission', () => submission.run()),
+    vscode.commands.registerCommand('overtex.checkBibliography', (uri?: vscode.Uri) => bibCheck.run(uri instanceof vscode.Uri ? uri : undefined)),
     vscode.commands.registerCommand('overtex.countWords', () => words.run()),
     vscode.commands.registerCommand('overtex.viewer.toggleDarkMode', () => pdfPanel.toggleColorScheme()),
     vscode.workspace.onDidChangeConfiguration((e) => {

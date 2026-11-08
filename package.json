@@ -116,6 +116,11 @@
         "category": "Overtex"
       },
       {
+        "command": "overtex.checkBibliography",
+        "title": "Check Bibliography",
+        "category": "Overtex"
+      },
+      {
         "command": "overtex.countWords",
         "title": "Count Words",
         "category": "Overtex"

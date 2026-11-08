@@ -51,6 +51,8 @@ describe('citationHoverMarkdown', () => {
     year: '2020',
     abstract: '',
     doi: '',
+    line: 0,
+    fields: {},
   };
 
   it('shows title, authors, year and entry type', () => {

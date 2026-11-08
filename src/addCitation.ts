@@ -99,6 +99,13 @@ export async function addCitation(mainFile: () => string | null): Promise<void> 
   }
 }
 
+/** The .bib files `\bibliography` and `\addbibresource` in the main file name, whether they exist or not. */
+export function bibFilesNamedBy(main: string): vscode.Uri[] {
+  const open = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === main);
+  const tex = open ? open.getText() : fs.existsSync(main) ? fs.readFileSync(main, 'utf8') : '';
+  return bibResourcesIn(tex).map((n) => vscode.Uri.file(path.resolve(path.dirname(main), n)));
+}
+
 type BibTarget = vscode.Uri & { created?: boolean };
 
 /**
@@ -107,9 +114,7 @@ type BibTarget = vscode.Uri & { created?: boolean };
  */
 async function chooseBibFile(main: string | null): Promise<BibTarget | undefined> {
   if (main) {
-    const open = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === main);
-    const tex = open ? open.getText() : fs.existsSync(main) ? fs.readFileSync(main, 'utf8') : '';
-    const named = bibResourcesIn(tex).map((n) => vscode.Uri.file(path.resolve(path.dirname(main), n)));
+    const named = bibFilesNamedBy(main);
     const present = named.filter((u) => fs.existsSync(u.fsPath));
     if (present.length === 1) {
       return present[0];

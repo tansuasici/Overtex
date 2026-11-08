@@ -81,6 +81,8 @@ describe('parseBib', () => {
         year: '1905',
         abstract: '',
         doi: '',
+        line: 0,
+        fields: { journal: 'Annalen der Physik' },
       },
     ]);
   });
