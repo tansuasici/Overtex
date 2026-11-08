@@ -66,9 +66,13 @@ export async function citeFromZotero(mainFile: () => string | null): Promise<voi
 }
 
 async function reportUnavailable(err: unknown, url: string): Promise<void> {
+  if (err instanceof ZoteroUnavailableError && err.reason === 'starting') {
+    void vscode.window.showErrorMessage('Overtex: Zotero is still starting. Try again in a moment.');
+    return;
+  }
   if (err instanceof ZoteroUnavailableError && err.reason === 'no-better-bibtex') {
     const open = 'Get Better BibTeX';
-    const choice = await vscode.window.showErrorMessage('Overtex: Zotero answered, but without Better BibTeX, the add-on this command needs.', open);
+    const choice = await vscode.window.showErrorMessage('Overtex: Zotero answered, but without Better BibTeX, the add-on this command needs. If Zotero just started, try again in a moment.', open);
     if (choice === open) {
       await vscode.env.openExternal(vscode.Uri.parse(BETTER_BIBTEX_URL));
     }

@@ -7,7 +7,7 @@ export const DEFAULT_ZOTERO_URL = 'http://127.0.0.1:23119';
 
 export type BibTranslator = 'bibtex' | 'biblatex';
 
-export type ZoteroUnavailableReason = 'not-running' | 'no-better-bibtex';
+export type ZoteroUnavailableReason = 'not-running' | 'starting' | 'no-better-bibtex';
 
 export class ZoteroUnavailableError extends Error {
   constructor(readonly reason: ZoteroUnavailableReason) {
@@ -34,8 +34,13 @@ export async function probeZotero(baseUrl: string, fetchFn: typeof fetch = fetch
   } catch {
     throw new ZoteroUnavailableError('not-running');
   }
-  // Zotero answers on this port without Better BibTeX too, but not with `ready`.
-  if (!res.ok || (await res.text()).trim() !== 'ready') {
+  const answer = res.ok ? (await res.text()).trim() : '';
+  if (answer === 'starting') {
+    throw new ZoteroUnavailableError('starting');
+  }
+  // Zotero answers on this port without Better BibTeX too, but not with `ready`. So does a Zotero
+  // that has not loaded the add-on yet, for about a second after it starts.
+  if (answer !== 'ready') {
     throw new ZoteroUnavailableError('no-better-bibtex');
   }
 }
@@ -96,7 +101,7 @@ function sameWork(a: BibEntry, b: BibEntry): boolean {
 }
 
 export interface MergedPicks {
-  /** What to cite, in the order picked. */
+  /** What to cite, in the order Zotero returned the picks. */
   keys: string[];
   /** The new entries to append to the bibliography, empty when all were there already. */
   text: string;

@@ -126,6 +126,13 @@ describe('talking to Zotero', () => {
     expect(requests[0].searchParams.get('probe')).toBe('true');
   });
 
+  it('tells a Better BibTeX that is still starting from a missing one', async () => {
+    answer = reply(200, 'starting\n');
+    const starting = await probeZotero(url).catch((e) => e);
+    expect(starting).toBeInstanceOf(ZoteroUnavailableError);
+    expect(starting.reason).toBe('starting');
+  });
+
   it('tells a Zotero without Better BibTeX from no Zotero at all', async () => {
     answer = reply(404, 'No endpoint found');
     const noAddon = await probeZotero(url).catch((e) => e);
