@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { toStandaloneArrayBuffer } from '../shared/bytes';
 import { isE2eMessage } from '../shared/messages';
-import { isNote, parseNotes, serializeNotes } from '../shared/notes';
+import { isNote, parseNotes, serializeNotes, withDone } from '../shared/notes';
 import { toggledScheme } from '../shared/colorScheme';
 import type { ColorScheme } from '../shared/colorScheme';
 import type { E2eFromViewerMessage, E2eToViewerMessage, FromViewerMessage, PageRect, ToViewerMessage } from '../shared/messages';
@@ -252,6 +252,11 @@ export class PdfPanel implements vscode.Disposable {
       case 'deleteNote':
         this.changeNotes((notes) => notes.filter((n) => n.id !== msg.id));
         break;
+      case 'setNoteDone': {
+        const now = new Date().toISOString();
+        this.changeNotes((notes) => notes.map((n) => (n.id === msg.id ? withDone(n, msg.done === true, now) : n)));
+        break;
+      }
     }
   }
 
@@ -303,12 +308,18 @@ export class PdfPanel implements vscode.Disposable {
     <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
     <button id="dark-mode" title="Dark pages" aria-label="Dark pages" aria-pressed="false">&#9680;</button>
     <button id="toggle-notes" title="Hide notes" aria-label="Show notes" aria-pressed="true">&#9998;</button>
+    <button id="toggle-notes-list" aria-pressed="false"></button>
     <span class="spacer"></span>
     <span id="page-info" aria-live="polite"></span>
     <span id="notes-hint" class="hint">Double-click to add a note</span>
     <span class="hint">${isMac ? '⌘' : 'Ctrl'}+click to jump to source</span>
   </div>
   <div id="viewer" tabindex="0"><div id="pages"></div><p id="empty">Build the project to see the PDF.</p></div>
+  <aside id="notes-list" class="notes-list" aria-label="Notes" hidden>
+    <label class="notes-list-filter"><input id="hide-done" type="checkbox"> Hide done</label>
+    <ul id="notes-list-rows"></ul>
+    <p id="notes-list-empty"></p>
+  </aside>
   <script type="module" nonce="${nonce}" src="${asset('pdfViewer.js')}"></script>
 </body>
 </html>`;

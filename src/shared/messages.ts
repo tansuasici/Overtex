@@ -33,6 +33,7 @@ export type FromViewerMessage =
   | { type: 'addNote'; page: number; x: number; y: number; text: string }
   | { type: 'updateNote'; id: string; text: string }
   | { type: 'deleteNote'; id: string }
+  | { type: 'setNoteDone'; id: string; done: boolean }
   | E2eFromViewerMessage;
 
 // End-to-end test hooks. The viewer only answers these when the extension host was started with
@@ -45,6 +46,14 @@ export type E2eToViewerMessage =
   | { type: 'e2e:addNote'; page: number; x: number; y: number; text: string }
   /** Clicks a note's pin, then saves `text` or, when it is null, presses Delete. */
   | { type: 'e2e:editNote'; id: string; text: string | null }
+  /** Marks a note done or open: from its pin's editor, first replacing its text if `text` is given, or from its row in the note list. */
+  | { type: 'e2e:markDone'; id: string; done: boolean; via: 'editor' | 'list'; text?: string }
+  /** Sets the note list's Hide done box. */
+  | { type: 'e2e:hideDone'; hide: boolean }
+  /** Clicks the toolbar's note list button, then reports the notes. */
+  | { type: 'e2e:toggleList' }
+  /** Clicks a note's row in the note list, then reports whether its pin came into view. */
+  | { type: 'e2e:showNote'; id: string }
   /** Sets the zoom, then reports where the pins are. */
   | { type: 'e2e:zoom'; zoom: 'page-width' | number };
 
@@ -56,9 +65,18 @@ export type E2eFromViewerMessage =
   | { type: 'e2e:colorScheme'; dark: boolean }
   /**
    * Sent whenever pins are drawn. `x` and `y` are measured from the pin on screen, in PDF points.
-   * `enabled` is false for a PDF that has no notes.
+   * `enabled` is false for a PDF that has no notes. `badge` is the note list button's text, `list`
+   * the rows the note list shows, whether or not it is open.
    */
-  | { type: 'e2e:notes'; enabled: boolean; pins: { id: string; page: number; x: number; y: number; text: string }[] };
+  | {
+      type: 'e2e:notes';
+      enabled: boolean;
+      pins: { id: string; page: number; x: number; y: number; text: string; done: boolean }[];
+      badge: string;
+      listOpen: boolean;
+      list: { id: string; label: string; done: boolean }[];
+    }
+  | { type: 'e2e:noteShown'; id: string; inView: boolean };
 
 export function isE2eMessage(msg: { type: string }): msg is E2eFromViewerMessage {
   return msg.type.startsWith('e2e:');

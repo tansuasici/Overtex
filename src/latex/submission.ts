@@ -2,9 +2,10 @@
 import * as path from 'path';
 import { commentStart, parseFls, selectFiles } from './arxiv';
 import type { LogEntry } from './logParser';
+import { isDone, notesFilePath, noteSummary, parseNotes } from '../shared/notes';
 
 export interface SubmissionFinding {
-  kind: 'pages' | 'draft' | 'reference' | 'font' | 'todo' | 'anonymity';
+  kind: 'pages' | 'draft' | 'reference' | 'font' | 'todo' | 'anonymity' | 'note' | 'noteFile';
   severity: 'warning' | 'info';
   message: string;
   /** Absolute path, when the finding points at a source line. */
@@ -130,6 +131,23 @@ export function anonymityFindings(file: string, tex: string): SubmissionFinding[
   return findings;
 }
 
+/** PDF notes not marked done yet, or one finding when the notes file cannot be read. They point at the main file: a line of the JSON says nothing. */
+export function openNoteFindings(mainFile: string, exists: (file: string) => boolean, read: (file: string) => string): SubmissionFinding[] {
+  const file = notesFilePath(mainFile);
+  if (!exists(file)) {
+    return [];
+  }
+  try {
+    return parseNotes(read(file))
+      .filter((note) => !isDone(note))
+      .sort((a, b) => a.page - b.page || a.y - b.y)
+      .map((note) => ({ kind: 'note', severity: 'warning', message: `Open PDF note on page ${note.page}: ${noteSummary(note.text, 80)}`, file: mainFile, line: 0 }));
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return [{ kind: 'noteFile', severity: 'warning', message: `Could not read ${path.basename(file)}, so open PDF notes were not checked: ${reason}`, file: mainFile, line: 0 }];
+  }
+}
+
 export function checkSubmission(opts: {
   log: string;
   fls: string;
@@ -177,6 +195,7 @@ export function checkSubmission(opts: {
       findings.push(...anonymityFindings(file.source, tex));
     }
   }
+  findings.push(...openNoteFindings(opts.mainFile, opts.exists, opts.read));
   return { pages, findings };
 }
 
@@ -198,5 +217,7 @@ export function summarize(report: SubmissionReport, pageLimit: number): string {
   count((f) => f.kind === 'todo' && f.severity === 'warning', 'TODO in the text', 'TODOs in the text');
   count((f) => f.kind === 'todo' && f.severity === 'info', 'TODO comment', 'TODO comments');
   count((f) => f.kind === 'anonymity', 'possible author identification', 'possible author identifications');
+  count((f) => f.kind === 'note', 'open PDF note', 'open PDF notes');
+  count((f) => f.kind === 'noteFile', 'unreadable notes file', 'unreadable notes files');
   return parts.join(' · ');
 }

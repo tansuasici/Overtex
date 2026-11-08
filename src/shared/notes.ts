@@ -9,6 +9,8 @@ export interface Note {
   y: number;
   text: string;
   createdAt: string;
+  /** When the note was marked done. A note without it is still open. */
+  doneAt?: string;
 }
 
 export const NOTES_VERSION = 1;
@@ -29,8 +31,25 @@ export function isNote(value: unknown): value is Note {
     Number.isFinite(n.x) &&
     Number.isFinite(n.y) &&
     typeof n.text === 'string' &&
-    typeof n.createdAt === 'string'
+    typeof n.createdAt === 'string' &&
+    (n.doneAt === undefined || typeof n.doneAt === 'string')
   );
+}
+
+export function isDone(note: Note): boolean {
+  return note.doneAt !== undefined;
+}
+
+/** Marks a note done or open. A note that is already done keeps the date it was first marked. */
+export function withDone(note: Note, done: boolean, now: string): Note {
+  const { doneAt, ...rest } = note;
+  return done ? { ...rest, doneAt: doneAt ?? now } : rest;
+}
+
+/** The note's first line with text, cut to `max` characters when given. */
+export function noteSummary(text: string, max = Infinity): string {
+  const line = text.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0) ?? '';
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }
 
 /**
@@ -49,8 +68,12 @@ export function parseNotes(content: string): Note[] {
   return data.notes;
 }
 
+/** Top to bottom through the document. */
+export function inReadingOrder(notes: readonly Note[]): Note[] {
+  return [...notes].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+}
+
 /** Keeps notes in reading order, so a new note is a small diff if the file is in git. */
 export function serializeNotes(notes: readonly Note[]): string {
-  const sorted = [...notes].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
-  return `${JSON.stringify({ version: NOTES_VERSION, notes: sorted }, null, 2)}\n`;
+  return `${JSON.stringify({ version: NOTES_VERSION, notes: inReadingOrder(notes) }, null, 2)}\n`;
 }

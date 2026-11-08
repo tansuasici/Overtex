@@ -8,8 +8,8 @@ import type { BuildResult } from './latex/builder';
 
 /**
  * Overtex: Check Submission. Builds the project, then looks for what venues and arXiv reject:
- * too many pages, the draft option, `??` references, Type 3 fonts, TODOs and, for double-blind
- * review, author information. Findings go to the Problems panel until the next build.
+ * too many pages, the draft option, `??` references, Type 3 fonts, TODOs, open PDF notes and, for
+ * double-blind review, author information. Findings go to the Problems panel until the next build.
  */
 export class SubmissionCheck implements vscode.Disposable {
   private readonly collection = vscode.languages.createDiagnosticCollection('overtex-submission');

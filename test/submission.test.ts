@@ -118,4 +118,44 @@ describe('checkSubmission', () => {
     const report = checkSubmission({ ...base, pageLimit: 0, anonymous: false });
     expect(report.findings.map((f) => f.kind)).toEqual(['draft', 'todo']);
   });
+
+  describe('open PDF notes', () => {
+    const notesFile = path.resolve('/p/main.overtex-notes.json');
+    const stored = (n: object) => ({ id: 'i', page: 1, x: 1, y: 1, text: 'Check', createdAt: 'c', ...n });
+    const run = (content: string) => {
+      const withNotes = { ...files, [notesFile]: content };
+      return checkSubmission({ ...base, pageLimit: 0, anonymous: false, exists: (f) => f in withNotes, read: (f) => withNotes[f] });
+    };
+    const noteFindings = (report: { findings: { kind: string }[] }) => report.findings.filter((f) => f.kind === 'note' || f.kind === 'noteFile');
+
+    it('lists notes not marked done, in order, on the main file', () => {
+      const report = run(
+        JSON.stringify({
+          version: 1,
+          notes: [
+            stored({ id: 'b', page: 3, text: 'Second\nmore' }),
+            stored({ id: 'a', page: 1, text: 'First' }),
+            stored({ id: 'c', page: 2, doneAt: 'd' }),
+          ],
+        })
+      );
+      expect(noteFindings(report)).toEqual([
+        { kind: 'note', severity: 'warning', message: 'Open PDF note on page 1: First', file: base.mainFile, line: 0 },
+        { kind: 'note', severity: 'warning', message: 'Open PDF note on page 3: Second', file: base.mainFile, line: 0 },
+      ]);
+      expect(summarize(report, 0)).toBe('9 pages · 1 draft option · 1 TODO in the text · 2 open PDF notes');
+    });
+
+    it('finds nothing when every note is done', () => {
+      expect(noteFindings(run(JSON.stringify({ version: 1, notes: [stored({ doneAt: 'd' })] })))).toEqual([]);
+    });
+
+    it('says so when the file cannot be read, rather than failing the check', () => {
+      const report = run('<<<<<<< HEAD\n');
+      expect(report.findings.map((f) => f.kind)).toEqual(['draft', 'todo', 'noteFile']);
+      expect(report.findings[2].message).toContain('main.overtex-notes.json');
+      expect(summarize(report, 0)).toContain('1 unreadable notes file');
+      expect(summarize(report, 0)).not.toContain('open PDF note');
+    });
+  });
 });

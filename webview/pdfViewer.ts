@@ -1,6 +1,7 @@
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import type { FromViewerMessage, PageRect, ToViewerMessage } from '../src/shared/messages';
+import { inReadingOrder, isDone, noteSummary } from '../src/shared/notes';
 import type { Note } from '../src/shared/notes';
 import { toBytes } from '../src/shared/bytes';
 import { startBlobWorker } from '../src/shared/blobWorker';
@@ -18,6 +19,8 @@ type Zoom = 'page-width' | 'page-fit' | number;
 interface ViewState {
   zoom: Zoom;
   notesVisible?: boolean;
+  notesListOpen?: boolean;
+  hideDone?: boolean;
 }
 
 interface PageView {
@@ -373,6 +376,39 @@ function e2eEditNote(id: string, text: string | null): void {
   }
 }
 
+function e2eMarkDone(id: string, done: boolean, via: 'editor' | 'list', text?: string): void {
+  if (via === 'editor') {
+    pagesEl.querySelector<HTMLElement>(`.note-pin[data-id="${CSS.escape(id)}"]`)?.click();
+    if (text !== undefined) {
+      noteText.value = text;
+      noteText.dispatchEvent(new Event('input'));
+    }
+    if (noteDone.textContent === doneButtonLabel(!done)) {
+      noteDone.click();
+    }
+    return;
+  }
+  if (!notesListOpen) {
+    notesListButton.click();
+  }
+  const box = notesListRows.querySelector<HTMLInputElement>(`[data-id="${CSS.escape(id)}"] input`);
+  if (box && box.checked !== done) {
+    box.click();
+  }
+}
+
+async function e2eShowNote(id: string): Promise<void> {
+  if (!notesListOpen) {
+    notesListButton.click();
+  }
+  notesListRows.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"] button`)?.click();
+  await scrollSettled();
+  const pin = pagesEl.querySelector<HTMLElement>(`.note-pin[data-id="${CSS.escape(id)}"]`)?.getBoundingClientRect();
+  const area = viewer.getBoundingClientRect();
+  const inView = pin !== undefined && pin.left >= area.left && pin.right <= area.right && pin.top >= area.top && pin.bottom <= area.bottom;
+  vscode.postMessage({ type: 'e2e:noteShown', id, inView });
+}
+
 function e2eReportNotes(): void {
   const pins = (notes ?? []).flatMap((note) => {
     const pin = pagesEl.querySelector<HTMLElement>(`.note-pin[data-id="${CSS.escape(note.id)}"]`);
@@ -381,9 +417,14 @@ function e2eReportNotes(): void {
     }
     const box = pin.getBoundingClientRect();
     const page = pin.closest<HTMLElement>('.page')!.getBoundingClientRect();
-    return [{ id: note.id, page: note.page, x: (box.left + box.width / 2 - page.left) / scale, y: (box.top + box.height / 2 - page.top) / scale, text: note.text }];
+    return [{ id: note.id, page: note.page, x: (box.left + box.width / 2 - page.left) / scale, y: (box.top + box.height / 2 - page.top) / scale, text: note.text, done: isDone(note) }];
   });
-  vscode.postMessage({ type: 'e2e:notes', enabled: notes !== null, pins });
+  const list = [...notesListRows.querySelectorAll<HTMLElement>('li')].map((row) => ({
+    id: row.dataset.id!,
+    label: row.querySelector('.note-row-label')!.textContent ?? '',
+    done: row.classList.contains('done'),
+  }));
+  vscode.postMessage({ type: 'e2e:notes', enabled: notes !== null, pins, badge: notesListButton.textContent ?? '', listOpen: !notesList.hidden, list });
 }
 
 // ---- Notes ----
@@ -391,11 +432,21 @@ function e2eReportNotes(): void {
 /** The notes of the open PDF, or null for a PDF that has none, like the output of Compare Versions. */
 let notes: Note[] | null = null;
 let notesVisible = vscode.getState()?.notesVisible ?? true;
+let notesListOpen = vscode.getState()?.notesListOpen ?? false;
+let hideDone = vscode.getState()?.hideDone ?? false;
 /** What the editor is open on. `id` is null for a note not saved yet. */
 let editing: { id: string | null; page: number; x: number; y: number; original: string } | null = null;
 
 const notesButton = document.getElementById('toggle-notes') as HTMLButtonElement;
 const notesHint = document.getElementById('notes-hint') as HTMLSpanElement;
+const notesListButton = document.getElementById('toggle-notes-list') as HTMLButtonElement;
+const notesList = document.getElementById('notes-list') as HTMLElement;
+const notesListRows = document.getElementById('notes-list-rows') as HTMLUListElement;
+const notesListEmpty = document.getElementById('notes-list-empty') as HTMLParagraphElement;
+const hideDoneBox = document.getElementById('hide-done') as HTMLInputElement;
+
+/** Keep in step with the width in pdfViewer.css. */
+const NOTES_LIST_COVERS_PAGE = '(max-width: 560px)';
 
 const noteEditor = document.createElement('div');
 noteEditor.className = 'note-editor';
@@ -403,6 +454,7 @@ const noteText = document.createElement('textarea');
 noteText.rows = 4;
 noteText.setAttribute('aria-label', 'Note text');
 const noteDelete = editorButton('Delete');
+const noteDone = editorButton('Mark done');
 const noteCancel = editorButton('Cancel');
 const noteSave = editorButton('Save');
 noteSave.classList.add('primary');
@@ -410,7 +462,7 @@ const noteActions = document.createElement('div');
 noteActions.className = 'note-actions';
 const noteActionsGap = document.createElement('span');
 noteActionsGap.className = 'spacer';
-noteActions.append(noteDelete, noteActionsGap, noteCancel, noteSave);
+noteActions.append(noteDelete, noteDone, noteActionsGap, noteCancel, noteSave);
 noteEditor.append(noteText, noteActions);
 
 function editorButton(label: string): HTMLButtonElement {
@@ -420,8 +472,12 @@ function editorButton(label: string): HTMLButtonElement {
   return button;
 }
 
+function doneButtonLabel(done: boolean): string {
+  return done ? 'Reopen' : 'Mark done';
+}
+
 function saveState(): void {
-  vscode.setState({ zoom, notesVisible });
+  vscode.setState({ zoom, notesVisible, notesListOpen, hideDone });
 }
 
 /** A position on the page as a percentage, so that a pin stays in place at any zoom. */
@@ -436,7 +492,7 @@ function renderNotes(): void {
   // A note on a page the document no longer has stays in the file, for when the page comes back.
   for (const note of notes ?? []) {
     const view = pages[note.page - 1];
-    if (view) {
+    if (view && !(hideDone && isDone(note))) {
       view.notesEl.appendChild(createPin(note, view));
     }
   }
@@ -444,6 +500,7 @@ function renderNotes(): void {
     closeEditor();
   }
   placeEditor();
+  renderNotesList();
   syncNotesUi();
   if (e2e) {
     e2eReportNotes();
@@ -453,10 +510,12 @@ function renderNotes(): void {
 function createPin(note: Note, view: PageView): HTMLButtonElement {
   const pin = document.createElement('button');
   pin.type = 'button';
-  pin.className = 'note-pin';
+  const done = isDone(note);
+  pin.className = done ? 'note-pin done' : 'note-pin';
   pin.dataset.id = note.id;
-  pin.title = note.text;
-  pin.setAttribute('aria-label', `Note: ${note.text}`);
+  pin.textContent = done ? '✓' : '';
+  pin.title = done ? `Done: ${note.text}` : note.text;
+  pin.setAttribute('aria-label', `${done ? 'Done note' : 'Note'}: ${note.text}`);
   pin.style.left = `${percent(note.x, view.width)}%`;
   pin.style.top = `${percent(note.y, view.height)}%`;
   pin.addEventListener('click', (event) => {
@@ -476,6 +535,96 @@ function syncNotesUi(): void {
   document.body.classList.toggle('notes-hidden', !notesVisible);
   notesButton.setAttribute('aria-pressed', String(notesVisible));
   notesButton.title = notesVisible ? 'Hide notes' : 'Show notes';
+
+  const all = notes ?? [];
+  const open = all.filter((note) => !isDone(note)).length;
+  const summary = `${open} open, ${all.length - open} done`;
+  notesListButton.hidden = !hasNotes;
+  notesListButton.textContent = `☑ ${open}`;
+  notesListButton.title = `Note list: ${summary}`;
+  notesListButton.setAttribute('aria-label', `Note list: ${summary}`);
+  notesListButton.setAttribute('aria-pressed', String(notesListOpen));
+  // Takes room from the viewer rather than covering it, or a pin at the page's edge could not be seen.
+  notesList.hidden = !hasNotes || !notesListOpen;
+  document.body.classList.toggle('notes-list-open', !notesList.hidden);
+  hideDoneBox.checked = hideDone;
+}
+
+function renderNotesList(): void {
+  // Rows are replaced, so a checkbox used from the keyboard would lose its place.
+  const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('#notes-list-rows li')?.dataset.id;
+  const all = notes ?? [];
+  const rows = inReadingOrder(all).filter((note) => !(hideDone && isDone(note)));
+  notesListRows.replaceChildren(...rows.map(createListRow));
+  notesListEmpty.textContent = rows.length ? '' : all.length ? 'All notes are done.' : 'No notes yet. Double-click a page to add one.';
+  if (focused) {
+    notesListRows.querySelector<HTMLElement>(`[data-id="${CSS.escape(focused)}"] input`)?.focus();
+  }
+}
+
+function createListRow(note: Note): HTMLLIElement {
+  const done = isDone(note);
+  const row = document.createElement('li');
+  row.className = done ? 'done' : '';
+  row.dataset.id = note.id;
+
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = done;
+  box.title = done ? 'Mark open' : 'Mark done';
+  box.setAttribute('aria-label', `Done: ${note.text}`);
+  box.addEventListener('change', () => vscode.postMessage({ type: 'setNoteDone', id: note.id, done: box.checked }));
+
+  const show = document.createElement('button');
+  show.type = 'button';
+  const page = document.createElement('span');
+  page.className = 'note-row-page';
+  page.textContent = `p. ${note.page}`;
+  const label = document.createElement('span');
+  label.className = 'note-row-label';
+  label.textContent = noteSummary(note.text);
+  show.append(page, label);
+  // A note on a page the document no longer has stays in the list, with nowhere to jump to.
+  show.disabled = !pages[note.page - 1];
+  show.title = show.disabled ? 'This page is not in the PDF.' : note.text;
+  show.addEventListener('click', () => showNote(note));
+
+  row.append(box, show);
+  return row;
+}
+
+function showNote(note: Note): void {
+  const view = pages[note.page - 1];
+  if (!view) {
+    return;
+  }
+  ensureNotesVisible();
+  viewer.scrollTo({
+    top: Math.max(0, view.el.offsetTop + note.y * scale - viewer.clientHeight / 3),
+    left: Math.max(0, view.el.offsetLeft + note.x * scale - viewer.clientWidth / 2),
+    behavior: 'smooth',
+  });
+  const pin = view.notesEl.querySelector<HTMLElement>(`.note-pin[data-id="${CSS.escape(note.id)}"]`);
+  pin?.classList.add('flash');
+  pin?.addEventListener('animationend', () => pin.classList.remove('flash'), { once: true });
+  // In a narrow window the list covers the page, so it has to go for the jump to be seen.
+  if (window.matchMedia(NOTES_LIST_COVERS_PAGE).matches) {
+    setNotesListOpen(false);
+  }
+}
+
+function setNotesListOpen(open: boolean): void {
+  notesListOpen = open;
+  saveState();
+  syncNotesUi();
+}
+
+function ensureNotesVisible(): void {
+  if (!notesVisible) {
+    notesVisible = true;
+    saveState();
+    syncNotesUi();
+  }
 }
 
 /** True while the editor holds text that would be lost by opening something else. */
@@ -491,7 +640,10 @@ function openEditor(target: NonNullable<typeof editing>): void {
   editing = target;
   noteText.value = target.original;
   noteDelete.hidden = target.id === null;
+  noteDone.hidden = target.id === null;
+  noteDone.textContent = doneButtonLabel(notes?.some((n) => n.id === target.id && isDone(n)) ?? false);
   noteSave.disabled = !target.original.trim();
+  noteDone.disabled = noteSave.disabled;
   placeEditor();
   noteText.focus();
 }
@@ -529,8 +681,23 @@ function saveEditor(): void {
 
 noteText.addEventListener('input', () => {
   noteSave.disabled = !noteText.value.trim();
+  noteDone.disabled = noteSave.disabled;
 });
 noteSave.addEventListener('click', saveEditor);
+// Closes the editor like Save does, and keeps what was typed: the two changes are queued in order.
+noteDone.addEventListener('click', () => {
+  const id = editing?.id;
+  if (!id) {
+    return;
+  }
+  const done = noteDone.textContent !== doneButtonLabel(true);
+  if (holdsUnsavedText()) {
+    saveEditor();
+  } else {
+    closeEditor();
+  }
+  vscode.postMessage({ type: 'setNoteDone', id, done });
+});
 noteCancel.addEventListener('click', closeEditor);
 noteDelete.addEventListener('click', () => {
   if (editing?.id) {
@@ -561,16 +728,27 @@ notesButton.addEventListener('click', () => {
   syncNotesUi();
 });
 
+notesListButton.addEventListener('click', () => setNotesListOpen(!notesListOpen));
+
+hideDoneBox.addEventListener('change', () => {
+  if (holdsUnsavedText()) {
+    hideDoneBox.checked = hideDone;
+    noteText.focus();
+    return;
+  }
+  // The note being edited may be about to lose its pin.
+  closeEditor();
+  hideDone = hideDoneBox.checked;
+  saveState();
+  renderNotes();
+});
+
 pagesEl.addEventListener('dblclick', (event) => {
   const pageEl = (event.target as HTMLElement).closest<HTMLElement>('.page');
   if (!pageEl || notes === null || event[modifierKey]) {
     return;
   }
-  if (!notesVisible) {
-    notesVisible = true;
-    saveState();
-    syncNotesUi();
-  }
+  ensureNotesVisible();
   const rect = pageEl.getBoundingClientRect();
   openEditor({
     id: null,
@@ -694,6 +872,27 @@ window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
     case 'e2e:editNote':
       if (e2e) {
         e2eEditNote(msg.id, msg.text);
+      }
+      break;
+    case 'e2e:markDone':
+      if (e2e) {
+        e2eMarkDone(msg.id, msg.done, msg.via, msg.text);
+      }
+      break;
+    case 'e2e:hideDone':
+      if (e2e && hideDoneBox.checked !== msg.hide) {
+        hideDoneBox.click();
+      }
+      break;
+    case 'e2e:toggleList':
+      if (e2e) {
+        notesListButton.click();
+        e2eReportNotes();
+      }
+      break;
+    case 'e2e:showNote':
+      if (e2e) {
+        void e2eShowNote(msg.id);
       }
       break;
     case 'e2e:zoom':

@@ -1,5 +1,6 @@
 :root {
   --toolbar-height: 32px;
+  --notes-list-width: 260px;
 }
 
 html,
@@ -174,6 +175,23 @@ body {
   background: #ffd75e;
 }
 
+.note-pin.done {
+  color: #fff;
+  font: 11px/14px var(--vscode-font-family);
+  background: #76857c;
+  border-color: #4f5c54;
+  opacity: 0.7;
+}
+
+.note-pin.done:hover {
+  background: #8b9b91;
+  opacity: 1;
+}
+
+.note-pin.flash {
+  animation: note-flash 0.5s ease-in-out 3;
+}
+
 .note-pin:focus-visible {
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 1px;
@@ -224,6 +242,7 @@ body {
 
 .note-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 6px;
 }
@@ -251,6 +270,114 @@ body {
 .note-actions button:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;
+}
+
+body.notes-list-open #viewer {
+  right: var(--notes-list-width);
+}
+
+.notes-list {
+  position: fixed;
+  inset: var(--toolbar-height) 0 0 auto;
+  z-index: 6;
+  box-sizing: border-box;
+  width: var(--notes-list-width);
+  overflow-y: auto;
+  background: var(--vscode-sideBar-background, var(--vscode-editorWidget-background));
+  border-left: 1px solid var(--vscode-editorWidget-border, rgba(127, 127, 127, 0.5));
+}
+
+.notes-list[hidden] {
+  display: none;
+}
+
+/* Keep the width in step with NOTES_LIST_COVERS_PAGE in pdfViewer.ts. */
+@media (max-width: 560px) {
+  body.notes-list-open #viewer {
+    right: 0;
+  }
+
+  .notes-list {
+    width: 100%;
+    border-left: none;
+  }
+}
+
+.notes-list-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+#notes-list-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#notes-list-rows li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+#notes-list-rows li:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+#notes-list-rows button {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+#notes-list-rows button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+#notes-list-rows button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.note-row-page {
+  flex: none;
+  color: var(--vscode-descriptionForeground);
+}
+
+.note-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#notes-list-rows li.done .note-row-label {
+  color: var(--vscode-descriptionForeground);
+  text-decoration: line-through;
+}
+
+#notes-list-empty {
+  margin: 0;
+  padding: 0 8px;
+  color: var(--vscode-descriptionForeground);
+}
+
+@keyframes note-flash {
+  50% {
+    transform: translate(-50%, -50%) scale(1.6);
+  }
 }
 
 @keyframes synctex-fade {

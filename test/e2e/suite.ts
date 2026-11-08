@@ -173,6 +173,87 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('notes as todos: mark done, list, hide done, reopen', async () => {
+    const file = path.join(root, 'main.overtex-notes.json');
+    const saved = () => JSON.parse(fs.readFileSync(file, 'utf8')).notes as { id: string; text: string; doneAt?: string }[];
+    const send = async (msg: import('../../src/shared/messages').E2eToViewerMessage) => {
+      const shown = nextMessage(e2e, 'e2e:notes');
+      e2e.sendToViewer(msg);
+      return shown;
+    };
+    try {
+      // At 100%, so that opening the list does not fit the pages to a new width during the jump.
+      await send({ type: 'e2e:zoom', zoom: 1 });
+      await send({ type: 'e2e:addNote', page: 2, x: 100, y: 200, text: 'First <b>note</b>\nsecond line' });
+      let state = await send({ type: 'e2e:addNote', page: 3, x: 120, y: 300, text: 'Second' });
+      assert.strictEqual(state.pins.length, 2, 'two pins');
+      assert.strictEqual(state.badge, '☑ 2');
+      const [first, second] = saved();
+
+      state = await send({ type: 'e2e:markDone', id: first.id, done: true, via: 'editor' });
+      assert.strictEqual(state.badge, '☑ 1');
+      assert.strictEqual(state.pins.find((p) => p.id === first.id)?.done, true, 'the first pin shows done');
+      assert.strictEqual(state.pins.find((p) => p.id === second.id)?.done, false, 'the second pin stays open');
+      assert.strictEqual(typeof saved()[0].doneAt, 'string', 'the date is on disk');
+      assert.strictEqual(saved()[1].doneAt, undefined);
+
+      state = await send({ type: 'e2e:toggleList' });
+      assert.strictEqual(state.listOpen, true, 'the list opens');
+      assert.deepStrictEqual(state.list, [
+        { id: first.id, label: 'First <b>note</b>', done: true },
+        { id: second.id, label: 'Second', done: false },
+      ]);
+
+      const noteShown = nextMessage(e2e, 'e2e:noteShown');
+      e2e.sendToViewer({ type: 'e2e:showNote', id: second.id });
+      assert.strictEqual((await noteShown).inView, true, 'clicking a row brings its pin into view');
+
+      state = await send({ type: 'e2e:hideDone', hide: true });
+      assert.deepStrictEqual(state.pins.map((p) => p.id), [second.id], 'the done pin is hidden');
+      assert.deepStrictEqual(state.list.map((r) => r.id), [second.id], 'the done row is hidden');
+
+      state = await send({ type: 'e2e:markDone', id: second.id, done: true, via: 'list' });
+      assert.strictEqual(state.badge, '☑ 0');
+      assert.strictEqual(state.pins.length, 0, 'nothing left to show');
+      assert.strictEqual(typeof saved()[1].doneAt, 'string');
+
+      state = await send({ type: 'e2e:hideDone', hide: false });
+      assert.strictEqual(state.pins.length, 2, 'both pins are back');
+
+      const doneAt = saved()[1].doneAt;
+      state = await send({ type: 'e2e:editNote', id: second.id, text: 'Reworded' });
+      assert.strictEqual(saved()[1].text, 'Reworded');
+      assert.strictEqual(saved()[1].doneAt, doneAt, 'editing keeps the done date');
+
+      state = await send({ type: 'e2e:markDone', id: first.id, done: false, via: 'list' });
+      assert.ok(!('doneAt' in saved()[0]), 'reopening removes the date');
+      assert.strictEqual(state.badge, '☑ 1');
+
+      state = await send({ type: 'e2e:markDone', id: second.id, done: false, via: 'editor' });
+      assert.strictEqual(state.badge, '☑ 2');
+      assert.ok(!('doneAt' in saved()[1]), 'reopening from the editor removes the date');
+
+      // Typed but not saved: Mark done keeps the text, in the same write order.
+      // Two writes, so two reports: wait for the second, or a stale one could answer the next step.
+      state = await send({ type: 'e2e:markDone', id: second.id, done: true, via: 'editor', text: 'Typed, then done' });
+      while (!state.pins.find((p) => p.id === second.id)?.done) {
+        state = await nextMessage(e2e, 'e2e:notes');
+      }
+      assert.strictEqual(saved()[1].text, 'Typed, then done', 'the typed text is on disk');
+      assert.strictEqual(typeof saved()[1].doneAt, 'string', 'the done date is on disk');
+      state = await send({ type: 'e2e:markDone', id: second.id, done: false, via: 'editor' });
+      assert.strictEqual(state.badge, '☑ 2');
+
+      if (state.listOpen) {
+        state = await send({ type: 'e2e:toggleList' });
+      }
+      assert.strictEqual(state.listOpen, false, 'the list closes');
+      await send({ type: 'e2e:zoom', zoom: 'page-width' });
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
+  });
+
   // Last: these show a notification and open an editor, which would get in the way of the viewer steps above.
   await step('setup check finds latexmk and the engine', async () => {
     const report = await vscode.commands.executeCommand<import('../../src/latex/setup').SetupReport>('overtex.checkSetup');
@@ -183,9 +264,17 @@ export async function run(): Promise<void> {
   });
 
   await step('submission check reports the page count', async () => {
-    const report = await vscode.commands.executeCommand<import('../../src/latex/submission').SubmissionReport>('overtex.checkSubmission');
-    assert.ok(report, 'no report returned');
-    assert.ok(report.pages && report.pages > 0, `pages: ${report.pages}`);
+    const notes = path.join(root, 'main.overtex-notes.json');
+    const stored = { page: 1, x: 1, y: 1, createdAt: '2026-11-08T00:00:00.000Z' };
+    fs.writeFileSync(notes, JSON.stringify({ version: 1, notes: [{ ...stored, id: 'a', text: 'Still open' }, { ...stored, id: 'b', text: 'Finished', doneAt: '2026-11-09T00:00:00.000Z' }] }));
+    try {
+      const report = await vscode.commands.executeCommand<import('../../src/latex/submission').SubmissionReport>('overtex.checkSubmission');
+      assert.ok(report, 'no report returned');
+      assert.ok(report.pages && report.pages > 0, `pages: ${report.pages}`);
+      assert.deepStrictEqual(report.findings.filter((f) => f.kind === 'note').map((f) => f.message), ['Open PDF note on page 1: Still open']);
+    } finally {
+      fs.rmSync(notes, { force: true });
+    }
   });
 
   await step('count words with texcount', async () => {
