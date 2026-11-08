@@ -146,7 +146,12 @@ export async function run(): Promise<void> {
     const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: '\\newcommand{\\R}{\\mathbb{R}}\nLet $x \\in \\R$.' });
     const hovers = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', doc.uri, new vscode.Position(1, 6));
     const text = hovers.flatMap((h) => h.contents.map((c) => (typeof c === 'string' ? c : c.value))).join('\n');
-    assert.match(text, /data:image\/svg\+xml;base64,/);
+    const data = /data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)/.exec(text);
+    assert.ok(data, 'hover has an SVG image');
+    // An image must be one SVG document: MathJax's inline line breaking would make several.
+    const svg = Buffer.from(data[1], 'base64').toString('utf8');
+    assert.strictEqual(svg.match(/<svg\b/g)?.length, 1, 'one <svg> element');
+    assert.ok(svg.startsWith('<svg') && svg.endsWith('</svg>'), 'nothing outside the <svg> element');
   });
 
   if (failed) {

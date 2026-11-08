@@ -35,7 +35,7 @@ export function renderMath(tex: string, display: boolean, preamble: string[]): R
   if (cached?.key !== key) {
     const doc = mathjax.document('', {
       InputJax: new TeX({ packages: PACKAGES, formatError: (_jax: unknown, err: Error) => { throw err; } }),
-      OutputJax: new SVG({ fontCache: 'local', fontData: MathJaxTexFont }),
+      OutputJax: new SVG({ fontCache: 'local', fontData: MathJaxTexFont, linebreaks: { inline: false } }),
     });
     for (const def of preamble) {
       try {
