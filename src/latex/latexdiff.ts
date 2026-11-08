@@ -138,11 +138,15 @@ async function git(args: string[], cwd: string, signal?: AbortSignal): Promise<B
   }
 }
 
-/** The repository holding `file`, or undefined when there is none or git is not installed. */
+/**
+ * The repository holding `file`, or undefined when there is none or git is not installed. Worked
+ * out from `file` rather than asking git for the path: git may spell the same folder differently
+ * (Windows short names, letter case), and path.relative would then climb out of the root.
+ */
 export async function gitRoot(file: string, signal?: AbortSignal): Promise<string | undefined> {
-  const output = await git(['rev-parse', '--show-toplevel'], path.dirname(file), signal);
-  const root = output?.toString('utf-8').trim();
-  return root ? fs.realpathSync(root) : undefined;
+  const dir = path.dirname(file);
+  const up = await git(['rev-parse', '--show-cdup'], dir, signal);
+  return up && path.resolve(dir, up.toString('utf-8').trim());
 }
 
 /** Recent commits touching the folder of `file`, newest first. */

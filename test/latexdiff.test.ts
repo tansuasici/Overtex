@@ -180,6 +180,19 @@ describe.skipIf(!hasTools)('compareVersions (real git, latexdiff and latexmk)', 
     fs.rmSync(late);
   }, 60000);
 
+  // Windows short names (RUNNER~1) make the same mismatch between git's path and ours; this is
+  // how to get one on a case-insensitive disk.
+  it('finds the main file when its path is spelled differently from what git reports', async () => {
+    const respelled = path.join(path.dirname(root), path.basename(root).toUpperCase(), 'paper', 'main.tex');
+    if (!fs.existsSync(respelled)) {
+      return;
+    }
+    const result = await compareVersions({ mainFile: respelled, old: { revision: first }, new: { revision: second }, latexdiff: 'latexdiff', build: settings });
+    expect(result.status === 'built' && result.diffText).toContain('\\DIFadd{Second');
+    const onDisk = await compareVersions({ mainFile: respelled, old: { file: respelled }, new: { file: main }, latexdiff: 'latexdiff', build: settings });
+    expect(onDisk.status).toBe('identical');
+  }, 120000);
+
   it('reports a missing latexdiff', async () => {
     const err = await compareVersions({ mainFile: main, old: { revision: first }, new: { file: main }, latexdiff: 'no-such-latexdiff', build: settings }).catch((e) => e);
     expect((err as CompareError).kind).toBe('latexdiff-missing');
