@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { buildSettings } from './config';
 import { checkSubmission, summarize, SubmissionFinding, SubmissionReport } from './latex/submission';
 import type { BuildResult } from './latex/builder';
 
@@ -31,6 +32,10 @@ export class SubmissionCheck implements vscode.Disposable {
     const main = this.mainFile();
     if (!main) {
       void vscode.window.showWarningMessage('Overtex: no LaTeX document found to check.');
+      return undefined;
+    }
+    if (buildSettings().tool === 'tectonic') {
+      void vscode.window.showErrorMessage('Overtex: Check Submission needs the list of files TeX read, which Tectonic does not record. Set overtex.latex.tool to latexmk or docker.');
       return undefined;
     }
     const result = await this.build(main);

@@ -11,3 +11,5 @@ Overtex builds with **latexmk** and a TeX engine (pdfLaTeX, XeLaTeX or LuaLaTeX)
 **Restart VS Code after installing** so it sees the new `PATH`. Then run **Check Installation**. It only looks for the programs and never runs them.
 
 If TeX is installed somewhere unusual, set `overtex.latex.latexmkPath` to the full path.
+
+Prefer not to install a distribution? Set `overtex.latex.tool` to `tectonic` (install [Tectonic](https://tectonic-typesetting.github.io/book/latest/installation/); it downloads packages as needed) or `docker` (needs Docker, and builds in a TeX Live image).

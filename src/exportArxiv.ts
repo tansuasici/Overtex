@@ -19,6 +19,10 @@ export async function exportArxiv(
     void vscode.window.showWarningMessage('Overtex: no LaTeX document found to export.');
     return;
   }
+  if (buildSettings().tool === 'tectonic') {
+    void vscode.window.showErrorMessage('Overtex: Export for arXiv needs the list of files TeX read, which Tectonic does not record. Set overtex.latex.tool to latexmk or docker.');
+    return;
+  }
 
   const result = await build(main);
   if (!result || result.cancelled) {

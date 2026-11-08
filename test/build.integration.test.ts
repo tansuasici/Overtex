@@ -17,7 +17,7 @@ const hasTex = (() => {
 })();
 
 const tmp = path.resolve(__dirname, '.tmp');
-const settings: BuildSettings = { latexmk: 'latexmk', engine: 'pdflatex', outDir: '', extraArgs: [] };
+const settings: BuildSettings = { tool: 'latexmk', latexmk: 'latexmk', tectonic: 'tectonic', docker: 'docker', dockerImage: 'texlive/texlive:latest', engine: 'pdflatex', outDir: '', extraArgs: [] };
 
 // CI sets OVERTEX_REQUIRE_TEX so a broken TeX install fails the run instead of silently skipping.
 if (!hasTex && process.env.OVERTEX_REQUIRE_TEX) {

@@ -1,5 +1,6 @@
 // Checking that the tools Overtex runs are installed. No vscode import, so it is unit-testable.
 import * as path from 'path';
+import type { BuildTool } from './builder';
 import { findExecutable } from './executable';
 
 export interface ToolCheck {
@@ -17,7 +18,10 @@ export interface ToolCheck {
 }
 
 export interface SetupInput {
+  tool: BuildTool;
   latexmk: string;
+  tectonic: string;
+  docker: string;
   engine: string;
   synctex: string;
   /** Omitted by callers that do not check it. */
@@ -32,8 +36,10 @@ export interface SetupInput {
 }
 
 export interface SetupReport {
+  /** The build tool the report was made for. */
+  tool: BuildTool;
   tools: ToolCheck[];
-  /** latexmk and the engine are present, so a build can run. */
+  /** What the build tool needs is present, so a build can run. */
   canBuild: boolean;
   missingRequired: ToolCheck[];
   missingOptional: ToolCheck[];
@@ -96,11 +102,12 @@ export function checkSetup(input: SetupInput): SetupReport {
     return tool;
   };
 
-  const tools = [
-    check('latexmk', input.latexmk, true, 'runs the build'),
-    check(input.engine, input.engine, true, 'the TeX engine latexmk calls'),
-    check('synctex', input.synctex, false, 'jumps between the source and the PDF'),
-  ];
+  const required: Record<BuildTool, () => ToolCheck[]> = {
+    latexmk: () => [check('latexmk', input.latexmk, true, 'runs the build'), check(input.engine, input.engine, true, 'the TeX engine latexmk calls')],
+    tectonic: () => [check('tectonic', input.tectonic, true, 'runs the build')],
+    docker: () => [check('docker', input.docker, true, 'runs the build in a container')],
+  };
+  const tools = [...required[input.tool](), check('synctex', input.synctex, false, 'jumps between the source and the PDF')];
   if (input.latexdiff !== undefined) {
     tools.push(check('latexdiff', input.latexdiff, false, 'compares versions of a document'));
   }
@@ -109,6 +116,7 @@ export function checkSetup(input: SetupInput): SetupReport {
   }
   const missingRequired = tools.filter((t) => t.required && !t.resolved);
   return {
+    tool: input.tool,
     tools,
     canBuild: missingRequired.length === 0,
     missingRequired,
@@ -121,7 +129,13 @@ export interface InstallHint {
   url: string;
 }
 
-export function texInstallHint(platform: NodeJS.Platform): InstallHint {
+export function texInstallHint(platform: NodeJS.Platform, tool: BuildTool = 'latexmk'): InstallHint {
+  if (tool === 'tectonic') {
+    return { text: 'Install Tectonic, then restart VS Code.', url: 'https://tectonic-typesetting.github.io/book/latest/installation/' };
+  }
+  if (tool === 'docker') {
+    return { text: 'Install Docker, then restart VS Code.', url: 'https://docs.docker.com/get-docker/' };
+  }
   if (platform === 'darwin') {
     return {
       text: 'Install MacTeX (or `brew install --cask mactex-no-gui`), then restart VS Code.',
@@ -155,7 +169,7 @@ export function formatReport(report: SetupReport, platform: NodeJS.Platform): st
     }
   }
   if (!report.canBuild && !report.missingRequired.some((t) => t.foundOutsidePath)) {
-    lines.push('', texInstallHint(platform).text);
+    lines.push('', texInstallHint(platform, report.tool).text);
   }
   if (report.missingOptional.some((t) => t.name === 'texlab')) {
     lines.push('', `TexLab: ${TEXLAB_INSTALL_URL}`);

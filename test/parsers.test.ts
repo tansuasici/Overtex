@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseLog } from '../src/latex/logParser';
+import { parseLog, parseTectonicLog } from '../src/latex/logParser';
 import { parseBib } from '../src/latex/bibParser';
 import { parseEditOutput, parseViewOutput } from '../src/synctex/synctex';
 import { toWorkspacePath } from '../src/synctex/paths';
@@ -10,6 +10,54 @@ import { latexmkArgs } from '../src/latex/builder';
 
 const fixtures = path.resolve(__dirname, 'fixtures');
 const read = (name: string) => fs.readFileSync(path.join(fixtures, name), 'utf-8');
+
+describe('parseTectonicLog', () => {
+  const onDisk = (...files: string[]) => (file: string) => files.includes(path.relative('/proj', file));
+
+  it('finds a file named without its extension', () => {
+    const log = ['(main.tex', '(article.cls (size10.clo)) (sub', '! Undefined control sequence.', 'l.2 \\bad', ''].join('\n');
+    expect(parseTectonicLog(log, '/proj', onDisk('main.tex', 'sub.tex'))).toEqual([
+      { severity: 'error', message: 'Undefined control sequence.', file: path.resolve('/proj/sub.tex'), line: 2 },
+    ]);
+  });
+
+  it('joins a file name wrapped at 79 columns', () => {
+    const name = 'a-section-file-with-a-long-name-so-that-the-log-line-goes-past-seventy-nine-columns';
+    const log = ['(main.tex', `(${name.slice(0, 78)}`, name.slice(78), '! Undefined control sequence.', 'l.2 \\bad', ''].join('\n');
+    expect(parseTectonicLog(log, '/proj', onDisk('main.tex', `${name}.tex`))[0].file).toBe(path.resolve(`/proj/${name}.tex`));
+  });
+
+  it('finds a file with a space in its name, and returns to the file that input it', () => {
+    const log = ['(main.tex', '(sub dir/two.tex', "LaTeX Warning: Reference `a' on page 1 undefined on input line 2.", ')', "LaTeX Warning: Reference `b' on page 1 undefined on input line 9.", ''].join('\n');
+    const warnings = parseTectonicLog(log, '/proj', onDisk('main.tex', 'sub dir/two.tex'));
+    expect(warnings.map((w) => [path.relative('/proj', w.file), w.line])).toEqual([
+      ['sub dir/two.tex', 2],
+      ['main.tex', 9],
+    ]);
+  });
+
+  it('joins a warning wrapped at 79 columns, so its line number is found', () => {
+    const start = "LaTeX Warning: Reference `a-label-long-enough-to-wrap' on page 1 undefined on i";
+    expect(start).toHaveLength(79);
+    const [warning] = parseTectonicLog(['(main.tex', start, 'nput line 7.', ''].join('\n'), '/proj', onDisk('main.tex'));
+    expect(warning).toMatchObject({ line: 7, message: "Reference `a-label-long-enough-to-wrap' on page 1 undefined" });
+  });
+
+  it('does not join an error to a line that happens to fill 79 columns', () => {
+    const log = ['(main.tex', 'x'.repeat(79), '! Undefined control sequence.', 'l.3 \\bad', ''].join('\n');
+    expect(parseTectonicLog(log, '/proj', onDisk('main.tex')).map((e) => e.line)).toEqual([3]);
+  });
+
+  it('tidies the doubled mark on a LaTeX error', () => {
+    const log = ['(main.tex', "! ! LaTeX Error: File `nosuch.sty' not found..", 'l.3 \\begin', ''].join('\n');
+    expect(parseTectonicLog(log, '/proj', onDisk('main.tex'))[0].message).toBe("LaTeX Error: File `nosuch.sty' not found.");
+  });
+
+  it('leaves text in parentheses alone', () => {
+    const log = ['(main.tex', '(see the transcript file for details)', '! Oops.', 'l.1 x', ''].join('\n');
+    expect(parseTectonicLog(log, '/proj', onDisk('main.tex'))[0].file).toBe(path.resolve('/proj/main.tex'));
+  });
+});
 
 describe('parseLog', () => {
   it('finds classic `!` errors with their line numbers', () => {
@@ -162,7 +210,7 @@ describe('findMainFile', () => {
 
 describe('latexmkArgs', () => {
   it('maps the engine and always enables synctex, recorder and file:line errors', () => {
-    expect(latexmkArgs('/p/main.tex', { latexmk: 'latexmk', engine: 'xelatex', outDir: 'build', extraArgs: ['-shell-escape'] })).toEqual([
+    expect(latexmkArgs('/p/main.tex', { tool: 'latexmk', latexmk: 'latexmk', tectonic: 'tectonic', docker: 'docker', dockerImage: 'texlive/texlive:latest', engine: 'xelatex', outDir: 'build', extraArgs: ['-shell-escape'] })).toEqual([
       '-pdfxe',
       '-interaction=nonstopmode',
       '-file-line-error',

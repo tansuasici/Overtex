@@ -7,7 +7,7 @@ import * as path from 'path';
 import { BuildSettings } from '../src/latex/builder';
 import { CompareError, compareVersions, diffBuildArgs, hasDifferences, keepInSnapshot, latexdiffArgs, parseGitLog, parseLsTree, Version } from '../src/latex/latexdiff';
 
-const settings: BuildSettings = { latexmk: 'latexmk', engine: 'pdflatex', outDir: '', extraArgs: [] };
+const settings: BuildSettings = { tool: 'latexmk', latexmk: 'latexmk', tectonic: 'tectonic', docker: 'docker', dockerImage: 'texlive/texlive:latest', engine: 'pdflatex', outDir: '', extraArgs: [] };
 
 describe('arguments', () => {
   it('flattens, so that changes in \\input files are marked', () => {

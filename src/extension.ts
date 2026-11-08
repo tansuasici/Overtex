@@ -6,7 +6,7 @@ import type { OvertexApi, OvertexE2e } from './api';
 import type { E2eFromViewerMessage } from './shared/messages';
 import { buildSettings, settings } from './config';
 import { registerBibCompletion } from './latex/bibCompletion';
-import { BuildResult, Builder, outputPaths } from './latex/builder';
+import { BuildResult, Builder, isToolMissingMessage, outputPaths } from './latex/builder';
 import { LATEX_WORKSHOP_ID, LW_AUTOBUILD_SETTING, hasBuildConflict } from './latex/conflicts';
 import { BuildDiagnostics } from './latex/diagnostics';
 import { findMainFile } from './latex/mainFile';
@@ -161,8 +161,8 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     if (!result.success) {
       const errors = result.entries.filter((e) => e.severity === 'error');
       const first = errors[0]?.message ?? 'see the build log';
-      // A missing latexmk shows up as a spawn error; point at the setup check instead of the log.
-      const notInstalled = errors.some((e) => e.message.startsWith('Could not run "') && e.message.includes('Install a TeX distribution'));
+      // A missing build tool shows up as a spawn error; point at the setup check instead of the log.
+      const notInstalled = errors.some((e) => isToolMissingMessage(e.message));
       const buttons = notInstalled ? ['Check Setup', 'Show Log'] : ['Show Problems', 'Show Log'];
       const choice = await vscode.window.showErrorMessage(`Overtex: build failed: ${first}`, ...buttons);
       if (choice === 'Check Setup') {

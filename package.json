@@ -42,9 +42,13 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Building runs latexmk, which can execute code from a project's .latexmkrc, so building and cleaning are disabled until the workspace is trusted, and the TexLab language server is not started. Viewing an existing PDF still works.",
+      "description": "Building runs latexmk, which can execute code from a project's .latexmkrc, or a program or Docker image the settings name, so building and cleaning are disabled until the workspace is trusted, and the TexLab language server is not started. Viewing an existing PDF still works.",
       "restrictedConfigurations": [
+        "overtex.latex.tool",
         "overtex.latex.latexmkPath",
+        "overtex.tectonic.path",
+        "overtex.docker.path",
+        "overtex.docker.image",
         "overtex.latex.extraArgs",
         "overtex.synctex.path",
         "overtex.latexdiff.path",
@@ -185,6 +189,21 @@
           "default": "",
           "description": "Main .tex file, relative to the workspace root. Auto-detected when empty (`% !TEX root` comment, then `\\documentclass`)."
         },
+        "overtex.latex.tool": {
+          "type": "string",
+          "enum": [
+            "latexmk",
+            "tectonic",
+            "docker"
+          ],
+          "enumDescriptions": [
+            "latexmk from a TeX distribution on this machine.",
+            "Tectonic, which needs no TeX distribution and downloads the packages a document uses on first build. Always uses XeTeX. Export for arXiv and Check Submission are not available.",
+            "latexmk inside a Docker image (overtex.docker.image), with the workspace folder mounted and the network off."
+          ],
+          "default": "latexmk",
+          "description": "What builds the document."
+        },
         "overtex.latex.engine": {
           "type": "string",
           "enum": [
@@ -193,7 +212,7 @@
             "lualatex"
           ],
           "default": "pdflatex",
-          "description": "TeX engine latexmk drives. BibTeX/Biber passes are run automatically."
+          "description": "TeX engine latexmk drives. BibTeX/Biber passes are run automatically. Tectonic ignores this and always uses XeTeX."
         },
         "overtex.latex.outDir": {
           "type": "string",
@@ -206,12 +225,27 @@
             "type": "string"
           },
           "default": [],
-          "description": "Extra arguments passed to latexmk."
+          "description": "Extra arguments passed to latexmk, or to `tectonic -X compile` when building with Tectonic."
         },
         "overtex.latex.latexmkPath": {
           "type": "string",
           "default": "latexmk",
           "description": "Path to the latexmk executable."
+        },
+        "overtex.tectonic.path": {
+          "type": "string",
+          "default": "tectonic",
+          "description": "Path to the Tectonic executable, used when overtex.latex.tool is tectonic."
+        },
+        "overtex.docker.path": {
+          "type": "string",
+          "default": "docker",
+          "description": "Path to the Docker executable, used when overtex.latex.tool is docker."
+        },
+        "overtex.docker.image": {
+          "type": "string",
+          "default": "texlive/texlive:latest",
+          "description": "Image to build in when overtex.latex.tool is docker. It must provide latexmk. Docker pulls it on first build; the default image takes about 9 GB of disk."
         },
         "overtex.synctex.path": {
           "type": "string",
@@ -333,7 +367,7 @@
           {
             "id": "install",
             "title": "Install a TeX distribution",
-            "description": "Overtex needs latexmk and a TeX engine from TeX Live, MacTeX or MiKTeX.\n[Check Installation](command:overtex.checkSetup)",
+            "description": "Overtex needs latexmk and a TeX engine from TeX Live, MacTeX or MiKTeX, or Tectonic or Docker through the overtex.latex.tool setting.\n[Check Installation](command:overtex.checkSetup)",
             "media": {
               "markdown": "media/walkthrough/install.md"
             },

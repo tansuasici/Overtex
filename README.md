@@ -36,6 +36,7 @@ You also need a TeX distribution; see [Requirements](#requirements).
 ## Features
 
 - **Build** with latexmk using pdfLaTeX, XeLaTeX or LuaLaTeX. BibTeX/Biber passes run automatically. Builds run on save, and a build requested while another is running is queued, not started in parallel.
+- **Tectonic or Docker** instead of a TeX distribution: set `overtex.latex.tool` to build with [Tectonic](https://tectonic-typesetting.github.io/) or with latexmk inside a Docker image. See [Build tools](#build-tools).
 - **Problems panel**: TeX errors and warnings are mapped to the right file and line, including files pulled in with `\input`.
 - **PDF preview** beside the editor. It reloads after each build and keeps your place. **Dark pages** (the toolbar's ◐ button, **Toggle Dark PDF Preview**, or `overtex.viewer.colorScheme`) show light text on a dark gray page; colors keep their hue, but figures and photos are inverted too. Set it to `auto` to follow the VS Code theme.
 - **SyncTeX**: `⌘⌥J` / `Ctrl+Alt+J` jumps from the cursor to the PDF; `⌘`/`Ctrl`+click in the PDF jumps back to the source.
@@ -57,7 +58,31 @@ A TeX distribution that provides `latexmk`, `synctex` and `texcount`: [TeX Live]
 
 **Overtex: Check LaTeX Installation** looks for latexmk, the selected engine, synctex and TexLab, and says what is missing and how to install it on your system. It also notices TeX that is installed but not yet on VS Code's `PATH`, which usually means VS Code needs a restart. If latexmk is missing when Overtex starts, it offers this check once. **Overtex: Getting Started** opens a short walkthrough: install, open a document, build, preview and SyncTeX.
 
+Or no TeX distribution at all, with Tectonic or Docker. See [Build tools](#build-tools).
+
 Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live checking and completion (`brew install texlab`, `cargo install texlab`, or a release binary on `PATH`). If the official TexLab extension is installed, Overtex leaves the language server to it.
+
+## Build tools
+
+`overtex.latex.tool` says what builds the document. **Check LaTeX Installation** looks for what the chosen tool needs.
+
+**`latexmk`** (the default) uses the TeX distribution on your machine.
+
+**`tectonic`** needs only [Tectonic](https://tectonic-typesetting.github.io/book/latest/installation/) (`brew install tectonic`). It downloads the support files a document uses on the first build and caches them, so that build needs the internet.
+
+- It always uses XeTeX, so `overtex.latex.engine` does not apply, and pdfLaTeX-only packages may not work.
+- Export for arXiv and Check Submission are not available: they need the list of files TeX read, which Tectonic does not record.
+- A build stops at the first error, so you see one error at a time and the PDF is not updated until it is fixed.
+- `.latexmkrc` is not read. `overtex.latex.extraArgs` go to `tectonic -X compile`.
+- Clean removes the `.log`, `.blg` and `.synctex.gz` files.
+
+**`docker`** runs latexmk in `overtex.docker.image` (default `texlive/texlive:latest`). Docker pulls the image on the first build; the default image takes about 9 GB of disk. Any image that provides latexmk works.
+
+- Only the workspace folder is mounted, so `overtex.latex.outDir` must stay inside it, and files outside it, such as a `texmf` tree in your home folder, are not found.
+- The network is off during the build, so a `.latexmkrc` or `-shell-escape` command cannot reach the internet.
+- Jumping with SyncTeX and the word count still run on your machine, so they need `synctex` and `texcount` there. Without them, building and the preview work and those two features do not.
+- Compare Versions also needs `latexdiff` on your machine.
+- On Windows the folder is mounted at `/workspace`, so paths in the build's output files are container paths. SyncTeX jumps, and possibly Problems panel locations, Export for arXiv and Check Submission, may not match your files. Windows is untested.
 
 ## Commands
 
@@ -75,10 +100,12 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | Setting | Default | |
 | --- | --- | --- |
 | `overtex.latex.mainFile` | | Main file relative to the workspace. Otherwise found from `% !TEX root = …`, the active file, or a workspace search. |
-| `overtex.latex.engine` | `pdflatex` | `pdflatex`, `xelatex` or `lualatex`. |
+| `overtex.latex.tool` | `latexmk` | What builds the document: `latexmk`, `tectonic` or `docker`. See [Build tools](#build-tools). |
+| `overtex.latex.engine` | `pdflatex` | `pdflatex`, `xelatex` or `lualatex`. Tectonic ignores it. |
 | `overtex.latex.outDir` | | Output directory, relative to the main file. |
-| `overtex.latex.extraArgs` | `[]` | Extra latexmk arguments, e.g. `-shell-escape`. |
-| `overtex.latex.latexmkPath`, `overtex.synctex.path`, `overtex.latexdiff.path`, `overtex.texlab.path` | | Executable paths when they are not on `PATH`. |
+| `overtex.latex.extraArgs` | `[]` | Extra arguments for latexmk (e.g. `-shell-escape`) or `tectonic -X compile`. |
+| `overtex.latex.latexmkPath`, `overtex.tectonic.path`, `overtex.docker.path`, `overtex.synctex.path`, `overtex.latexdiff.path`, `overtex.texlab.path` | | Executable paths when they are not on `PATH`. |
+| `overtex.docker.image` | `texlive/texlive:latest` | Image to build in when `overtex.latex.tool` is `docker`. It must provide latexmk. |
 | `overtex.zotero.url` | `http://127.0.0.1:23119` | Zotero's local server, for Cite from Zotero. Change it for Juris-M (port 24119) or a remote window. |
 | `overtex.texlab.enabled` | `true` | Run the TexLab language server. |
 | `overtex.texlab.chktex` | `false` | Show ChkTeX style warnings while typing (through TexLab). |
@@ -99,7 +126,7 @@ If LaTeX Workshop is installed and both extensions build on save, every save wou
 
 ## Workspace Trust
 
-latexmk can run code from a project's `.latexmkrc`, so in an [untrusted workspace](https://code.visualstudio.com/docs/editor/workspace-trust) Overtex does not build, clean, compare versions or start TexLab, and ignores workspace values of `overtex.latex.latexmkPath`, `overtex.latex.extraArgs`, `overtex.synctex.path`, `overtex.latexdiff.path`, `overtex.texlab.path` and `overtex.zotero.url`. Opening an existing PDF still works. Trust the folder to enable building.
+latexmk can run code from a project's `.latexmkrc`, so in an [untrusted workspace](https://code.visualstudio.com/docs/editor/workspace-trust) Overtex does not build, clean, compare versions or start TexLab, and ignores workspace values of `overtex.latex.tool`, `overtex.latex.latexmkPath`, `overtex.tectonic.path`, `overtex.docker.path`, `overtex.docker.image` (an image is code that runs on your machine), `overtex.latex.extraArgs`, `overtex.synctex.path`, `overtex.latexdiff.path`, `overtex.texlab.path` and `overtex.zotero.url`. Opening an existing PDF still works. Trust the folder to enable building.
 
 ## Development
 

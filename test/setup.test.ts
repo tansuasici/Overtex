@@ -9,7 +9,10 @@ function input(files: string[], overrides: Partial<SetupInput> = {}): SetupInput
     '/usr/local/texlive/2023/bin': ['x86_64-linux'],
   };
   return {
+    tool: 'latexmk',
     latexmk: 'latexmk',
+    tectonic: 'tectonic',
+    docker: 'docker',
     engine: 'pdflatex',
     synctex: 'synctex',
     env: { PATH: '/usr/bin:/bin' },
@@ -21,6 +24,30 @@ function input(files: string[], overrides: Partial<SetupInput> = {}): SetupInput
 }
 
 describe('checkSetup', () => {
+  it('needs only Tectonic when building with Tectonic, whatever the engine', () => {
+    const report = checkSetup(input(['/usr/bin/tectonic'], { tool: 'tectonic', engine: 'lualatex' }));
+    expect(report.tool).toBe('tectonic');
+    expect(report.canBuild).toBe(true);
+    expect(report.tools.map((t) => t.name)).not.toContain('latexmk');
+    expect(report.tools.map((t) => t.name)).not.toContain('lualatex');
+  });
+
+  it('needs only Docker when building with Docker', () => {
+    const report = checkSetup(input(['/usr/bin/docker'], { tool: 'docker' }));
+    expect(report.canBuild).toBe(true);
+    expect(report.tools.map((t) => t.name)).not.toContain('latexmk');
+    expect(report.missingOptional.map((t) => t.name)).toEqual(['synctex']);
+  });
+
+  it('says what to install for the chosen tool', () => {
+    const report = checkSetup(input(['/usr/bin/latexmk', '/usr/bin/pdflatex'], { tool: 'tectonic' }));
+    expect(report.canBuild).toBe(false);
+    expect(report.missingRequired.map((t) => t.name)).toEqual(['tectonic']);
+    expect(texInstallHint('darwin', 'tectonic').text.toLowerCase()).toContain('tectonic');
+    expect(texInstallHint('linux', 'docker').text.toLowerCase()).toContain('docker');
+    expect(formatReport(report, 'darwin').toLowerCase()).toContain('tectonic');
+  });
+
   it('lists latexdiff as optional when asked to check it', () => {
     const report = checkSetup(input(['/usr/bin/latexmk', '/usr/bin/pdflatex', '/usr/bin/synctex'], { latexdiff: 'latexdiff' }));
     expect(report.canBuild).toBe(true);

@@ -1,16 +1,39 @@
 import * as cp from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
-import { LogEntry, parseLog } from './logParser';
+import { LogEntry, parseLog, parseTectonicLog } from './logParser';
 
 export type Engine = 'pdflatex' | 'xelatex' | 'lualatex';
 
+/** What runs the build: latexmk on this machine, Tectonic, or latexmk inside a Docker image. */
+export type BuildTool = 'latexmk' | 'tectonic' | 'docker';
+
 export interface BuildSettings {
+  tool: BuildTool;
   latexmk: string;
+  tectonic: string;
+  docker: string;
+  dockerImage: string;
   engine: Engine;
   /** Relative to the main file's directory; '' means next to it. */
   outDir: string;
   extraArgs: string[];
+  /** The workspace folder holding a path; Docker mounts it so that \input{../x} still resolves. */
+  workspaceRoot?: (file: string) => string | undefined;
+}
+
+export interface ToolCommand {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+}
+
+/** What a Docker command line depends on besides the settings. */
+export interface DockerHost {
+  platform: NodeJS.Platform;
+  uid: number;
+  gid: number;
 }
 
 export interface BuildResult {
@@ -61,8 +84,118 @@ export function latexmkArgs(mainFile: string, settings: BuildSettings): string[]
   return args;
 }
 
+/** `input` is relative to the folder Tectonic runs in. It always uses XeTeX, so the engine setting does not apply. */
+export function tectonicArgs(input: string, settings: BuildSettings): string[] {
+  return ['-X', 'compile', '--synctex', '--keep-logs', ...(settings.outDir ? ['--outdir', settings.outDir] : []), ...settings.extraArgs, input];
+}
+
+/** The folder Docker mounts for a build running in `cwd`. */
+export function dockerRoot(cwd: string, settings: BuildSettings): string {
+  return settings.workspaceRoot?.(cwd) ?? cwd;
+}
+
+function thisHost(): DockerHost {
+  const user = os.userInfo();
+  return { platform: process.platform, uid: user.uid, gid: user.gid };
+}
+
 /**
- * Runs latexmk, one build at a time. A build requested while another is
+ * Mounts `root` at its own path, so the paths in the log, the .fls and the SyncTeX data mean the
+ * same on the host. A Windows path cannot exist in the container, so there it goes under /workspace.
+ */
+function containerPath(hostPath: string, root: string, platform: NodeJS.Platform): string {
+  if (platform !== 'win32') {
+    return hostPath;
+  }
+  const relative = path.win32.relative(root, hostPath).split('\\').join('/');
+  return relative ? `/workspace/${relative}` : '/workspace';
+}
+
+function isInside(root: string, target: string, platform: NodeJS.Platform): boolean {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  const relative = p.relative(root, target);
+  return relative !== '..' && !relative.startsWith(`..${p.sep}`) && !p.isAbsolute(relative);
+}
+
+/**
+ * Runs latexmk in the image. TEX_ENV must be passed with -e: the environment of the docker command
+ * itself does not reach the container. The network is off because a build only needs the mount.
+ */
+export function dockerCommand(cwd: string, root: string, latexmk: string[], settings: BuildSettings, host: DockerHost = thisHost()): ToolCommand {
+  const args = ['run', '--rm', '--init', '--network', 'none'];
+  // Docker Desktop maps file ownership itself; on Linux the outputs would otherwise belong to root.
+  if (host.platform === 'linux') {
+    args.push('--user', `${host.uid}:${host.gid}`);
+  }
+  args.push('-e', 'HOME=/tmp');
+  for (const [name, value] of Object.entries(TEX_ENV)) {
+    args.push('-e', `${name}=${value}`);
+  }
+  args.push('-v', `${root}:${containerPath(root, root, host.platform)}`, '-w', containerPath(cwd, root, host.platform));
+  args.push(settings.dockerImage, 'latexmk', ...latexmk);
+  return { command: settings.docker, args, env: process.env };
+}
+
+/** Why Docker cannot build this document, or undefined: output outside the mount would stay in the container. */
+export function dockerOutDirProblem(mainFile: string, settings: BuildSettings, platform: NodeJS.Platform = process.platform): string | undefined {
+  const cwd = path.dirname(mainFile);
+  const root = dockerRoot(cwd, settings);
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  if (isInside(root, p.resolve(cwd, settings.outDir || '.'), platform)) {
+    return undefined;
+  }
+  return `overtex.latex.outDir must stay inside ${root} when building with Docker, which only mounts that folder.`;
+}
+
+/** The outDir as latexmk in the container must see it. */
+function dockerSettings(cwd: string, settings: BuildSettings, platform: NodeJS.Platform): BuildSettings {
+  if (platform !== 'win32' || !settings.outDir) {
+    return settings;
+  }
+  return { ...settings, outDir: path.win32.relative(cwd, path.win32.resolve(cwd, settings.outDir)).split('\\').join('/') || '.' };
+}
+
+/** The command that builds `mainFile`, run from the main file's folder. */
+export function buildCommand(mainFile: string, settings: BuildSettings, host: DockerHost = thisHost()): ToolCommand {
+  const env = { ...process.env, ...TEX_ENV };
+  if (settings.tool === 'tectonic') {
+    return { command: settings.tectonic, args: tectonicArgs(path.basename(mainFile), settings), env };
+  }
+  if (settings.tool === 'docker') {
+    const cwd = path.dirname(mainFile);
+    return dockerCommand(cwd, dockerRoot(cwd, settings), latexmkArgs(mainFile, dockerSettings(cwd, settings, host.platform)), settings, host);
+  }
+  return { command: settings.latexmk, args: latexmkArgs(mainFile, settings), env };
+}
+
+/** The setting that names the executable of a build tool. */
+export function toolPathSetting(tool: BuildTool): string {
+  return { latexmk: 'overtex.latex.latexmkPath', tectonic: 'overtex.tectonic.path', docker: 'overtex.docker.path' }[tool];
+}
+
+/** Docker's own failures: 125 it could not start the container, 126 and 127 it could not start the command in it. */
+function dockerDidNotBuild(settings: BuildSettings, exitCode: number | null): boolean {
+  return settings.tool === 'docker' && exitCode !== null && exitCode >= 125 && exitCode <= 127;
+}
+
+/** The line of a failed tool's stderr that says why; docker ends with a pointer to its --help. */
+export function lastErrorLine(stderr: string): string | undefined {
+  return stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("Run 'docker"))
+    .pop();
+}
+
+function failureMessage(settings: BuildSettings, exitCode: number | null, stderr: string): string | undefined {
+  if (settings.tool === 'docker' && exitCode === 127) {
+    return `The image "${settings.dockerImage}" has no latexmk. Set overtex.docker.image to one that does.`;
+  }
+  return lastErrorLine(stderr);
+}
+
+/**
+ * Runs the build tool, one build at a time. A build requested while another is
  * running is coalesced into a single follow-up build of the latest request.
  */
 export class Builder {
@@ -106,9 +239,23 @@ export class Builder {
 
   async clean(mainFile: string): Promise<void> {
     const s = this.settings();
+    if (s.tool === 'tectonic') {
+      // Tectonic has no clean mode, and only what --keep-logs and --synctex ask for stays behind.
+      const { dir } = outputPaths(mainFile, s.outDir);
+      const base = path.basename(mainFile, path.extname(mainFile));
+      for (const ext of ['.log', '.blg', '.synctex.gz']) {
+        fs.rmSync(path.join(dir, base + ext), { force: true });
+      }
+      return;
+    }
+    const cwd = path.dirname(mainFile);
     const args = ['-c', ...(s.outDir ? [`-outdir=${s.outDir}`] : []), path.basename(mainFile)];
+    if (s.tool === 'docker' && dockerOutDirProblem(mainFile, s)) {
+      return;
+    }
+    const command = s.tool === 'docker' ? dockerCommand(cwd, dockerRoot(cwd, s), args, s) : { command: s.latexmk, args };
     await new Promise<void>((resolve) => {
-      cp.execFile(s.latexmk, args, { cwd: path.dirname(mainFile) }, () => resolve());
+      cp.execFile(command.command, command.args, { cwd }, () => resolve());
     });
   }
 
@@ -124,36 +271,69 @@ export class Builder {
     const settings = this.settings();
     const out = outputPaths(mainFile, settings.outDir);
     const cwd = path.dirname(mainFile);
-    const args = latexmkArgs(mainFile, settings);
     const startedAt = Date.now();
     this.cancelled = false;
 
-    this.onOutput(`> ${settings.latexmk} ${args.join(' ')}\n`);
+    const failed = (message: string): BuildResult => ({
+      mainFile,
+      success: false,
+      cancelled: false,
+      pdfFile: fs.existsSync(out.pdf) ? out.pdf : null,
+      logFile: out.log,
+      flsFile: out.fls,
+      entries: [{ severity: 'error', message, file: mainFile, line: 0 }],
+      durationMs: Date.now() - startedAt,
+    });
+    const problem = settings.tool === 'docker' ? dockerOutDirProblem(mainFile, settings) : undefined;
+    if (problem) {
+      this.onOutput(`${problem}\n`);
+      return Promise.resolve(failed(problem));
+    }
+    if (settings.tool === 'tectonic') {
+      // --outdir must exist, and a log from an earlier build must not pass for this one's.
+      fs.mkdirSync(out.dir, { recursive: true });
+      fs.rmSync(out.log, { force: true });
+    }
+
+    const { command, args, env } = buildCommand(mainFile, settings);
+    this.onOutput(`> ${command} ${args.join(' ')}\n`);
 
     return new Promise<BuildResult>((resolve) => {
-      const proc = cp.spawn(settings.latexmk, args, {
+      const proc = cp.spawn(command, args, {
         cwd,
-        env: { ...process.env, ...TEX_ENV },
+        env,
         // Own process group on POSIX so cancel() can kill the engine latexmk spawned.
         detached: process.platform !== 'win32',
       });
       this.running = proc;
 
+      let stderr = '';
       proc.stdout?.on('data', (d: Buffer) => this.onOutput(d.toString()));
-      proc.stderr?.on('data', (d: Buffer) => this.onOutput(d.toString()));
+      proc.stderr?.on('data', (d: Buffer) => {
+        const text = d.toString();
+        stderr = (stderr + text).slice(-4096);
+        this.onOutput(text);
+      });
 
       const finish = (exitCode: number | null, spawnError?: Error) => {
         this.running = null;
         let entries: LogEntry[] = [];
-        if (!spawnError) {
+        let logRead = false;
+        // When Docker itself failed, the log on disk is from an earlier build.
+        if (!spawnError && !dockerDidNotBuild(settings, exitCode)) {
           try {
-            entries = parseLog(fs.readFileSync(out.log, 'utf-8'), cwd);
+            const log = fs.readFileSync(out.log, 'utf-8');
+            entries = settings.tool === 'tectonic' ? parseTectonicLog(log, cwd) : parseLog(log, cwd);
+            logRead = true;
           } catch {
-            // No log: latexmk failed before TeX ran.
+            // No log: the tool failed before TeX ran.
           }
         }
         if (spawnError) {
-          entries = [{ severity: 'error', message: spawnErrorMessage(settings.latexmk, spawnError), file: mainFile, line: 0 }];
+          entries = [{ severity: 'error', message: spawnErrorMessage(settings, command, spawnError), file: mainFile, line: 0 }];
+        } else if (!logRead && exitCode !== 0 && !this.cancelled) {
+          const message = failureMessage(settings, exitCode, stderr);
+          entries = message ? [{ severity: 'error', message, file: mainFile, line: 0 }] : [];
         }
         const success = exitCode === 0 && !entries.some((e) => e.severity === 'error');
         const result: BuildResult = {
@@ -187,11 +367,22 @@ export class Builder {
   }
 }
 
-function spawnErrorMessage(executable: string, err: Error): string {
+const INSTALL_ADVICE: Record<BuildTool, string> = {
+  latexmk: 'a TeX distribution (TeX Live, MacTeX or MiKTeX)',
+  tectonic: 'Tectonic',
+  docker: 'Docker',
+};
+
+function spawnErrorMessage(settings: BuildSettings, executable: string, err: Error): string {
   if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-    return `Could not run "${executable}". Install a TeX distribution (TeX Live, MacTeX or MiKTeX) or set overtex.latex.latexmkPath.`;
+    return `Could not run "${executable}". Install ${INSTALL_ADVICE[settings.tool]} or set ${toolPathSetting(settings.tool)}.`;
   }
   return `Could not run "${executable}": ${err.message}`;
+}
+
+/** Whether a build error says the build tool is not installed, as opposed to TeX reporting something. */
+export function isToolMissingMessage(message: string): boolean {
+  return /^Could not run ".*"\. Install /.test(message);
 }
 
 function killTree(pid: number): void {

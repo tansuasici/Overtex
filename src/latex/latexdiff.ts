@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { BuildSettings, TEX_ENV, latexmkArgs, outputPaths } from './builder';
+import { BuildSettings, TEX_ENV, ToolCommand, dockerCommand, dockerRoot, latexmkArgs, outputPaths, tectonicArgs } from './builder';
 
 /** A .tex file as it is on disk, or the main file as it was in a git revision. */
 export type Version = { file: string } | { revision: string };
@@ -112,6 +112,22 @@ export function diffBuildArgs(texFile: string, buildDir: string, settings: Build
   args.pop();
   // Carry on past TeX errors: deleted text can use a macro only the old preamble defined.
   return ['-f', ...args, `${buildDir}/${path.basename(texFile)}`];
+}
+
+/** The command that builds the diff from `cwd`. `root` is what Docker mounts; undefined means the usual folder. */
+export function diffCommand(texFile: string, buildDir: string, cwd: string, root: string | undefined, settings: BuildSettings): ToolCommand {
+  const env = { ...process.env, ...TEX_ENV };
+  if (settings.tool === 'tectonic') {
+    // Tectonic looks for files beside its input, which here is one folder below the project.
+    const args = tectonicArgs(`${buildDir}/${path.basename(texFile)}`, { ...settings, outDir: buildDir });
+    const input = args.pop() as string;
+    return { command: settings.tectonic, args: [...args, '-Z', 'continue-on-errors', '-Z', `search-path=${cwd}`, input], env };
+  }
+  const args = diffBuildArgs(texFile, buildDir, settings);
+  if (settings.tool === 'docker') {
+    return dockerCommand(cwd, root ?? dockerRoot(cwd, settings), args, settings);
+  }
+  return { command: settings.latexmk, args, env };
 }
 
 function run(command: string, args: string[], options: { cwd: string; signal?: AbortSignal; env?: NodeJS.ProcessEnv; timeout?: number }): Promise<{ stdout: Buffer; stderr: string; failure?: cp.ExecFileException }> {
@@ -234,17 +250,21 @@ async function runLatexdiff(request: CompareRequest, oldFile: string, newFile: s
  * Builds the diff from a temporary folder inside `cwd`, so that figures, the bibliography and
  * .latexmkrc are found as in a normal build and no absolute path reaches TeX.
  */
-async function buildDiff(request: CompareRequest, diff: Buffer, cwd: string): Promise<{ pdf: string; complete: boolean }> {
+async function buildDiff(request: CompareRequest, diff: Buffer, cwd: string, root?: string): Promise<{ pdf: string; complete: boolean }> {
   const base = `${path.basename(request.mainFile, path.extname(request.mainFile))}-diff`;
   const scratch = fs.mkdtempSync(path.join(cwd, 'overtex-diff-'));
   try {
     const tex = path.join(scratch, `${base}.tex`);
     fs.writeFileSync(tex, diff);
-    const result = await run(request.build.latexmk, diffBuildArgs(tex, path.basename(scratch), request.build), {
+    const { command, args, env } = diffCommand(tex, path.basename(scratch), cwd, root, request.build);
+    const result = await run(command, args, {
       cwd,
       signal: request.signal,
-      env: { ...process.env, ...TEX_ENV },
-      timeout: BUILD_TIMEOUT_MS,
+      env,
+      // Docker may first have to pull the image, which takes as long as it takes.
+      timeout: request.build.tool === 'docker' ? undefined : BUILD_TIMEOUT_MS,
+    }).catch((err: NodeJS.ErrnoException) => {
+      throw err.code === 'ENOENT' ? new CompareError('build-failed', `could not run ${command}.`) : err;
     });
     request.log?.(result.stdout.toString('utf-8') + result.stderr);
     const built = path.join(scratch, `${base}.pdf`);
@@ -275,7 +295,9 @@ export async function compareVersions(request: CompareRequest): Promise<CompareR
       return { status: 'identical' };
     }
     const cwd = 'file' in request.new ? path.dirname(request.new.file) : path.dirname(newFile);
-    return { status: 'built', diffText, ...(await buildDiff(request, diff, cwd)) };
+    // A revision's snapshot lies outside the workspace, so Docker mounts the snapshot itself.
+    const root = 'file' in request.new ? undefined : path.join(tmp, 'new');
+    return { status: 'built', diffText, ...(await buildDiff(request, diff, cwd, root)) };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

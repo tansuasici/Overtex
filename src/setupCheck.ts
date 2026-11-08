@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 
 import { buildSettings, settings } from './config';
+import { toolPathSetting } from './latex/builder';
 import { SetupReport, TEXLAB_INSTALL_URL, checkSetup, formatReport, texInstallHint } from './latex/setup';
 import { TEXLAB_EXTENSION_ID } from './latex/texlabConfig';
 
@@ -32,7 +33,10 @@ export function inspectSetup(): SetupReport {
   const texlabCfg = vscode.workspace.getConfiguration('overtex.texlab');
   const texlabOurs = texlabCfg.get<boolean>('enabled', true) && !vscode.extensions.getExtension(TEXLAB_EXTENSION_ID);
   const report = checkSetup({
+    tool: build.tool,
     latexmk: build.latexmk,
+    tectonic: build.tectonic,
+    docker: build.docker,
     engine: build.engine,
     synctex: settings.synctexPath(),
     latexdiff: settings.latexdiffPath(),
@@ -78,20 +82,21 @@ async function notify(report: SetupReport, output: vscode.OutputChannel): Promis
 
   const missing = report.missingRequired.map((t) => t.name).join(' and ');
   if (report.missingRequired.some((t) => t.foundOutsidePath)) {
+    const pathSetting = toolPathSetting(report.tool);
     const choice = await vscode.window.showWarningMessage(
-      `Overtex: ${missing} is installed but not on VS Code's PATH. Quit and restart VS Code, or set overtex.latex.latexmkPath.`,
+      `Overtex: ${missing} is installed but not on VS Code's PATH. Quit and restart VS Code, or set ${pathSetting}.`,
       'Open Setting',
       showDetails
     );
     if (choice === 'Open Setting') {
-      void vscode.commands.executeCommand('workbench.action.openSettings', 'overtex.latex.latexmkPath');
+      void vscode.commands.executeCommand('workbench.action.openSettings', pathSetting);
     } else if (choice === showDetails) {
       output.show(true);
     }
     return;
   }
 
-  const hint = texInstallHint(process.platform);
+  const hint = texInstallHint(process.platform, report.tool);
   const choice = await vscode.window.showWarningMessage(`Overtex: ${missing} not found. ${hint.text}`, 'How to Install', 'Re-check', showDetails);
   if (choice === 'How to Install') {
     void vscode.env.openExternal(vscode.Uri.parse(hint.url));
@@ -104,7 +109,7 @@ async function notify(report: SetupReport, output: vscode.OutputChannel): Promis
 
 /**
  * Once per install: if a build could not run, say so up front instead of on the first failed build.
- * Only latexmk and the engine count; a missing TexLab has its own hint.
+ * Only what the build tool needs counts; a missing TexLab has its own hint.
  */
 export function nudgeIfSetupMissing(context: vscode.ExtensionContext): void {
   const report = inspectSetup();
