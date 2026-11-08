@@ -106,13 +106,18 @@ describe('diffCommand', () => {
   });
 
   it('runs latexmk -f in the container, mounting the snapshot it is given', () => {
-    const { command, args } = diffCommand('/tmp/s/new/overtex-diff-1/main-diff.tex', 'overtex-diff-1', '/tmp/s/new/paper', '/tmp/s/new', { ...base, tool: 'docker', workspaceRoot: () => '/work' });
+    const { command, args } = diffCommand('/tmp/s/new/overtex-diff-1/main-diff.tex', 'overtex-diff-1', '/tmp/s/new/paper', '/tmp/s/new', { ...base, tool: 'docker', workspaceRoot: () => '/work' }, mac);
     expect(command).toBe('/opt/docker');
     expect(args[args.indexOf('-w') + 1]).toBe('/tmp/s/new/paper');
-    const volume = args[args.indexOf('-v') + 1];
-    expect(volume.endsWith(':/tmp/s/new') || volume.includes('/workspace')).toBe(true);
+    expect(args[args.indexOf('-v') + 1]).toBe('/tmp/s/new:/tmp/s/new');
     expect(args.slice(args.indexOf('latexmk'), args.indexOf('latexmk') + 2)).toEqual(['latexmk', '-f']);
     expect(args.at(-1)).toBe('overtex-diff-1/main-diff.tex');
+  });
+
+  it('mounts the snapshot at /workspace on Windows', () => {
+    const { args } = diffCommand('C:\\s\\new\\overtex-diff-1\\main-diff.tex', 'overtex-diff-1', 'C:\\s\\new\\paper', 'C:\\s\\new', { ...base, tool: 'docker' }, windows);
+    expect(args[args.indexOf('-v') + 1]).toBe('C:\\s\\new:/workspace');
+    expect(args[args.indexOf('-w') + 1]).toBe('/workspace/paper');
   });
 
   it('runs latexmk on the host otherwise', () => {

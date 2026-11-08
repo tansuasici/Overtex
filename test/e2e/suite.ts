@@ -111,14 +111,18 @@ export async function run(): Promise<void> {
     const saved = () => JSON.parse(fs.readFileSync(file, 'utf8')).notes as { id: string; page: number; x: number; y: number; text: string }[];
     const near = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) < 1, `${what}: ${a} is not ${b}`);
     try {
+      // Mouse events carry whole pixels, so at 100% a click lands within a point of where it was
+      // aimed. Fit width would tie that to the window, which on CI makes a pixel about 3 points.
       let shown = nextMessage(e2e, 'e2e:notes');
+      e2e.sendToViewer({ type: 'e2e:zoom', zoom: 1 });
+      await shown;
+      shown = nextMessage(e2e, 'e2e:notes');
       e2e.sendToViewer({ type: 'e2e:addNote', page: 2, x: 100, y: 200, text: 'Check this claim <b>here</b>' });
       let pins = (await shown).pins;
       assert.strictEqual(pins.length, 1, 'one pin');
       const [note] = saved();
       assert.strictEqual(note.page, 2);
       assert.strictEqual(note.text, 'Check this claim <b>here</b>');
-      // Mouse events carry whole pixels, and a pixel is up to 2 points in the test's narrow window.
       assert.ok(Math.abs(note.x - 100) < 2 && Math.abs(note.y - 200) < 2, `saved at ${note.x}, ${note.y}`);
       near(pins[0].x, note.x, 'pin x');
       near(pins[0].y, note.y, 'pin y');

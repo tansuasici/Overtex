@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { BuildSettings, TEX_ENV, ToolCommand, dockerCommand, dockerRoot, latexmkArgs, outputPaths, tectonicArgs } from './builder';
+import { BuildSettings, DockerHost, TEX_ENV, ToolCommand, dockerCommand, dockerRoot, latexmkArgs, outputPaths, tectonicArgs } from './builder';
 
 /** A .tex file as it is on disk, or the main file as it was in a git revision. */
 export type Version = { file: string } | { revision: string };
@@ -115,7 +115,7 @@ export function diffBuildArgs(texFile: string, buildDir: string, settings: Build
 }
 
 /** The command that builds the diff from `cwd`. `root` is what Docker mounts; undefined means the usual folder. */
-export function diffCommand(texFile: string, buildDir: string, cwd: string, root: string | undefined, settings: BuildSettings): ToolCommand {
+export function diffCommand(texFile: string, buildDir: string, cwd: string, root: string | undefined, settings: BuildSettings, host?: DockerHost): ToolCommand {
   const env = { ...process.env, ...TEX_ENV };
   if (settings.tool === 'tectonic') {
     // Tectonic looks for files beside its input, which here is one folder below the project.
@@ -125,7 +125,7 @@ export function diffCommand(texFile: string, buildDir: string, cwd: string, root
   }
   const args = diffBuildArgs(texFile, buildDir, settings);
   if (settings.tool === 'docker') {
-    return dockerCommand(cwd, root ?? dockerRoot(cwd, settings), args, settings);
+    return dockerCommand(cwd, root ?? dockerRoot(cwd, settings), args, settings, host);
   }
   return { command: settings.latexmk, args, env };
 }

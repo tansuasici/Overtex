@@ -12,7 +12,7 @@ const fixtures = path.resolve(__dirname, 'fixtures');
 const read = (name: string) => fs.readFileSync(path.join(fixtures, name), 'utf-8');
 
 describe('parseTectonicLog', () => {
-  const onDisk = (...files: string[]) => (file: string) => files.includes(path.relative('/proj', file));
+  const onDisk = (...files: string[]) => (file: string) => files.map(path.normalize).includes(path.relative('/proj', file));
 
   it('finds a file named without its extension', () => {
     const log = ['(main.tex', '(article.cls (size10.clo)) (sub', '! Undefined control sequence.', 'l.2 \\bad', ''].join('\n');
@@ -31,7 +31,7 @@ describe('parseTectonicLog', () => {
     const log = ['(main.tex', '(sub dir/two.tex', "LaTeX Warning: Reference `a' on page 1 undefined on input line 2.", ')', "LaTeX Warning: Reference `b' on page 1 undefined on input line 9.", ''].join('\n');
     const warnings = parseTectonicLog(log, '/proj', onDisk('main.tex', 'sub dir/two.tex'));
     expect(warnings.map((w) => [path.relative('/proj', w.file), w.line])).toEqual([
-      ['sub dir/two.tex', 2],
+      [path.join('sub dir', 'two.tex'), 2],
       ['main.tex', 9],
     ]);
   });
