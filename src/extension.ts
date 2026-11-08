@@ -18,6 +18,7 @@ import { PdfPanel } from './viewer/pdfPanel';
 import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setupCheck';
 import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
+import { citeFromZotero } from './citeFromZotero';
 import { CompareArgs, compareVersionsCommand } from './compareVersions';
 import { exportArxiv } from './exportArxiv';
 import { SubmissionCheck } from './checkSubmission';
@@ -260,6 +261,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.gettingStarted', openWalkthrough),
     vscode.commands.registerCommand('overtex.newDocument', newDocument),
     vscode.commands.registerCommand('overtex.addCitation', () => addCitation(mainFile)),
+    vscode.commands.registerCommand('overtex.citeFromZotero', () => citeFromZotero(mainFile)),
     vscode.commands.registerCommand('overtex.exportArxiv', () => exportArxiv(mainFile, build)),
     vscode.commands.registerCommand('overtex.checkSubmission', () => submission.run()),
     vscode.commands.registerCommand('overtex.checkBibliography', (uri?: vscode.Uri) => bibCheck.run(uri instanceof vscode.Uri ? uri : undefined)),

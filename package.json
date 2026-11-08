@@ -48,7 +48,8 @@
         "overtex.latex.extraArgs",
         "overtex.synctex.path",
         "overtex.latexdiff.path",
-        "overtex.texlab.path"
+        "overtex.texlab.path",
+        "overtex.zotero.url"
       ]
     }
   },
@@ -104,6 +105,11 @@
       {
         "command": "overtex.addCitation",
         "title": "Add Citation from DOI or arXiv",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.citeFromZotero",
+        "title": "Cite from Zotero",
         "category": "Overtex"
       },
       {
@@ -216,6 +222,11 @@
           "type": "string",
           "default": "latexdiff",
           "description": "Path to the latexdiff executable, used by Compare Versions."
+        },
+        "overtex.zotero.url": {
+          "type": "string",
+          "default": "http://127.0.0.1:23119",
+          "description": "Where Cite from Zotero reaches Zotero's local server. Change it for Juris-M (port 24119), or in a remote window, where 127.0.0.1 is the remote machine."
         },
         "overtex.texlab.enabled": {
           "type": "boolean",

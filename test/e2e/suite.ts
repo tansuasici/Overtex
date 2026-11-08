@@ -1,6 +1,9 @@
 // Runs inside the VS Code extension host (see run.mjs). Drives build, forward search and inverse
 // search through the real PDF viewer webview, using the test hooks enabled by OVERTEX_E2E.
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as http from 'http';
+import type { AddressInfo } from 'net';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { OvertexApi, OvertexE2e } from '../../src/api';
@@ -167,6 +170,53 @@ export async function run(): Promise<void> {
     }
     assert.strictEqual(result.status, 'built');
     assert.ok((await loaded).pages >= 1);
+  });
+
+  await step('cite from Zotero adds the pick to the .bib and cites it', async () => {
+    // A stand-in for Better BibTeX: what a real one sends has not been checked against this.
+    const picks = ['@article{einsteinCanQuantum1935,\n  title = {Can Quantum-Mechanical Description of Physical Reality Be Considered Complete?},\n  year = {1935},\n  doi = {10.1103/PhysRev.47.777},\n  file = {/Users/someone/Zotero/storage/ABC/epr.pdf}\n}\n'];
+    const requests: URL[] = [];
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+      requests.push(url);
+      res.end(url.searchParams.has('probe') ? 'ready' : picks.shift() ?? '');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const cfg = () => vscode.workspace.getConfiguration('overtex');
+    const bib = path.join(root, 'refs.bib');
+    const bibBefore = fs.readFileSync(bib, 'utf8');
+    try {
+      await cfg().update('zotero.url', `http://127.0.0.1:${(server.address() as AddressInfo).port}`, vscode.ConfigurationTarget.Global);
+      await openAt(main, 2);
+      const lineText = () => vscode.window.activeTextEditor!.document.lineAt(2).text;
+
+      await vscode.commands.executeCommand('overtex.citeFromZotero');
+      assert.strictEqual(requests.find((r) => r.searchParams.has('format'))?.searchParams.get('translator'), 'bibtex');
+      const added = fs.readFileSync(bib, 'utf8');
+      assert.ok(added.startsWith(bibBefore), 'existing entries are kept');
+      assert.ok(added.includes('@article{einsteinCanQuantum1935'), 'the entry is in the .bib');
+      assert.ok(!added.includes('/Users/someone'), 'no local attachment path');
+      assert.ok(lineText().startsWith('\\cite{einsteinCanQuantum1935}'), `line: ${lineText()}`);
+
+      // Same paper again: the entry is reused, not duplicated.
+      picks.push('@article{einsteinCanQuantum1935,\n  title = {Can Quantum-Mechanical Description of Physical Reality Be Considered Complete?},\n  year = {1935},\n  doi = {10.1103/PhysRev.47.777}\n}\n');
+      await openAt(main, 3);
+      await vscode.commands.executeCommand('overtex.citeFromZotero');
+      assert.strictEqual(fs.readFileSync(bib, 'utf8'), added, 'nothing appended');
+      assert.ok(vscode.window.activeTextEditor!.document.lineAt(3).text.startsWith('\\cite{einsteinCanQuantum1935}'), 'cited again');
+
+      // An empty answer means the picker was cancelled.
+      const text = vscode.window.activeTextEditor!.document.getText();
+      await vscode.commands.executeCommand('overtex.citeFromZotero');
+      assert.strictEqual(vscode.window.activeTextEditor!.document.getText(), text, 'editor unchanged');
+      assert.strictEqual(fs.readFileSync(bib, 'utf8'), added, '.bib unchanged');
+    } finally {
+      await cfg().update('zotero.url', undefined, vscode.ConfigurationTarget.Global);
+      server.closeAllConnections();
+      server.close();
+      await openAt(main, 0);
+      await vscode.commands.executeCommand('workbench.action.files.revert');
+    }
   });
 
   await step('getting started walkthrough is registered', async () => {

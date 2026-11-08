@@ -174,7 +174,7 @@ function splitTopLevel(body: string): string[] {
  * Gives a fetched entry our key and lays it out one field per line. Crossref returns
  * the whole entry on one line, and DataCite uses the DOI URL as the key.
  */
-export function rewriteBibtex(raw: string, key: string): string {
+export function rewriteBibtex(raw: string, key: string, omit: string[] = []): string {
   const head = /^\s*@(\w+)\s*([{(])/.exec(raw);
   if (!head) {
     throw new Error('Not a BibTeX entry.');
@@ -189,7 +189,7 @@ export function rewriteBibtex(raw: string, key: string): string {
   const lines: string[] = [];
   for (const f of fields) {
     const m = /^\s*([A-Za-z][\w:-]*)\s*=\s*([\s\S]*?)\s*$/.exec(f);
-    if (m && m[2]) {
+    if (m && m[2] && !omit.includes(m[1].toLowerCase())) {
       lines.push(`  ${m[1].toLowerCase()} = ${m[2].replace(/\s*\n\s*/g, ' ')}`);
     }
   }
