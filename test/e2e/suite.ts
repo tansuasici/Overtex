@@ -394,6 +394,32 @@ export async function run(): Promise<void> {
     assert.ok(svg.startsWith('<svg') && svg.endsWith('</svg>'), 'nothing outside the <svg> element');
   });
 
+  await step('Papers panel groups the .bib by citation and cites a paper', async () => {
+    const bib = path.join(root, 'refs.bib');
+    const tex = path.join(root, 'papers-e2e.tex');
+    const original = fs.readFileSync(bib, 'utf8');
+    try {
+      fs.writeFileSync(bib, `${original}\n@article{citedPaper,\n  title = {Cited},\n  year = {2021}\n}\n\n@article{uncitedPaper,\n  title = {Not Cited Yet},\n  year = {2020},\n  eprint = {1706.03762},\n  archivePrefix = {arXiv}\n}\n`);
+      fs.writeFileSync(tex, '% \\cite{uncitedPaper}\n\\cite{citedPaper}\n');
+      await vscode.commands.executeCommand('overtex.library.refresh');
+      const groups = await e2e.paperGroups();
+      const group = (name: string) => groups.find((g) => g.group === name)?.keys ?? [];
+      assert.ok(group('Cited').includes('citedPaper'), JSON.stringify(groups));
+      assert.ok(group('Not cited').includes('uncitedPaper'), JSON.stringify(groups));
+
+      const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: 'See ' });
+      const editor = await vscode.window.showTextDocument(doc);
+      editor.selection = new vscode.Selection(0, 4, 0, 4);
+      await vscode.commands.executeCommand('overtex.library.cite', 'uncitedPaper');
+      assert.ok(doc.getText().includes('\\cite{uncitedPaper}'), doc.getText());
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    } finally {
+      fs.writeFileSync(bib, original);
+      fs.rmSync(tex, { force: true });
+      await vscode.commands.executeCommand('overtex.library.refresh');
+    }
+  });
+
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
   }

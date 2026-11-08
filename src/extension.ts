@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import type { OvertexApi, OvertexE2e } from './api';
+import { BibIndex } from './latex/bibIndex';
+import { registerLibrary } from './library';
 import type { E2eFromViewerMessage } from './shared/messages';
 import { buildSettings, settings } from './config';
 import { registerBibCompletion } from './latex/bibCompletion';
@@ -59,13 +61,16 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   texlab = new Texlab(context, log);
   const server = texlab;
   // TexLab completes citations too; the built-in completion is the fallback when it is not running.
-  const bibCompletion = registerBibCompletion(() => !server.isRunning);
+  const bibIndex = new BibIndex();
+  const bibCompletion = registerBibCompletion(bibIndex, () => !server.isRunning);
 
-  context.subscriptions.push(output, diagnostics, status, pdfPanel, onDidStartBuild, onDidEndBuild, texlab, bibCompletion);
+  context.subscriptions.push(output, diagnostics, status, pdfPanel, onDidStartBuild, onDidEndBuild, texlab, bibIndex, bibCompletion);
   // Submission findings describe one build; the next build clears them.
   const submission = new SubmissionCheck(mainFile, build);
   const version = (context.extension.packageJSON as { version?: string }).version ?? '';
-  const bibCheck = new BibliographyCheck(mainFile, `Overtex/${version} (https://github.com/tansuasici/Overtex)`);
+  const userAgent = `Overtex/${version} (https://github.com/tansuasici/Overtex)`;
+  const bibCheck = new BibliographyCheck(mainFile, userAgent);
+  const papers = registerLibrary(context, { index: bibIndex, mainFile, userAgent, showPdf: (pdf) => pdfPanel.show(pdf) });
   context.subscriptions.push(bibCheck);
   context.subscriptions.push(submission, onDidStartBuild.event(() => submission.clear()));
   const words = new WordCounter(mainFile);
@@ -312,6 +317,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const e2e: OvertexE2e | undefined = e2eEvents && {
     onViewerMessage: e2eEvents.event,
     sendToViewer: (msg) => pdfPanel.postE2e(msg),
+    paperGroups: () => papers.groups(),
   };
 
   return {

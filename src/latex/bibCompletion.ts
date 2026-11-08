@@ -1,32 +1,14 @@
 import * as vscode from 'vscode';
-import { BibEntry, parseBib } from './bibParser';
+import { BibIndex } from './bibIndex';
 import { citationHoverMarkdown, citeKeyAt, escapeMarkdown as escape } from './cite';
 
 const CITE_BEFORE_CURSOR = /\\[A-Za-z]*cite[A-Za-z]*\*?(?:\[[^\]]*\]){0,2}\{[^}]*$/;
 
 /**
- * `\cite{` key completion and citation hovers from the workspace's .bib files, cached until they change.
+ * `\cite{` key completion and citation hovers from the workspace's .bib files.
  * Both stay off while `isEnabled` is false (TexLab running), so the two never show twice.
  */
-export function registerBibCompletion(isEnabled: () => boolean = () => true): vscode.Disposable {
-  let cache: Promise<BibEntry[]> | null = null;
-  const invalidate = () => {
-    cache = null;
-  };
-
-  const watcher = vscode.workspace.createFileSystemWatcher('**/*.bib');
-  watcher.onDidChange(invalidate);
-  watcher.onDidCreate(invalidate);
-  watcher.onDidDelete(invalidate);
-
-  const load = async (): Promise<BibEntry[]> => {
-    const files = await vscode.workspace.findFiles('**/*.bib', '**/node_modules/**', 200);
-    const all = await Promise.all(
-      files.map(async (uri) => parseBib(Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf-8')))
-    );
-    return all.flat();
-  };
-
+export function registerBibCompletion(index: BibIndex, isEnabled: () => boolean = () => true): vscode.Disposable {
   const provider = vscode.languages.registerCompletionItemProvider(
     { language: 'latex' },
     {
@@ -38,8 +20,7 @@ export function registerBibCompletion(isEnabled: () => boolean = () => true): vs
         if (!CITE_BEFORE_CURSOR.test(before)) {
           return undefined;
         }
-        cache ??= load();
-        const entries = await cache;
+        const entries = await index.entries();
         return entries.map((entry) => {
           const item = new vscode.CompletionItem(entry.key, vscode.CompletionItemKind.Reference);
           item.detail = [entry.author, entry.year].filter(Boolean).join(', ');
@@ -67,8 +48,7 @@ export function registerBibCompletion(isEnabled: () => boolean = () => true): vs
         if (!cite) {
           return undefined;
         }
-        cache ??= load();
-        const entry = (await cache).find((e) => e.key === cite.key);
+        const entry = (await index.entries()).find((e) => e.key === cite.key);
         if (!entry) {
           return undefined;
         }
@@ -78,5 +58,5 @@ export function registerBibCompletion(isEnabled: () => boolean = () => true): vs
     }
   );
 
-  return vscode.Disposable.from(watcher, provider, hover);
+  return vscode.Disposable.from(provider, hover);
 }

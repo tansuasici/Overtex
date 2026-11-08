@@ -4,6 +4,7 @@ import * as path from 'path';
 
 import { BibEntry, parseBib } from './latex/bibParser';
 import {
+  CitationId,
   CitationNotFoundError,
   bibResourcesIn,
   citeInsertion,
@@ -22,57 +23,62 @@ const TEX_LANGUAGES = new Set(['latex', 'tex']);
 export async function addCitation(mainFile: () => string | null): Promise<void> {
   const texEditor = activeTexEditor();
 
+  const id = await askForIdentifier('Add Citation');
+  if (!id) {
+    return;
+  }
+
+  const bib = await chooseBibFile(mainFile());
+  if (!bib) {
+    return;
+  }
+
+  const key = await addByIdentifier(id, bib);
+  if (key) {
+    await citeKeys(texEditor, [key]);
+  }
+}
+
+/** Asks for a DOI or arXiv ID, offering the clipboard when it holds one. */
+export async function askForIdentifier(title: string): Promise<CitationId | undefined> {
   const clip = (await vscode.env.clipboard.readText()).trim();
   const input = await vscode.window.showInputBox({
-    title: 'Add Citation',
+    title,
     prompt: 'DOI or arXiv ID, e.g. 10.1103/PhysRev.47.777 or arXiv:1706.03762',
     value: clip.length < 200 && parseIdentifier(clip) ? clip : '',
     ignoreFocusOut: true,
     validateInput: (v) => (!v.trim() || parseIdentifier(v) ? undefined : 'Not a DOI or arXiv ID.'),
   });
-  const id = input && parseIdentifier(input);
-  if (!id) {
-    return;
-  }
+  return input ? parseIdentifier(input) : undefined;
+}
 
-  const main = mainFile();
-  const bib = await chooseBibFile(main);
-  if (!bib) {
-    return;
-  }
-
+/** The paper's key in the bibliography, fetching and appending its BibTeX unless the DOI is already there. */
+export async function addByIdentifier(id: CitationId, bib: BibTarget): Promise<string | undefined> {
   const entries = await readBibEntries(bib);
 
-  let key: string;
   const existing = findByDoi(entries, id.doi);
   if (existing) {
-    key = existing.key;
-    void vscode.window.setStatusBarMessage(`Overtex: ${key} is already in ${path.basename(bib.fsPath)}`, 4000);
-  } else {
-    let raw: string;
-    try {
-      raw = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Overtex: fetching ${id.kind === 'arxiv' ? 'arXiv:' : ''}${id.id}…` },
-        () => fetchBibtex(id.doi)
-      );
-    } catch (err) {
-      const message =
-        err instanceof CitationNotFoundError
-          ? err.message
-          : `Could not fetch ${id.id}: ${err instanceof Error && err.name === 'TimeoutError' ? 'doi.org did not answer in time' : String(err instanceof Error ? err.message : err)}.`;
-      void vscode.window.showErrorMessage(`Overtex: ${message}`);
-      return;
-    }
-
-    const entry = prepareEntry(raw, entries.map((e) => e.key));
-    key = entry.key;
-
-    if (!(await appendToBib(bib, entry.text))) {
-      return;
-    }
+    void vscode.window.setStatusBarMessage(`Overtex: ${existing.key} is already in ${path.basename(bib.fsPath)}`, 4000);
+    return existing.key;
   }
 
-  await citeKeys(texEditor, [key]);
+  let raw: string;
+  try {
+    raw = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Overtex: fetching ${id.kind === 'arxiv' ? 'arXiv:' : ''}${id.id}…` },
+      () => fetchBibtex(id.doi)
+    );
+  } catch (err) {
+    const message =
+      err instanceof CitationNotFoundError
+        ? err.message
+        : `Could not fetch ${id.id}: ${err instanceof Error && err.name === 'TimeoutError' ? 'doi.org did not answer in time' : String(err instanceof Error ? err.message : err)}.`;
+    void vscode.window.showErrorMessage(`Overtex: ${message}`);
+    return undefined;
+  }
+
+  const entry = prepareEntry(raw, entries.map((e) => e.key));
+  return (await appendToBib(bib, entry.text)) ? entry.key : undefined;
 }
 
 export function activeTexEditor(): vscode.TextEditor | undefined {

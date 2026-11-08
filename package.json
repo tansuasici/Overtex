@@ -58,6 +58,30 @@
     }
   },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "overtex",
+          "title": "Overtex",
+          "icon": "media/library.svg"
+        }
+      ]
+    },
+    "views": {
+      "overtex": [
+        {
+          "id": "overtex.papers",
+          "name": "Papers",
+          "when": "overtex.active"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "overtex.papers",
+        "contents": "No papers yet. Papers are read from the .bib files in this workspace.\n[Add Paper](command:overtex.library.add)"
+      }
+    ],
     "commands": [
       {
         "command": "overtex.build",
@@ -145,6 +169,54 @@
         "command": "overtex.viewer.toggleDarkMode",
         "title": "Toggle Dark PDF Preview",
         "category": "Overtex"
+      },
+      {
+        "command": "overtex.library.add",
+        "title": "Add Paper",
+        "category": "Overtex",
+        "icon": "$(add)"
+      },
+      {
+        "command": "overtex.library.sort",
+        "title": "Sort Papers",
+        "category": "Overtex",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "overtex.library.refresh",
+        "title": "Refresh Papers",
+        "category": "Overtex",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "overtex.library.cite",
+        "title": "Cite Paper",
+        "category": "Overtex",
+        "icon": "$(quote)"
+      },
+      {
+        "command": "overtex.library.openPdf",
+        "title": "Open Paper PDF",
+        "category": "Overtex",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "overtex.library.downloadPdf",
+        "title": "Download Paper PDF from arXiv",
+        "category": "Overtex",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "overtex.library.openPage",
+        "title": "Open Paper Page",
+        "category": "Overtex",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "overtex.library.reveal",
+        "title": "Show Paper in Bibliography",
+        "category": "Overtex",
+        "icon": "$(go-to-file)"
       }
     ],
     "menus": {
@@ -158,6 +230,90 @@
           "command": "overtex.viewPdf",
           "when": "editorLangId == latex",
           "group": "navigation@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "overtex.library.add",
+          "when": "view == overtex.papers",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overtex.library.sort",
+          "when": "view == overtex.papers",
+          "group": "navigation@2"
+        },
+        {
+          "command": "overtex.library.refresh",
+          "when": "view == overtex.papers",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "overtex.library.cite",
+          "when": "view == overtex.papers && viewItem =~ /paper/",
+          "group": "inline@1"
+        },
+        {
+          "command": "overtex.library.downloadPdf",
+          "when": "view == overtex.papers && viewItem =~ /download/",
+          "group": "inline@2"
+        },
+        {
+          "command": "overtex.library.cite",
+          "when": "view == overtex.papers && viewItem =~ /paper/",
+          "group": "1_use@1"
+        },
+        {
+          "command": "overtex.library.openPdf",
+          "when": "view == overtex.papers && viewItem =~ /pdf/",
+          "group": "1_use@2"
+        },
+        {
+          "command": "overtex.library.downloadPdf",
+          "when": "view == overtex.papers && viewItem =~ /download/",
+          "group": "1_use@3"
+        },
+        {
+          "command": "overtex.library.openPage",
+          "when": "view == overtex.papers && viewItem =~ /web/",
+          "group": "2_go@1"
+        },
+        {
+          "command": "overtex.library.reveal",
+          "when": "view == overtex.papers && viewItem =~ /paper/",
+          "group": "2_go@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "overtex.library.sort",
+          "when": "false"
+        },
+        {
+          "command": "overtex.library.refresh",
+          "when": "false"
+        },
+        {
+          "command": "overtex.library.cite",
+          "when": "false"
+        },
+        {
+          "command": "overtex.library.openPdf",
+          "when": "false"
+        },
+        {
+          "command": "overtex.library.downloadPdf",
+          "when": "false"
+        },
+        {
+          "command": "overtex.library.openPage",
+          "when": "false"
+        },
+        {
+          "command": "overtex.library.reveal",
+          "when": "false"
         }
       ]
     },

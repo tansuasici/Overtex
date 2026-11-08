@@ -8,13 +8,16 @@ export interface BibEntry {
   doi: string;
   /** 0-based line of the `@type{key,` head. */
   line: number;
-  /** Other fields the bibliography check reads, by lowercase name; absent when empty. */
+  /** Other fields the bibliography check and the Papers panel read, by lowercase name; absent when empty. */
   fields: Record<string, string>;
+  /** Title and author with their braces, which say where LaTeX macros end; for display through `plainTex`. */
+  rawTitle?: string;
+  rawAuthor?: string;
 }
 
 const EXTRA_FIELDS = [
   'journal', 'booktitle', 'publisher', 'editor', 'school', 'institution', 'howpublished',
-  'volume', 'number', 'pages', 'date', 'journaltitle', 'eprint', 'archiveprefix', 'url', 'note',
+  'volume', 'number', 'pages', 'date', 'journaltitle', 'eprint', 'archiveprefix', 'eprinttype', 'url', 'note', 'file',
 ];
 
 const IGNORED_TYPES = new Set(['string', 'comment', 'preamble']);
@@ -55,6 +58,8 @@ export function parseBib(content: string): BibEntry[] {
       doi: field(body, 'doi'),
       line,
       fields,
+      rawTitle: bracedField(body, 'title'),
+      rawAuthor: bracedField(body, 'author'),
     });
     head.lastIndex = m.index + m[0].length + body.length;
   }
@@ -81,6 +86,10 @@ function entryBody(content: string, from: number): string {
 
 /** Reads `name = {value}`, `name = "value"` or `name = 2020`, allowing nested braces. */
 function field(body: string, name: string): string {
+  return bracedField(body, name).replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function bracedField(body: string, name: string): string {
   const m = new RegExp(`(?:^|[,\\s])${name}\\s*=\\s*`, 'i').exec(body);
   if (!m) {
     return '';
@@ -105,5 +114,5 @@ function field(body: string, name: string): string {
   } else {
     value = body.substring(i).match(/^[^,}\s]*/)?.[0] ?? '';
   }
-  return value.replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
+  return value.replace(/\s+/g, ' ').trim();
 }

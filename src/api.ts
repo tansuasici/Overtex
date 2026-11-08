@@ -24,4 +24,6 @@ export interface OvertexApi {
 export interface OvertexE2e {
   readonly onViewerMessage: vscode.Event<E2eFromViewerMessage>;
   sendToViewer(msg: E2eToViewerMessage): void;
+  /** What the Papers panel lists: its groups in order, with the paper keys in order. */
+  paperGroups(): Promise<{ group: string; keys: string[] }[]>;
 }

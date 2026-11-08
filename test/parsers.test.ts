@@ -123,6 +123,8 @@ describe('parseBib', () => {
     expect(entries).toEqual([
       {
         key: 'einstein1905',
+        rawTitle: 'Zur {Elektrodynamik} bewegter K{\\"o}rper',
+        rawAuthor: 'Albert Einstein',
         type: 'article',
         title: 'Zur Elektrodynamik bewegter K\\"orper',
         author: 'Albert Einstein',

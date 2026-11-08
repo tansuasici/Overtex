@@ -69,7 +69,7 @@ export function missingFields(entry: BibEntry): string[] {
 
 /** The arXiv ID an entry cites, from `eprint`, an arXiv DOI, an arxiv.org URL, or `arXiv:…` in journal or note. */
 export function arxivIdOf(entry: BibEntry): string | undefined {
-  const prefix = (entry.fields.archiveprefix ?? '').toLowerCase();
+  const prefix = (entry.fields.archiveprefix ?? entry.fields.eprinttype ?? '').toLowerCase();
   const eprint = entry.fields.eprint;
   if (eprint && (prefix === 'arxiv' || !prefix)) {
     const id = parseIdentifier(eprint);
