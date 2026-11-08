@@ -160,17 +160,18 @@ describe('pdfFileName', () => {
 });
 
 describe('findPdf', () => {
-  const bib = path.join(path.sep, 'p', 'refs.bib');
+  // Resolved, because on Windows a path without a drive letter never equals what path.resolve returns.
+  const bib = path.resolve(path.sep, 'p', 'refs.bib');
 
   it('prefers the file field, resolved against the .bib', () => {
-    const named = path.join(path.sep, 'p', 'pdfs', 'a.pdf');
+    const named = path.resolve(path.sep, 'p', 'pdfs', 'a.pdf');
     const paper = entry('a', { fields: { file: 'pdfs/a.pdf' } });
     expect(findPdf(paper, bib, (f) => f === named || f === paperPdfPath(bib, 'a'))).toBe(named);
   });
 
   it('falls back to papers/<key>.pdf', () => {
     const paper = entry('a', { fields: { file: 'gone.pdf' } });
-    expect(findPdf(paper, bib, (f) => f === path.join(path.sep, 'p', 'papers', 'a.pdf'))).toBe(paperPdfPath(bib, 'a'));
+    expect(findPdf(paper, bib, (f) => f === path.resolve(path.sep, 'p', 'papers', 'a.pdf'))).toBe(paperPdfPath(bib, 'a'));
   });
 
   it('is undefined when nothing is on disk', () => {
