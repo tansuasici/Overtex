@@ -295,7 +295,7 @@ export class PdfPanel implements vscode.Disposable {
   data-modifier="${isMac ? 'meta' : 'ctrl'}"
   data-scheme="${this.currentScheme()}"${this.onE2eMessage ? ' data-e2e' : ''}>
   <div class="toolbar" role="toolbar">
-    <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
+    <button id="zoom-out" title="Zoom out" aria-label="Zoom out"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9"/></svg></button>
     <select id="zoom" aria-label="Zoom">
       <option value="page-width">Fit width</option>
       <option value="page-fit">Fit page</option>
@@ -305,10 +305,10 @@ export class PdfPanel implements vscode.Disposable {
       <option value="1.5">150%</option>
       <option value="2">200%</option>
     </select>
-    <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-    <button id="dark-mode" title="Dark pages" aria-label="Dark pages" aria-pressed="false">&#9680;</button>
-    <button id="toggle-notes" title="Hide notes" aria-label="Show notes" aria-pressed="true">&#9998;</button>
-    <button id="toggle-notes-list" aria-pressed="false"></button>
+    <button id="zoom-in" title="Zoom in" aria-label="Zoom in"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9M8 3.5v9"/></svg></button>
+    <button id="dark-mode" title="Dark pages" aria-label="Dark pages" aria-pressed="false"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 0 1 0 11z" fill="currentColor" stroke="none"/></svg></button>
+    <button id="toggle-notes" title="Hide notes" aria-label="Show notes" aria-pressed="true"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3h11v8H7.5l-3 2.5V11h-2z"/></svg></button>
+    <button id="toggle-notes-list" aria-pressed="false"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4l1.2 1.2L6 3M2.5 11l1.2 1.2L6 10M8.5 4.5h5M8.5 11.5h5"/></svg><span id="notes-count" class="count"></span></button>
     <span class="spacer"></span>
     <span id="page-info" aria-live="polite"></span>
     <span id="notes-hint" class="hint">Double-click to add a note</span>
@@ -316,7 +316,14 @@ export class PdfPanel implements vscode.Disposable {
   </div>
   <div id="viewer" tabindex="0"><div id="pages"></div><p id="empty">Build the project to see the PDF.</p></div>
   <aside id="notes-list" class="notes-list" aria-label="Notes" hidden>
-    <label class="notes-list-filter"><input id="hide-done" type="checkbox"> Hide done</label>
+    <div class="notes-list-head">
+      <div class="notes-list-title">
+        <h2>Notes</h2>
+        <span id="notes-list-summary"></span>
+        <button id="close-notes-list" title="Close list" aria-label="Close list"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      </div>
+      <label class="notes-list-filter"><input id="hide-done" type="checkbox"> Hide done</label>
+    </div>
     <ul id="notes-list-rows"></ul>
     <p id="notes-list-empty"></p>
   </aside>

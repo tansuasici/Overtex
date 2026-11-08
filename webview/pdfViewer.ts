@@ -383,7 +383,7 @@ function e2eMarkDone(id: string, done: boolean, via: 'editor' | 'list', text?: s
       noteText.value = text;
       noteText.dispatchEvent(new Event('input'));
     }
-    if (noteDone.textContent === doneButtonLabel(!done)) {
+    if (editingDone !== done) {
       noteDone.click();
     }
     return;
@@ -424,7 +424,7 @@ function e2eReportNotes(): void {
     label: row.querySelector('.note-row-label')!.textContent ?? '',
     done: row.classList.contains('done'),
   }));
-  vscode.postMessage({ type: 'e2e:notes', enabled: notes !== null, pins, badge: notesListButton.textContent ?? '', listOpen: !notesList.hidden, list });
+  vscode.postMessage({ type: 'e2e:notes', enabled: notes !== null, pins, badge: notesCount.textContent ?? '', listOpen: !notesList.hidden, list });
 }
 
 // ---- Notes ----
@@ -436,10 +436,14 @@ let notesListOpen = vscode.getState()?.notesListOpen ?? false;
 let hideDone = vscode.getState()?.hideDone ?? false;
 /** What the editor is open on. `id` is null for a note not saved yet. */
 let editing: { id: string | null; page: number; x: number; y: number; original: string } | null = null;
+let editingDone = false;
 
 const notesButton = document.getElementById('toggle-notes') as HTMLButtonElement;
 const notesHint = document.getElementById('notes-hint') as HTMLSpanElement;
 const notesListButton = document.getElementById('toggle-notes-list') as HTMLButtonElement;
+const notesCount = document.getElementById('notes-count') as HTMLSpanElement;
+const notesListSummary = document.getElementById('notes-list-summary') as HTMLSpanElement;
+const closeNotesListButton = document.getElementById('close-notes-list') as HTMLButtonElement;
 const notesList = document.getElementById('notes-list') as HTMLElement;
 const notesListRows = document.getElementById('notes-list-rows') as HTMLUListElement;
 const notesListEmpty = document.getElementById('notes-list-empty') as HTMLParagraphElement;
@@ -448,22 +452,40 @@ const hideDoneBox = document.getElementById('hide-done') as HTMLInputElement;
 /** Keep in step with the width in pdfViewer.css. */
 const NOTES_LIST_COVERS_PAGE = '(max-width: 560px)';
 
+const ICON_CHECK = 'M3 8.5l3.2 3.2L13 5';
+const ICON_REOPEN = 'M3.6 8a4.4 4.4 0 1 0 1.3-3.1L3 6.8M3 3.2v3.6h3.6';
+const ICON_TRASH = 'M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v3.5M9.2 7v3.5';
+
 const noteEditor = document.createElement('div');
 noteEditor.className = 'note-editor';
+noteEditor.setAttribute('role', 'dialog');
+noteEditor.setAttribute('aria-label', 'Note');
+const noteTitle = document.createElement('span');
+noteTitle.className = 'note-editor-title';
+const noteDone = editorButton('');
+noteDone.classList.add('ghost');
+const noteDelete = editorButton('');
+noteDelete.classList.add('ghost', 'danger');
+noteDelete.title = 'Delete note';
+noteDelete.setAttribute('aria-label', 'Delete note');
+noteDelete.append(icon(ICON_TRASH));
+const noteHead = document.createElement('div');
+noteHead.className = 'note-editor-head';
+noteHead.append(noteTitle, noteDone, noteDelete);
 const noteText = document.createElement('textarea');
-noteText.rows = 4;
+noteText.rows = 5;
+noteText.placeholder = 'Write a note…';
 noteText.setAttribute('aria-label', 'Note text');
-const noteDelete = editorButton('Delete');
-const noteDone = editorButton('Mark done');
+const noteHint = document.createElement('span');
+noteHint.className = 'note-editor-hint';
+noteHint.textContent = modifierKey === 'metaKey' ? '⌘↵ to save' : 'Ctrl+Enter to save';
 const noteCancel = editorButton('Cancel');
 const noteSave = editorButton('Save');
 noteSave.classList.add('primary');
 const noteActions = document.createElement('div');
 noteActions.className = 'note-actions';
-const noteActionsGap = document.createElement('span');
-noteActionsGap.className = 'spacer';
-noteActions.append(noteDelete, noteDone, noteActionsGap, noteCancel, noteSave);
-noteEditor.append(noteText, noteActions);
+noteActions.append(noteHint, noteCancel, noteSave);
+noteEditor.append(noteHead, noteText, noteActions);
 
 function editorButton(label: string): HTMLButtonElement {
   const button = document.createElement('button');
@@ -472,8 +494,15 @@ function editorButton(label: string): HTMLButtonElement {
   return button;
 }
 
-function doneButtonLabel(done: boolean): string {
-  return done ? 'Reopen' : 'Mark done';
+function icon(path: string): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'icon');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  shape.setAttribute('d', path);
+  svg.append(shape);
+  return svg;
 }
 
 function saveState(): void {
@@ -513,7 +542,9 @@ function createPin(note: Note, view: PageView): HTMLButtonElement {
   const done = isDone(note);
   pin.className = done ? 'note-pin done' : 'note-pin';
   pin.dataset.id = note.id;
-  pin.textContent = done ? '✓' : '';
+  if (done) {
+    pin.append(icon(ICON_CHECK));
+  }
   pin.title = done ? `Done: ${note.text}` : note.text;
   pin.setAttribute('aria-label', `${done ? 'Done note' : 'Note'}: ${note.text}`);
   pin.style.left = `${percent(note.x, view.width)}%`;
@@ -538,9 +569,12 @@ function syncNotesUi(): void {
 
   const all = notes ?? [];
   const open = all.filter((note) => !isDone(note)).length;
-  const summary = `${open} open, ${all.length - open} done`;
+  const closed = all.length - open;
+  const summary = `${open} open, ${closed} done`;
   notesListButton.hidden = !hasNotes;
-  notesListButton.textContent = `☑ ${open}`;
+  notesCount.textContent = String(open);
+  notesCount.classList.toggle('zero', open === 0);
+  notesListSummary.textContent = closed ? `${open} open · ${closed} done` : `${open} open`;
   notesListButton.title = `Note list: ${summary}`;
   notesListButton.setAttribute('aria-label', `Note list: ${summary}`);
   notesListButton.setAttribute('aria-pressed', String(notesListOpen));
@@ -577,13 +611,13 @@ function createListRow(note: Note): HTMLLIElement {
 
   const show = document.createElement('button');
   show.type = 'button';
-  const page = document.createElement('span');
-  page.className = 'note-row-page';
-  page.textContent = `p. ${note.page}`;
   const label = document.createElement('span');
   label.className = 'note-row-label';
   label.textContent = noteSummary(note.text);
-  show.append(page, label);
+  const page = document.createElement('span');
+  page.className = 'note-row-page';
+  page.textContent = `Page ${note.page}`;
+  show.append(label, page);
   // A note on a page the document no longer has stays in the list, with nowhere to jump to.
   show.disabled = !pages[note.page - 1];
   show.title = show.disabled ? 'This page is not in the PDF.' : note.text;
@@ -638,19 +672,42 @@ function openEditor(target: NonNullable<typeof editing>): void {
     return;
   }
   editing = target;
+  editingDone = notes?.some((n) => n.id === target.id && isDone(n)) ?? false;
   noteText.value = target.original;
+  noteTitle.textContent = target.id === null ? `New note · Page ${target.page}` : editingDone ? `Page ${target.page} · Done` : `Page ${target.page}`;
   noteDelete.hidden = target.id === null;
   noteDone.hidden = target.id === null;
-  noteDone.textContent = doneButtonLabel(notes?.some((n) => n.id === target.id && isDone(n)) ?? false);
+  noteDone.replaceChildren(icon(editingDone ? ICON_REOPEN : ICON_CHECK), editingDone ? 'Reopen' : 'Mark done');
   noteSave.disabled = !target.original.trim();
   noteDone.disabled = noteSave.disabled;
   placeEditor();
-  noteText.focus();
+  noteEditor.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  noteText.focus({ preventScroll: true });
 }
 
 function closeEditor(): void {
   editing = null;
   noteEditor.remove();
+  markEditedPin();
+}
+
+function markEditedPin(): void {
+  pagesEl.querySelectorAll<HTMLElement>('.note-pin').forEach((pin) => pin.classList.toggle('editing', pin.dataset.id === editing?.id));
+}
+
+/**
+ * How far the editor sits from its point along one axis: after the point if it fits in the
+ * visible part of the viewer, else before it, else as far on screen as it can be.
+ */
+function editorOffset(point: number, size: number, start: number, end: number): number {
+  const gap = 12;
+  if (point + gap + size <= end) {
+    return gap;
+  }
+  if (point - gap - size >= start) {
+    return -gap - size;
+  }
+  return Math.max(start, end - size) - point;
 }
 
 function placeEditor(): void {
@@ -662,11 +719,16 @@ function placeEditor(): void {
   const top = percent(editing.y, view.height);
   noteEditor.style.left = `${left}%`;
   noteEditor.style.top = `${top}%`;
-  noteEditor.classList.toggle('flip-x', left > 55);
-  noteEditor.classList.toggle('flip-y', top > 65);
   if (noteEditor.parentElement !== view.notesEl) {
     view.notesEl.appendChild(noteEditor);
   }
+  const page = view.notesEl.getBoundingClientRect();
+  const area = viewer.getBoundingClientRect();
+  const pointX = page.left + (page.width * left) / 100;
+  const pointY = page.top + (page.height * top) / 100;
+  noteEditor.style.setProperty('--offset-x', `${editorOffset(pointX, noteEditor.offsetWidth, area.left, area.left + viewer.clientWidth)}px`);
+  noteEditor.style.setProperty('--offset-y', `${editorOffset(pointY, noteEditor.offsetHeight, area.top, area.top + viewer.clientHeight)}px`);
+  markEditedPin();
 }
 
 function saveEditor(): void {
@@ -690,7 +752,7 @@ noteDone.addEventListener('click', () => {
   if (!id) {
     return;
   }
-  const done = noteDone.textContent !== doneButtonLabel(true);
+  const done = !editingDone;
   if (holdsUnsavedText()) {
     saveEditor();
   } else {
@@ -729,6 +791,10 @@ notesButton.addEventListener('click', () => {
 });
 
 notesListButton.addEventListener('click', () => setNotesListOpen(!notesListOpen));
+closeNotesListButton.addEventListener('click', () => {
+  setNotesListOpen(false);
+  notesListButton.focus();
+});
 
 hideDoneBox.addEventListener('change', () => {
   if (holdsUnsavedText()) {
@@ -761,6 +827,10 @@ pagesEl.addEventListener('dblclick', (event) => {
 
 pagesEl.addEventListener('click', (event) => {
   if (!event[modifierKey]) {
+    // A click beside an untouched editor dismisses it; one that holds text stays open.
+    if (!(event.target as HTMLElement).closest('.note-pin') && !holdsUnsavedText()) {
+      closeEditor();
+    }
     return;
   }
   const pageEl = (event.target as HTMLElement).closest<HTMLElement>('.page');

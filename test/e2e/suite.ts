@@ -187,11 +187,11 @@ export async function run(): Promise<void> {
       await send({ type: 'e2e:addNote', page: 2, x: 100, y: 200, text: 'First <b>note</b>\nsecond line' });
       let state = await send({ type: 'e2e:addNote', page: 3, x: 120, y: 300, text: 'Second' });
       assert.strictEqual(state.pins.length, 2, 'two pins');
-      assert.strictEqual(state.badge, '☑ 2');
+      assert.strictEqual(state.badge, '2');
       const [first, second] = saved();
 
       state = await send({ type: 'e2e:markDone', id: first.id, done: true, via: 'editor' });
-      assert.strictEqual(state.badge, '☑ 1');
+      assert.strictEqual(state.badge, '1');
       assert.strictEqual(state.pins.find((p) => p.id === first.id)?.done, true, 'the first pin shows done');
       assert.strictEqual(state.pins.find((p) => p.id === second.id)?.done, false, 'the second pin stays open');
       assert.strictEqual(typeof saved()[0].doneAt, 'string', 'the date is on disk');
@@ -213,7 +213,7 @@ export async function run(): Promise<void> {
       assert.deepStrictEqual(state.list.map((r) => r.id), [second.id], 'the done row is hidden');
 
       state = await send({ type: 'e2e:markDone', id: second.id, done: true, via: 'list' });
-      assert.strictEqual(state.badge, '☑ 0');
+      assert.strictEqual(state.badge, '0');
       assert.strictEqual(state.pins.length, 0, 'nothing left to show');
       assert.strictEqual(typeof saved()[1].doneAt, 'string');
 
@@ -227,10 +227,10 @@ export async function run(): Promise<void> {
 
       state = await send({ type: 'e2e:markDone', id: first.id, done: false, via: 'list' });
       assert.ok(!('doneAt' in saved()[0]), 'reopening removes the date');
-      assert.strictEqual(state.badge, '☑ 1');
+      assert.strictEqual(state.badge, '1');
 
       state = await send({ type: 'e2e:markDone', id: second.id, done: false, via: 'editor' });
-      assert.strictEqual(state.badge, '☑ 2');
+      assert.strictEqual(state.badge, '2');
       assert.ok(!('doneAt' in saved()[1]), 'reopening from the editor removes the date');
 
       // Typed but not saved: Mark done keeps the text, in the same write order.
@@ -242,7 +242,7 @@ export async function run(): Promise<void> {
       assert.strictEqual(saved()[1].text, 'Typed, then done', 'the typed text is on disk');
       assert.strictEqual(typeof saved()[1].doneAt, 'string', 'the done date is on disk');
       state = await send({ type: 'e2e:markDone', id: second.id, done: false, via: 'editor' });
-      assert.strictEqual(state.badge, '☑ 2');
+      assert.strictEqual(state.badge, '2');
 
       if (state.listOpen) {
         state = await send({ type: 'e2e:toggleList' });
