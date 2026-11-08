@@ -1,6 +1,7 @@
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import type { FromViewerMessage, PageRect, ToViewerMessage } from '../src/shared/messages';
+import type { Note } from '../src/shared/notes';
 import { toBytes } from '../src/shared/bytes';
 import { startBlobWorker } from '../src/shared/blobWorker';
 import { isDarkScheme, isDarkThemeKind, parseColorScheme } from '../src/shared/colorScheme';
@@ -16,6 +17,7 @@ type Zoom = 'page-width' | 'page-fit' | number;
 
 interface ViewState {
   zoom: Zoom;
+  notesVisible?: boolean;
 }
 
 interface PageView {
@@ -25,6 +27,7 @@ interface PageView {
   width: number;
   height: number;
   el: HTMLDivElement;
+  notesEl: HTMLDivElement;
   canvas: HTMLCanvasElement | null;
   renderedScale: number;
   task: RenderTask | null;
@@ -111,7 +114,7 @@ async function load(data: Uint8Array): Promise<void> {
   for (let i = 1; i <= next.numPages; i++) {
     const page = await next.getPage(i);
     const vp = page.getViewport({ scale: 1 });
-    views.push({ index: i - 1, page, width: vp.width, height: vp.height, el: null!, canvas: null, renderedScale: 0, task: null });
+    views.push({ index: i - 1, page, width: vp.width, height: vp.height, el: null!, notesEl: null!, canvas: null, renderedScale: 0, task: null });
   }
   if (seq !== loadSeq) {
     void next.loadingTask.destroy();
@@ -141,10 +144,19 @@ function rebuildPageElements(): void {
     el.dataset.index = String(view.index);
     setPageSize(el, view);
     view.el = el;
+    view.notesEl = document.createElement('div');
+    view.notesEl.className = 'notes-layer';
+    el.appendChild(view.notesEl);
     fragment.appendChild(el);
     visibility.observe(el);
   }
+  // A build can finish while a note is being written; the editor moves to the new pages with its text.
+  const typing = document.activeElement === noteText;
   pagesEl.replaceChildren(fragment);
+  renderNotes();
+  if (typing && editing) {
+    noteText.focus({ preventScroll: true });
+  }
 }
 
 // ---- Rendering ----
@@ -219,7 +231,7 @@ function resolveScale(): number {
 function applyZoom(next: Zoom): void {
   const anchor = captureAnchor();
   zoom = next;
-  vscode.setState({ zoom });
+  saveState();
   syncZoomSelect();
   scale = resolveScale();
   for (const view of pages) {
@@ -325,11 +337,11 @@ async function reportReveal(view: PageView, target: PageRect, height: number): P
   vscode.postMessage({ type: 'e2e:revealed', target, inView: top >= 0 && bottom <= viewer.clientHeight });
 }
 
-/** Clicks like a user would: scrolls the point into view and dispatches a modifier-click there. */
-async function e2eClick(page: number, x: number, y: number): Promise<void> {
+/** Clicks like a user would: scrolls the point into view and dispatches a mouse event there. */
+async function e2eMouse(type: 'click' | 'dblclick', page: number, x: number, y: number, init: MouseEventInit): Promise<void> {
   const view = pages[page - 1];
   if (!view) {
-    report(`e2e:click: no page ${page}`);
+    report(`e2e:${type}: no page ${page}`);
     return;
   }
   viewer.scrollTop = view.el.offsetTop + y * scale - viewer.clientHeight / 2;
@@ -338,8 +350,236 @@ async function e2eClick(page: number, x: number, y: number): Promise<void> {
   const clientX = rect.left + x * scale;
   const clientY = rect.top + y * scale;
   const target = document.elementFromPoint(clientX, clientY) ?? view.el;
-  target.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX, clientY, [modifierKey]: true }));
+  target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX, clientY, ...init }));
 }
+
+function e2eType(text: string): void {
+  noteText.value = text;
+  noteText.dispatchEvent(new Event('input', { bubbles: true }));
+  noteSave.click();
+}
+
+async function e2eAddNote(page: number, x: number, y: number, text: string): Promise<void> {
+  await e2eMouse('dblclick', page, x, y, {});
+  e2eType(text);
+}
+
+function e2eEditNote(id: string, text: string | null): void {
+  pagesEl.querySelector<HTMLElement>(`.note-pin[data-id="${CSS.escape(id)}"]`)?.click();
+  if (text === null) {
+    noteDelete.click();
+  } else {
+    e2eType(text);
+  }
+}
+
+function e2eReportNotes(): void {
+  const pins = (notes ?? []).flatMap((note) => {
+    const pin = pagesEl.querySelector<HTMLElement>(`.note-pin[data-id="${CSS.escape(note.id)}"]`);
+    if (!pin) {
+      return [];
+    }
+    const box = pin.getBoundingClientRect();
+    const page = pin.closest<HTMLElement>('.page')!.getBoundingClientRect();
+    return [{ id: note.id, page: note.page, x: (box.left + box.width / 2 - page.left) / scale, y: (box.top + box.height / 2 - page.top) / scale, text: note.text }];
+  });
+  vscode.postMessage({ type: 'e2e:notes', enabled: notes !== null, pins });
+}
+
+// ---- Notes ----
+
+/** The notes of the open PDF, or null for a PDF that has none, like the output of Compare Versions. */
+let notes: Note[] | null = null;
+let notesVisible = vscode.getState()?.notesVisible ?? true;
+/** What the editor is open on. `id` is null for a note not saved yet. */
+let editing: { id: string | null; page: number; x: number; y: number; original: string } | null = null;
+
+const notesButton = document.getElementById('toggle-notes') as HTMLButtonElement;
+const notesHint = document.getElementById('notes-hint') as HTMLSpanElement;
+
+const noteEditor = document.createElement('div');
+noteEditor.className = 'note-editor';
+const noteText = document.createElement('textarea');
+noteText.rows = 4;
+noteText.setAttribute('aria-label', 'Note text');
+const noteDelete = editorButton('Delete');
+const noteCancel = editorButton('Cancel');
+const noteSave = editorButton('Save');
+noteSave.classList.add('primary');
+const noteActions = document.createElement('div');
+noteActions.className = 'note-actions';
+const noteActionsGap = document.createElement('span');
+noteActionsGap.className = 'spacer';
+noteActions.append(noteDelete, noteActionsGap, noteCancel, noteSave);
+noteEditor.append(noteText, noteActions);
+
+function editorButton(label: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  return button;
+}
+
+function saveState(): void {
+  vscode.setState({ zoom, notesVisible });
+}
+
+/** A position on the page as a percentage, so that a pin stays in place at any zoom. */
+function percent(value: number, size: number): number {
+  return Math.min(100, Math.max(0, (value / size) * 100));
+}
+
+function renderNotes(): void {
+  for (const view of pages) {
+    view.notesEl.querySelectorAll('.note-pin').forEach((pin) => pin.remove());
+  }
+  // A note on a page the document no longer has stays in the file, for when the page comes back.
+  for (const note of notes ?? []) {
+    const view = pages[note.page - 1];
+    if (view) {
+      view.notesEl.appendChild(createPin(note, view));
+    }
+  }
+  if (editing && (notes === null || (editing.id !== null && !notes.some((n) => n.id === editing!.id)))) {
+    closeEditor();
+  }
+  placeEditor();
+  syncNotesUi();
+  if (e2e) {
+    e2eReportNotes();
+  }
+}
+
+function createPin(note: Note, view: PageView): HTMLButtonElement {
+  const pin = document.createElement('button');
+  pin.type = 'button';
+  pin.className = 'note-pin';
+  pin.dataset.id = note.id;
+  pin.title = note.text;
+  pin.setAttribute('aria-label', `Note: ${note.text}`);
+  pin.style.left = `${percent(note.x, view.width)}%`;
+  pin.style.top = `${percent(note.y, view.height)}%`;
+  pin.addEventListener('click', (event) => {
+    // A modifier-click goes on to the page's handler and jumps to the source.
+    if (!event[modifierKey]) {
+      openEditor({ id: note.id, page: note.page, x: note.x, y: note.y, original: note.text });
+    }
+  });
+  pin.addEventListener('dblclick', (event) => event.stopPropagation());
+  return pin;
+}
+
+function syncNotesUi(): void {
+  const hasNotes = notes !== null;
+  notesButton.hidden = !hasNotes;
+  notesHint.hidden = !hasNotes;
+  document.body.classList.toggle('notes-hidden', !notesVisible);
+  notesButton.setAttribute('aria-pressed', String(notesVisible));
+  notesButton.title = notesVisible ? 'Hide notes' : 'Show notes';
+}
+
+/** True while the editor holds text that would be lost by opening something else. */
+function holdsUnsavedText(): boolean {
+  return editing !== null && noteText.value !== editing.original;
+}
+
+function openEditor(target: NonNullable<typeof editing>): void {
+  if (holdsUnsavedText()) {
+    noteText.focus();
+    return;
+  }
+  editing = target;
+  noteText.value = target.original;
+  noteDelete.hidden = target.id === null;
+  noteSave.disabled = !target.original.trim();
+  placeEditor();
+  noteText.focus();
+}
+
+function closeEditor(): void {
+  editing = null;
+  noteEditor.remove();
+}
+
+function placeEditor(): void {
+  if (!editing || pages.length === 0) {
+    return;
+  }
+  const view = pages[Math.min(editing.page, pages.length) - 1];
+  const left = percent(editing.x, view.width);
+  const top = percent(editing.y, view.height);
+  noteEditor.style.left = `${left}%`;
+  noteEditor.style.top = `${top}%`;
+  noteEditor.classList.toggle('flip-x', left > 55);
+  noteEditor.classList.toggle('flip-y', top > 65);
+  if (noteEditor.parentElement !== view.notesEl) {
+    view.notesEl.appendChild(noteEditor);
+  }
+}
+
+function saveEditor(): void {
+  const text = noteText.value;
+  if (!editing || !text.trim()) {
+    return;
+  }
+  const { id, page, x, y } = editing;
+  vscode.postMessage(id === null ? { type: 'addNote', page, x, y, text } : { type: 'updateNote', id, text });
+  closeEditor();
+}
+
+noteText.addEventListener('input', () => {
+  noteSave.disabled = !noteText.value.trim();
+});
+noteSave.addEventListener('click', saveEditor);
+noteCancel.addEventListener('click', closeEditor);
+noteDelete.addEventListener('click', () => {
+  if (editing?.id) {
+    vscode.postMessage({ type: 'deleteNote', id: editing.id });
+  }
+  closeEditor();
+});
+noteEditor.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeEditor();
+  } else if (event.key === 'Enter' && event[modifierKey]) {
+    event.preventDefault();
+    saveEditor();
+  }
+});
+// Clicks in the editor are not clicks on the page: no new note and no jump to the source.
+noteEditor.addEventListener('click', (event) => event.stopPropagation());
+noteEditor.addEventListener('dblclick', (event) => event.stopPropagation());
+
+notesButton.addEventListener('click', () => {
+  if (holdsUnsavedText()) {
+    noteText.focus();
+    return;
+  }
+  closeEditor();
+  notesVisible = !notesVisible;
+  saveState();
+  syncNotesUi();
+});
+
+pagesEl.addEventListener('dblclick', (event) => {
+  const pageEl = (event.target as HTMLElement).closest<HTMLElement>('.page');
+  if (!pageEl || notes === null || event[modifierKey]) {
+    return;
+  }
+  if (!notesVisible) {
+    notesVisible = true;
+    saveState();
+    syncNotesUi();
+  }
+  const rect = pageEl.getBoundingClientRect();
+  openEditor({
+    id: null,
+    page: Number(pageEl.dataset.index) + 1,
+    x: (event.clientX - rect.left) / scale,
+    y: (event.clientY - rect.top) / scale,
+    original: '',
+  });
+});
 
 pagesEl.addEventListener('click', (event) => {
   if (!event[modifierKey]) {
@@ -421,6 +661,8 @@ window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
   switch (msg.type) {
     case 'load': {
       const bytes = toBytes(msg.data);
+      notes = msg.notes;
+      renderNotes();
       if (bytes) {
         void load(bytes);
       } else {
@@ -435,13 +677,34 @@ window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
       body.scheme = msg.scheme;
       applyColorScheme();
       break;
+    case 'notes':
+      notes = msg.notes;
+      renderNotes();
+      break;
     case 'e2e:click':
       if (e2e) {
-        void e2eClick(msg.page, msg.x, msg.y);
+        void e2eMouse('click', msg.page, msg.x, msg.y, { [modifierKey]: true });
+      }
+      break;
+    case 'e2e:addNote':
+      if (e2e) {
+        void e2eAddNote(msg.page, msg.x, msg.y, msg.text);
+      }
+      break;
+    case 'e2e:editNote':
+      if (e2e) {
+        e2eEditNote(msg.id, msg.text);
+      }
+      break;
+    case 'e2e:zoom':
+      if (e2e) {
+        applyZoom(msg.zoom);
+        e2eReportNotes();
       }
       break;
   }
 });
 
+syncNotesUi();
 syncZoomSelect();
 vscode.postMessage({ type: 'ready' });

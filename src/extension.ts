@@ -15,6 +15,7 @@ import { BuildStatus } from './statusBar';
 import { toWorkspacePath } from './synctex/paths';
 import { SyncTex } from './synctex/synctex';
 import { PdfPanel } from './viewer/pdfPanel';
+import { notesFilePath } from './shared/notes';
 import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setupCheck';
 import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
@@ -153,9 +154,9 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     }
     if (result.pdfFile) {
       if (pdfPanel.isOpen) {
-        await pdfPanel.refresh(result.pdfFile);
+        await pdfPanel.refresh(result.pdfFile, notesFilePath(main));
       } else if (result.success && settings.autoOpenViewer()) {
-        await pdfPanel.show(result.pdfFile);
+        await pdfPanel.show(result.pdfFile, true, notesFilePath(main));
       }
     }
     if (!result.success) {
@@ -186,7 +187,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     }
     const pdf = pdfFor(main);
     if (fs.existsSync(pdf)) {
-      await pdfPanel.show(pdf, false);
+      await pdfPanel.show(pdf, false, notesFilePath(main));
     } else {
       await build(main);
     }
@@ -204,7 +205,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
       return;
     }
     if (pdfPanel.currentPdf !== pdf) {
-      await pdfPanel.show(pdf);
+      await pdfPanel.show(pdf, true, notesFilePath(main));
     }
     const pos = editor.selection.active;
     try {

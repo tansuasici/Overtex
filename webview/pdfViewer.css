@@ -78,6 +78,12 @@ body {
   }
 }
 
+@media (max-width: 640px) {
+  #notes-hint {
+    display: none;
+  }
+}
+
 #viewer {
   position: absolute;
   inset: var(--toolbar-height) 0 0 0;
@@ -137,6 +143,114 @@ body {
   background: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 200, 0, 0.4));
   border-radius: 2px;
   animation: synctex-fade 1.6s ease-out forwards;
+}
+
+/* Page clicks pass through the layer to the page; only the pins and the editor take them. */
+.notes-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.notes-hidden .notes-layer {
+  display: none;
+}
+
+.note-pin {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: pointer;
+  background: #f2c037;
+  border: 1px solid #8a6500;
+  border-radius: 50% 50% 50% 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.note-pin:hover {
+  background: #ffd75e;
+}
+
+.note-pin:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.note-editor {
+  --offset-x: 10px;
+  --offset-y: 10px;
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  width: 260px;
+  padding: 8px;
+  transform: translate(var(--offset-x), var(--offset-y));
+  pointer-events: auto;
+  background: var(--vscode-editorWidget-background);
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-editorWidget-border, rgba(127, 127, 127, 0.5));
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+}
+
+.note-editor.flip-x {
+  --offset-x: calc(-100% - 10px);
+}
+
+.note-editor.flip-y {
+  --offset-y: calc(-100% - 10px);
+}
+
+.note-editor textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 6px;
+  resize: vertical;
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+}
+
+.note-editor textarea:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.note-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.note-actions button {
+  padding: 2px 8px;
+  font: inherit;
+  cursor: pointer;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  background: var(--vscode-button-secondaryBackground, transparent);
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+}
+
+.note-actions button.primary {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.note-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.note-actions button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 
 @keyframes synctex-fade {

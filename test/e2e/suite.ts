@@ -106,6 +106,69 @@ export async function run(): Promise<void> {
   await step('forward search: \\input file line -> page 3', () => forward(part, 1, 3));
   await step('inverse search: click on page 2 -> main.tex:5', () => inverse(targets['main.tex'], main, 4));
   await step('inverse search: click on page 3 -> chapters/part.tex:2', () => inverse(targets['part.tex'], part, 1));
+  await step('notes: add, keep through a rebuild and zoom, edit, delete', async () => {
+    const file = path.join(root, 'main.overtex-notes.json');
+    const saved = () => JSON.parse(fs.readFileSync(file, 'utf8')).notes as { id: string; page: number; x: number; y: number; text: string }[];
+    const near = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) < 1, `${what}: ${a} is not ${b}`);
+    try {
+      let shown = nextMessage(e2e, 'e2e:notes');
+      e2e.sendToViewer({ type: 'e2e:addNote', page: 2, x: 100, y: 200, text: 'Check this claim <b>here</b>' });
+      let pins = (await shown).pins;
+      assert.strictEqual(pins.length, 1, 'one pin');
+      const [note] = saved();
+      assert.strictEqual(note.page, 2);
+      assert.strictEqual(note.text, 'Check this claim <b>here</b>');
+      // Mouse events carry whole pixels, and a pixel is up to 2 points in the test's narrow window.
+      assert.ok(Math.abs(note.x - 100) < 2 && Math.abs(note.y - 200) < 2, `saved at ${note.x}, ${note.y}`);
+      near(pins[0].x, note.x, 'pin x');
+      near(pins[0].y, note.y, 'pin y');
+
+      shown = nextMessage(e2e, 'e2e:notes');
+      e2e.sendToViewer({ type: 'e2e:zoom', zoom: 1.5 });
+      pins = (await shown).pins;
+      near(pins[0].x, note.x, 'pin x at 150%');
+      near(pins[0].y, note.y, 'pin y at 150%');
+      shown = nextMessage(e2e, 'e2e:notes');
+      e2e.sendToViewer({ type: 'e2e:zoom', zoom: 'page-width' });
+      await shown;
+
+      const loaded = nextMessage(e2e, 'e2e:loaded', 120000);
+      await openAt(main, 0);
+      assert.ok((await api.build(main))?.success, 'rebuild succeeded');
+      await loaded;
+      shown = nextMessage(e2e, 'e2e:notes');
+      e2e.sendToViewer({ type: 'e2e:zoom', zoom: 'page-width' });
+      pins = (await shown).pins;
+      assert.strictEqual(pins.length, 1, 'the pin is back after the rebuild');
+      near(pins[0].y, note.y, 'pin y after the rebuild');
+
+      shown = nextMessage(e2e, 'e2e:notes');
+      e2e.sendToViewer({ type: 'e2e:editNote', id: note.id, text: 'Reworded' });
+      assert.strictEqual((await shown).pins[0].text, 'Reworded');
+      assert.strictEqual(saved()[0].text, 'Reworded');
+
+      // A broken file is left alone rather than replaced by the change.
+      const broken = '<<<<<<< HEAD\n';
+      fs.writeFileSync(file, broken);
+      shown = nextMessage(e2e, 'e2e:notes');
+      e2e.sendToViewer({ type: 'e2e:editNote', id: note.id, text: 'Not saved' });
+      await shown;
+      assert.strictEqual(fs.readFileSync(file, 'utf8'), broken, 'the broken file is untouched');
+      fs.writeFileSync(file, `${JSON.stringify({ version: 1, notes: [note] })}\n`);
+
+      // The viewer has no pins after the broken file, so a build brings the note back first.
+      const reloaded = nextMessage(e2e, 'e2e:loaded', 120000);
+      assert.ok((await api.build(main))?.success, 'rebuild succeeded');
+      await reloaded;
+      shown = nextMessage(e2e, 'e2e:notes');
+      e2e.sendToViewer({ type: 'e2e:editNote', id: note.id, text: null });
+      assert.strictEqual((await shown).pins.length, 0, 'no pin after delete');
+      assert.ok(!fs.existsSync(file), 'the file goes with the last note');
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
+  });
+
   // Last: these show a notification and open an editor, which would get in the way of the viewer steps above.
   await step('setup check finds latexmk and the engine', async () => {
     const report = await vscode.commands.executeCommand<import('../../src/latex/setup').SetupReport>('overtex.checkSetup');
@@ -160,16 +223,19 @@ export async function run(): Promise<void> {
     await vscode.workspace.fs.writeFile(vscode.Uri.file(old), Buffer.from(text.replace('\\begin{document}', '\\begin{document}\nA sentence only the old version has.\n')));
     await openAt(main, 0);
     const loaded = nextMessage(e2e!, 'e2e:loaded', 120000);
+    const notes = nextMessage(e2e!, 'e2e:notes', 120000);
     const result = await vscode.commands.executeCommand<import('../../src/latex/latexdiff').CompareResult>('overtex.compareVersions', { old: { file: old } });
     await vscode.workspace.fs.delete(vscode.Uri.file(old));
     if (!result) {
       // latexdiff is optional; CI installs it, so only a local run can get here.
       loaded.catch(() => undefined);
+      notes.catch(() => undefined);
       assert.ok(!process.env.OVERTEX_REQUIRE_TEX, 'latexdiff did not run');
       return;
     }
     assert.strictEqual(result.status, 'built');
     assert.ok((await loaded).pages >= 1);
+    assert.strictEqual((await notes).enabled, false, 'the marked-up PDF takes no notes');
   });
 
   await step('cite from Zotero adds the pick to the .bib and cites it', async () => {
