@@ -4,6 +4,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as http from 'http';
 import type { AddressInfo } from 'net';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { OvertexApi, OvertexE2e } from '../../src/api';
@@ -471,6 +472,81 @@ export async function run(): Promise<void> {
       fs.rmSync(closed, { force: true });
       fs.rmSync(opened, { force: true });
       await vscode.commands.executeCommand('overtex.labels.refresh');
+    }
+  });
+
+  await step('figures and CSV tables go in with their packages, outside images copied', async () => {
+    const root = vscode.workspace.workspaceFolders![0].uri.fsPath;
+    const scratch = path.join(root, 'insert.tex');
+    const csv = path.join(root, 'Ölçüm Sonuçları.csv');
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-e2e-img-'));
+    const image = path.join(outside, 'My Plot.png');
+    const mainDoc = await vscode.workspace.openTextDocument(main);
+    const mainBefore = mainDoc.getText();
+    try {
+      fs.writeFileSync(image, Buffer.from('89504e470d0a1a0a', 'hex'));
+      fs.writeFileSync(csv, '\uFEFFÖrnek;Değer\r\nA_1;1,5\r\nB;20\r\n');
+      fs.writeFileSync(scratch, '\n');
+
+      // Into the main file itself: the package line goes in above, and the figure still lands at the cursor.
+      const diagram = path.join(outside, 'Diagram.png');
+      fs.writeFileSync(diagram, Buffer.from('89504e470d0a1a0a', 'hex'));
+      const mainEditor = await vscode.window.showTextDocument(mainDoc, vscode.ViewColumn.One);
+      mainEditor.selection = new vscode.Selection(2, 0, 2, 0);
+      assert.ok(await e2e.insertFiles([vscode.Uri.file(diagram)]), 'the figure should go into main.tex');
+      await vscode.commands.executeCommand('leaveSnippet');
+      const mainLines = mainDoc.getText().split('\n');
+      assert.deepStrictEqual(mainLines.slice(0, 4), ['\\documentclass{article}', '\\usepackage{graphicx}', '\\begin{document}', '\\begin{figure}[htbp]'], mainDoc.getText());
+      assert.ok(mainDoc.getText().includes('\\end{figure}\nFirst page.'), mainDoc.getText());
+      const undo = new vscode.WorkspaceEdit();
+      undo.replace(mainDoc.uri, new vscode.Range(0, 0, mainDoc.lineCount, 0), mainBefore);
+      await vscode.workspace.applyEdit(undo);
+      fs.rmSync(path.join(root, 'figures'), { recursive: true, force: true });
+
+      const doc = await vscode.languages.setTextDocumentLanguage(await vscode.workspace.openTextDocument(scratch), 'latex');
+      const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+
+      editor.selection = new vscode.Selection(0, 0, 0, 0);
+      assert.ok(await e2e.insertFiles([vscode.Uri.file(image)]), 'the figure should go in');
+      await vscode.commands.executeCommand('leaveSnippet');
+      assert.ok(doc.getText().includes('\\includegraphics[width=0.8\\linewidth]{figures/my-plot.png}'), doc.getText());
+      assert.ok(doc.getText().includes('\\label{fig:my-plot}'), doc.getText());
+      assert.ok(fs.existsSync(path.join(root, 'figures', 'my-plot.png')), 'the image is copied next to the main file');
+      assert.ok(mainDoc.getText().includes('\\documentclass{article}\n\\usepackage{graphicx}\n'), mainDoc.getText());
+
+      const end = doc.lineAt(doc.lineCount - 1).range.end;
+      editor.selection = new vscode.Selection(end, end);
+      assert.ok(await e2e.insertFiles([vscode.Uri.file(csv)]), 'the table should go in');
+      await vscode.commands.executeCommand('leaveSnippet');
+      const text = doc.getText();
+      assert.ok(text.includes('\\begin{tabular}{lr}'), text);
+      assert.ok(text.includes('A\\_1 & 1,5 \\\\'), text);
+      assert.ok(text.includes('\\label{tab:olcum-sonuclari}'), text);
+      assert.ok(mainDoc.getText().includes('\\usepackage{graphicx}\n\\usepackage{booktabs}\n'), mainDoc.getText());
+
+      // Tab-separated text, as pasted from a spreadsheet, turns into a table in place.
+      const pasted = 'x\ty\n1\t2\n';
+      const at = doc.lineCount - 1;
+      await editor.edit((b) => b.insert(new vscode.Position(at, 0), pasted));
+      editor.selection = new vscode.Selection(at, 0, at + 2, 0);
+      await vscode.commands.executeCommand('overtex.insertTable');
+      await vscode.commands.executeCommand('leaveSnippet');
+      assert.ok(!doc.getText().includes('x\ty'), doc.getText());
+      assert.ok(doc.getText().includes('    x & y \\\\\n    \\midrule\n    1 & 2 \\\\'), doc.getText());
+      assert.ok(doc.getText().includes('\\label{tab:table}'), doc.getText());
+      assert.strictEqual(mainDoc.getText().match(/booktabs/g)?.length, 1, 'booktabs is not added twice');
+
+      await vscode.commands.executeCommand('workbench.action.files.save');
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    } finally {
+      const restore = new vscode.WorkspaceEdit();
+      restore.replace(mainDoc.uri, new vscode.Range(0, 0, mainDoc.lineCount, 0), mainBefore);
+      await vscode.workspace.applyEdit(restore);
+      await mainDoc.save();
+      fs.rmSync(scratch, { force: true });
+      fs.rmSync(csv, { force: true });
+      fs.rmSync(path.join(root, 'figures'), { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
     }
   });
 

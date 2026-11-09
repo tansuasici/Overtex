@@ -152,6 +152,16 @@
         "category": "Overtex"
       },
       {
+        "command": "overtex.insertTable",
+        "title": "Insert Table from CSV",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.insertFigure",
+        "title": "Insert Figure",
+        "category": "Overtex"
+      },
+      {
         "command": "overtex.citeFromZotero",
         "title": "Cite from Zotero",
         "category": "Overtex"

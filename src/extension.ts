@@ -5,6 +5,7 @@ import * as path from 'path';
 import type { OvertexApi, OvertexE2e } from './api';
 import { BibIndex } from './latex/bibIndex';
 import { registerLabels } from './labels';
+import { registerInsertHelpers } from './insertHelpers';
 import { registerLibrary } from './library';
 import type { E2eFromViewerMessage } from './shared/messages';
 import { buildSettings, settings } from './config';
@@ -81,6 +82,10 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const papers = registerLibrary(context, { index: bibIndex, mainFile, userAgent, showPdf: (pdf) => pdfPanel.show(pdf) });
   const labels = registerLabels(context, {
     useFallbackProviders: () => !server.isRunning && !vscode.extensions.getExtension(TEXLAB_EXTENSION_ID),
+  });
+  const insertHelpers = registerInsertHelpers(context, {
+    mainFile,
+    labelKeys: async () => (await labels.groups()).flatMap((g) => g.keys),
   });
   context.subscriptions.push(bibCheck);
   context.subscriptions.push(submission, onDidStartBuild.event(() => submission.clear()));
@@ -338,6 +343,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     restoreViewer: (panel) => pdfPanel.restore(panel),
     paperGroups: () => papers.groups(),
     labelGroups: () => labels.groups(),
+    insertFiles: (files) => insertHelpers.insertFiles(files),
   };
 
   return {

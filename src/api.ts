@@ -32,4 +32,6 @@ export interface OvertexE2e {
   paperGroups(): Promise<{ group: string; keys: string[] }[]>;
   /** What the Labels panel lists: its groups in order, with the label keys in order. */
   labelGroups(): Promise<{ group: string; keys: string[] }[]>;
+  /** Inserts what dropping `files` at the cursor of the active .tex editor inserts. False if nothing was inserted. */
+  insertFiles(files: vscode.Uri[]): Promise<boolean>;
 }
