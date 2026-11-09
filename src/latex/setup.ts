@@ -131,7 +131,8 @@ export interface InstallHint {
 
 export function texInstallHint(platform: NodeJS.Platform, tool: BuildTool = 'latexmk'): InstallHint {
   if (tool === 'tectonic') {
-    return { text: 'Install Tectonic, then restart VS Code.', url: 'https://tectonic-typesetting.github.io/book/latest/installation/' };
+    const brew = platform === 'darwin' ? ' (`brew install tectonic`)' : '';
+    return { text: `Install Tectonic${brew}, then restart VS Code.`, url: TECTONIC_INSTALL_URL };
   }
   if (tool === 'docker') {
     return { text: 'Install Docker, then restart VS Code.', url: 'https://docs.docker.com/get-docker/' };
@@ -152,6 +153,67 @@ export function texInstallHint(platform: NodeJS.Platform, tool: BuildTool = 'lat
     text: 'Install TeX Live from your package manager (for example `sudo apt install texlive-latex-extra latexmk`, or `sudo dnf install texlive-scheme-medium latexmk`), then restart VS Code.',
     url: 'https://www.tug.org/texlive/',
   };
+}
+
+export const TECTONIC_INSTALL_URL = 'https://tectonic-typesetting.github.io/book/latest/installation/';
+
+/**
+ * What picking a setup option does; `then` is the build tool to switch to. Nothing is installed
+ * without the user pressing Enter in a terminal.
+ */
+export type SetupAction =
+  | { kind: 'switch-tool'; tool: BuildTool }
+  | { kind: 'terminal'; command: string; then: BuildTool }
+  | { kind: 'open-url'; url: string; then: BuildTool };
+
+export interface SetupOption {
+  label: string;
+  detail: string;
+  action: SetupAction;
+}
+
+export interface SetupOptionsInput {
+  platform: NodeJS.Platform;
+  /** The build tool currently configured. */
+  tool: BuildTool;
+  /** Absolute paths of programs found on PATH. */
+  found: { tectonic?: string; docker?: string; brew?: string };
+}
+
+const TECTONIC_DETAIL =
+  'A single program that downloads only the packages a document uses. Always uses XeTeX; Export for arXiv and Check Submission are not available.';
+
+/**
+ * Ways to get a working build when the configured tool is missing, best first. Tectonic leads
+ * because it is one small download. Only the Homebrew command is offered to run: the official
+ * one-line installers put the binary in the current directory, which would be the user's project.
+ */
+export function setupOptions(input: SetupOptionsInput): SetupOption[] {
+  const { platform, tool, found } = input;
+  const options: SetupOption[] = [];
+  if (found.tectonic) {
+    if (tool !== 'tectonic') {
+      options.push({ label: 'Use Tectonic', detail: `Found at ${found.tectonic}. ${TECTONIC_DETAIL}`, action: { kind: 'switch-tool', tool: 'tectonic' } });
+    }
+  } else if (found.brew) {
+    options.push({
+      label: 'Install Tectonic with Homebrew (recommended)',
+      detail: `Types \`brew install tectonic\` into a terminal for you to run, and builds with Tectonic. ${TECTONIC_DETAIL}`,
+      action: { kind: 'terminal', command: 'brew install tectonic', then: 'tectonic' },
+    });
+  } else {
+    options.push({ label: 'Install Tectonic (recommended)', detail: `Opens the Tectonic installation guide. ${TECTONIC_DETAIL}`, action: { kind: 'open-url', url: TECTONIC_INSTALL_URL, then: 'tectonic' } });
+  }
+  if (found.docker && tool !== 'docker') {
+    options.push({
+      label: 'Use Docker',
+      detail: `Found at ${found.docker}. Builds with latexmk in a TeX Live image; the first build downloads the image.`,
+      action: { kind: 'switch-tool', tool: 'docker' },
+    });
+  }
+  const dist = texInstallHint(platform, 'latexmk');
+  options.push({ label: 'Install a full TeX distribution', detail: dist.text, action: { kind: 'open-url', url: dist.url, then: 'latexmk' } });
+  return options;
 }
 
 export const TEXLAB_INSTALL_URL = 'https://github.com/latex-lsp/texlab#installation';

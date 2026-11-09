@@ -2,8 +2,9 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 
 import { buildSettings, settings } from './config';
-import { toolPathSetting } from './latex/builder';
-import { SetupReport, TEXLAB_INSTALL_URL, checkSetup, formatReport, texInstallHint } from './latex/setup';
+import { BuildTool, toolPathSetting } from './latex/builder';
+import { findExecutable } from './latex/executable';
+import { SetupOption, SetupReport, TEXLAB_INSTALL_URL, checkSetup, formatReport, setupOptions, texInstallHint } from './latex/setup';
 import { TEXLAB_EXTENSION_ID } from './latex/texlabConfig';
 
 export const WALKTHROUGH_ID = 'tansuasici.overtex#overtex.gettingStarted';
@@ -97,13 +98,69 @@ async function notify(report: SetupReport, output: vscode.OutputChannel): Promis
   }
 
   const hint = texInstallHint(process.platform, report.tool);
-  const choice = await vscode.window.showWarningMessage(`Overtex: ${missing} not found. ${hint.text}`, 'How to Install', 'Re-check', showDetails);
-  if (choice === 'How to Install') {
-    void vscode.env.openExternal(vscode.Uri.parse(hint.url));
+  const setUp = 'Set Up…';
+  const choice = await vscode.window.showWarningMessage(`Overtex: ${missing} not found. ${hint.text}`, setUp, 'Re-check', showDetails);
+  if (choice === setUp) {
+    await chooseSetup(report.tool, output);
   } else if (choice === 'Re-check') {
     checkSetupCommand(output);
   } else if (choice === showDetails) {
     output.show(true);
+  }
+}
+
+/** Offers the ways to get a working build: Tectonic, Docker when present, or a full TeX distribution. */
+async function chooseSetup(tool: BuildTool, output: vscode.OutputChannel): Promise<void> {
+  const build = buildSettings();
+  const find = (command: string) => findExecutable(command, process.env, process.platform, isFile);
+  const options = setupOptions({
+    platform: process.platform,
+    tool,
+    found: { tectonic: find(build.tectonic), docker: find(build.docker), brew: process.platform === 'win32' ? undefined : find('brew') },
+  });
+  const picked = await vscode.window.showQuickPick(
+    options.map((o) => ({ label: o.label, detail: o.detail, option: o })),
+    { title: 'Overtex: Set Up LaTeX Builds', placeHolder: 'How should Overtex build your documents?', matchOnDetail: true }
+  );
+  if (picked) {
+    await runSetupOption(picked.option, output);
+  }
+}
+
+async function useTool(tool: BuildTool): Promise<void> {
+  // Which TeX is installed is a property of the machine, so the choice goes to user settings,
+  // unless the workspace sets the tool itself and would override that.
+  const cfg = vscode.workspace.getConfiguration('overtex');
+  const target = cfg.inspect('latex.tool')?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+  await cfg.update('latex.tool', tool, target);
+}
+
+async function runSetupOption(option: SetupOption, output: vscode.OutputChannel): Promise<void> {
+  const action = option.action;
+  if (action.kind === 'switch-tool') {
+    await useTool(action.tool);
+    checkSetupCommand(output);
+  } else if (action.kind === 'terminal') {
+    // Typed, not run: pressing Enter in the terminal is the user's go-ahead.
+    const terminal = vscode.window.createTerminal({ name: 'Overtex Setup' });
+    terminal.show();
+    terminal.sendText(action.command, false);
+    await useTool(action.then);
+    const recheck = 'Re-check';
+    const choice = await vscode.window.showInformationMessage(
+      `Overtex: press Enter in the terminal to run \`${action.command}\`. Builds now use ${action.then}; re-check once it finishes.`,
+      recheck
+    );
+    if (choice === recheck) {
+      checkSetupCommand(output);
+    }
+  } else {
+    void vscode.env.openExternal(vscode.Uri.parse(action.url));
+    await useTool(action.then);
+    const recheck = 'Re-check';
+    if ((await vscode.window.showInformationMessage('Overtex: after installing, restart VS Code or re-check.', recheck)) === recheck) {
+      checkSetupCommand(output);
+    }
   }
 }
 

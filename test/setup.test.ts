@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SetupInput, checkSetup, formatReport, standardTexDirs, texInstallHint } from '../src/latex/setup';
+import { SetupInput, checkSetup, formatReport, setupOptions, standardTexDirs, texInstallHint } from '../src/latex/setup';
 
 function input(files: string[], overrides: Partial<SetupInput> = {}): SetupInput {
   const set = new Set(files);
@@ -136,5 +136,42 @@ describe('texInstallHint', () => {
     expect(texInstallHint('darwin').text).toContain('MacTeX');
     expect(texInstallHint('win32').text).toContain('MiKTeX');
     expect(texInstallHint('linux').text).toContain('apt');
+  });
+});
+
+describe('setupOptions', () => {
+  const kinds = (o: ReturnType<typeof setupOptions>) => o.map((x) => [x.action.kind, 'then' in x.action ? x.action.then : x.action.tool]);
+
+  it('switches to an installed Tectonic first', () => {
+    const options = setupOptions({ platform: 'darwin', tool: 'latexmk', found: { tectonic: '/opt/homebrew/bin/tectonic', brew: '/opt/homebrew/bin/brew' } });
+    expect(kinds(options)).toEqual([['switch-tool', 'tectonic'], ['open-url', 'latexmk']]);
+  });
+
+  it('types brew install tectonic into a terminal when Homebrew is there', () => {
+    const [first] = setupOptions({ platform: 'darwin', tool: 'latexmk', found: { brew: '/opt/homebrew/bin/brew' } });
+    expect(first.action).toEqual({ kind: 'terminal', command: 'brew install tectonic', then: 'tectonic' });
+  });
+
+  it('opens the Tectonic guide without Homebrew and never offers the one-line installers', () => {
+    const options = setupOptions({ platform: 'win32', tool: 'latexmk', found: {} });
+    expect(options[0].action).toMatchObject({ kind: 'open-url', then: 'tectonic' });
+    expect(JSON.stringify(options)).not.toMatch(/curl|iex|drop-sh|drop-ps1/);
+    expect(options[options.length - 1].action).toMatchObject({ kind: 'open-url', url: 'https://miktex.org/download', then: 'latexmk' });
+  });
+
+  it('offers Docker only when it is installed and not already the tool', () => {
+    expect(kinds(setupOptions({ platform: 'linux', tool: 'latexmk', found: {} }))).not.toContainEqual(['switch-tool', 'docker']);
+    expect(kinds(setupOptions({ platform: 'linux', tool: 'latexmk', found: { docker: '/usr/bin/docker' } }))).toContainEqual(['switch-tool', 'docker']);
+    expect(kinds(setupOptions({ platform: 'linux', tool: 'docker', found: { docker: '/usr/bin/docker' } }))).not.toContainEqual(['switch-tool', 'docker']);
+  });
+
+  it('still offers installing Tectonic when it is the tool but missing', () => {
+    const [first] = setupOptions({ platform: 'linux', tool: 'tectonic', found: {} });
+    expect(first.action).toMatchObject({ kind: 'open-url', then: 'tectonic' });
+  });
+
+  it('mentions brew in the macOS Tectonic hint', () => {
+    expect(texInstallHint('darwin', 'tectonic').text).toContain('brew install tectonic');
+    expect(texInstallHint('linux', 'tectonic').text).not.toContain('brew');
   });
 });

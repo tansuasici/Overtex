@@ -12,4 +12,4 @@ Overtex builds with **latexmk** and a TeX engine (pdfLaTeX, XeLaTeX or LuaLaTeX)
 
 If TeX is installed somewhere unusual, set `overtex.latex.latexmkPath` to the full path.
 
-Prefer not to install a distribution? Set `overtex.latex.tool` to `tectonic` (install [Tectonic](https://tectonic-typesetting.github.io/book/latest/installation/); it downloads packages as needed) or `docker` (needs Docker, and builds in a TeX Live image).
+Prefer not to install a distribution? [Tectonic](https://tectonic-typesetting.github.io/book/latest/installation/) is a single program that downloads the packages a document uses as needed (`brew install tectonic` on macOS). Docker builds in a TeX Live image instead. **Check Installation** offers both under **Set Up…** when nothing is found, and sets `overtex.latex.tool` for you; you can also set it to `tectonic` or `docker` yourself.

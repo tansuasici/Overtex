@@ -62,7 +62,7 @@ A TeX distribution that provides `latexmk`, `synctex` and `texcount`: [TeX Live]
 
 **Overtex: Check LaTeX Installation** looks for latexmk, the selected engine, synctex and TexLab, and says what is missing and how to install it on your system. It also notices TeX that is installed but not yet on VS Code's `PATH`, which usually means VS Code needs a restart. If latexmk is missing when Overtex starts, it offers this check once. **Overtex: Getting Started** opens a short walkthrough: install, open a document, build, preview and SyncTeX.
 
-Or no TeX distribution at all, with Tectonic or Docker. See [Build tools](#build-tools).
+Or no TeX distribution at all, with Tectonic or Docker. See [Build tools](#build-tools). When nothing to build with is found, the check's **Set Up…** button offers the choices: use Tectonic or Docker if they are already installed, install Tectonic (on macOS and Linux with Homebrew it types `brew install tectonic` into a terminal for you to run; otherwise it opens the Tectonic installation guide), or install a full TeX distribution. Overtex never installs anything by itself, and switches `overtex.latex.tool` in your user settings to match what you picked.
 
 Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live checking and completion (`brew install texlab`, `cargo install texlab`, or a release binary on `PATH`). If the official TexLab extension is installed, Overtex leaves the language server to it.
 
