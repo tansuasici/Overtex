@@ -1,0 +1,6 @@
+{
+  "name": "Overtex",
+  "icon": "book",
+  "settings": "{\"settings\":\"{\\n  \\\"workbench.startupEditor\\\": \\\"none\\\",\\n  \\\"workbench.tips.enabled\\\": false,\\n  \\\"workbench.layoutControl.enabled\\\": false,\\n  \\\"workbench.secondarySideBar.defaultVisibility\\\": \\\"hidden\\\",\\n  \\\"chat.disableAIFeatures\\\": true,\\n  \\\"breadcrumbs.enabled\\\": false,\\n  \\\"editor.minimap.enabled\\\": false,\\n  \\\"editor.stickyScroll.enabled\\\": false,\\n  \\\"editor.wordWrap\\\": \\\"on\\\",\\n  \\\"editor.fontSize\\\": 15,\\n  \\\"editor.lineHeight\\\": 1.6,\\n  \\\"editor.renderLineHighlight\\\": \\\"gutter\\\"\\n}\"}",
+  "extensions": "[{\"identifier\":{\"id\":\"tansuasici.overtex\"},\"displayName\":\"Overtex\",\"preRelease\":false}]"
+}

@@ -24,6 +24,24 @@ code --install-extension tansuasici.overtex
 
 You also need a TeX distribution; see [Requirements](#requirements).
 
+### A separate, uncluttered profile
+
+To write LaTeX in a quiet window without changing your usual VS Code setup, import the Overtex [profile](https://code.visualstudio.com/docs/configure/profiles). It installs Overtex, turns off the minimap, breadcrumbs, sticky scroll, tips and the built-in AI chat, wraps long lines, and sets a slightly larger font. The Activity Bar and status bar stay, since the Papers and Labels views and the word count live there. Build tool and executable paths are left at their defaults, so run **Overtex: Check LaTeX Installation** once after importing.
+
+1. Open the **Command Palette** and run **Profiles: Import Profile…**.
+2. Paste this URL and press Enter (or choose **Select File…** and pick [`profile/Overtex.code-profile`](profile/Overtex.code-profile) from a clone):
+
+   ```text
+   https://raw.githubusercontent.com/tansuasici/Overtex/main/profile/Overtex.code-profile
+   ```
+
+3. Choose **Create**. VS Code installs Overtex into the new **Overtex** profile; your other profiles are untouched.
+4. Switch a window to it from **Profile** in the Manage (gear) menu, and back the same way. Open your paper's folder and trust it when asked, since Overtex does not build in Restricted Mode.
+
+![A LaTeX file and its PDF preview in the Overtex profile: no minimap, breadcrumbs or chat](media/profile.png)
+
+Overleaf Connect is not part of the profile. Install it into the profile yourself if you work on Overleaf projects; see [Overleaf (optional)](#overleaf-optional).
+
 ## Quick start
 
 1. Run **Overtex: Check LaTeX Installation** to confirm latexmk and your engine are found.
