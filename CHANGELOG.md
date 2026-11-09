@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-09)
 
 - **Papers panel**: an Overtex view in the activity bar lists what the workspace's `.bib` files hold, grouped into Cited and Not cited and sorted by year, author or title. Each paper can be cited at the cursor, opened as a PDF (from its `file` field, else `papers/<key>.pdf` beside the `.bib`), shown in the bibliography or opened on the web. arXiv papers can be downloaded to `papers/` on request. Add Paper takes a DOI, an arXiv ID or BibTeX from the clipboard. Add Citation, Check Bibliography and the PDF download are the only features that use the internet, and only when run.
 - **PDF notes**: double-click a page in the preview to pin a note there. Clicking a pin edits or deletes the note, and the toolbar's ✎ button hides or shows them. Notes are saved in `<main>.overtex-notes.json` beside the main file, not in the PDF, so they survive builds and Clean and can be committed; Export for arXiv leaves them out. A file Overtex cannot read (a git conflict, say) is left untouched and reported instead of being overwritten. A note stays at its position on its page and does not follow the text when an edit moves it. The marked-up PDF from Compare Versions takes no notes.
