@@ -78,7 +78,7 @@ function isInside(file: string, dir: string): boolean {
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
-const VERBATIM_ENVS = 'verbatim|Verbatim|BVerbatim|lstlisting|minted|comment|filecontents';
+export const VERBATIM_ENVS = 'verbatim|Verbatim|BVerbatim|lstlisting|minted|comment|filecontents';
 const BEGIN_VERBATIM = new RegExp(`\\\\begin\\{(${VERBATIM_ENVS})\\*?\\}`);
 
 /**

@@ -4,6 +4,7 @@ import * as path from 'path';
 
 import type { OvertexApi, OvertexE2e } from './api';
 import { BibIndex } from './latex/bibIndex';
+import { registerLabels } from './labels';
 import { registerLibrary } from './library';
 import type { E2eFromViewerMessage } from './shared/messages';
 import { buildSettings, settings } from './config';
@@ -13,6 +14,7 @@ import { LATEX_WORKSHOP_ID, LW_AUTOBUILD_SETTING, hasBuildConflict } from './lat
 import { BuildDiagnostics } from './latex/diagnostics';
 import { findMainFile } from './latex/mainFile';
 import { Texlab } from './latex/texlab';
+import { TEXLAB_EXTENSION_ID } from './latex/texlabConfig';
 import { BuildStatus } from './statusBar';
 import { toWorkspacePath } from './synctex/paths';
 import { SyncTex } from './synctex/synctex';
@@ -71,6 +73,9 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const userAgent = `Overtex/${version} (https://github.com/tansuasici/Overtex)`;
   const bibCheck = new BibliographyCheck(mainFile, userAgent);
   const papers = registerLibrary(context, { index: bibIndex, mainFile, userAgent, showPdf: (pdf) => pdfPanel.show(pdf) });
+  const labels = registerLabels(context, {
+    useFallbackProviders: () => !server.isRunning && !vscode.extensions.getExtension(TEXLAB_EXTENSION_ID),
+  });
   context.subscriptions.push(bibCheck);
   context.subscriptions.push(submission, onDidStartBuild.event(() => submission.clear()));
   const words = new WordCounter(mainFile);
@@ -318,6 +323,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     onViewerMessage: e2eEvents.event,
     sendToViewer: (msg) => pdfPanel.postE2e(msg),
     paperGroups: () => papers.groups(),
+    labelGroups: () => labels.groups(),
   };
 
   return {

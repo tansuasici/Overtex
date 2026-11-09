@@ -73,6 +73,11 @@
           "id": "overtex.papers",
           "name": "Papers",
           "when": "overtex.active"
+        },
+        {
+          "id": "overtex.labels",
+          "name": "Labels",
+          "when": "overtex.active"
         }
       ]
     },
@@ -80,6 +85,10 @@
       {
         "view": "overtex.papers",
         "contents": "No papers yet. Papers are read from the .bib files in this workspace.\n[Add Paper](command:overtex.library.add)"
+      },
+      {
+        "view": "overtex.labels",
+        "contents": "No labels yet. Labels and references are read from the .tex files in this workspace."
       }
     ],
     "commands": [
@@ -217,6 +226,24 @@
         "title": "Show Paper in Bibliography",
         "category": "Overtex",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "overtex.labels.refresh",
+        "title": "Refresh Labels",
+        "category": "Overtex",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "overtex.labels.rename",
+        "title": "Rename Label",
+        "category": "Overtex",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "overtex.labels.insertRef",
+        "title": "Insert Reference",
+        "category": "Overtex",
+        "icon": "$(references)"
       }
     ],
     "menus": {
@@ -247,6 +274,11 @@
           "command": "overtex.library.refresh",
           "when": "view == overtex.papers",
           "group": "navigation@3"
+        },
+        {
+          "command": "overtex.labels.refresh",
+          "when": "view == overtex.labels",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -284,6 +316,26 @@
           "command": "overtex.library.reveal",
           "when": "view == overtex.papers && viewItem =~ /paper/",
           "group": "2_go@2"
+        },
+        {
+          "command": "overtex.labels.insertRef",
+          "when": "view == overtex.labels && viewItem =~ /hasDefinition/",
+          "group": "inline@1"
+        },
+        {
+          "command": "overtex.labels.rename",
+          "when": "view == overtex.labels && viewItem =~ /label/",
+          "group": "inline@2"
+        },
+        {
+          "command": "overtex.labels.insertRef",
+          "when": "view == overtex.labels && viewItem =~ /hasDefinition/",
+          "group": "1_use@1"
+        },
+        {
+          "command": "overtex.labels.rename",
+          "when": "view == overtex.labels && viewItem =~ /label/",
+          "group": "1_use@2"
         }
       ],
       "commandPalette": [
@@ -313,6 +365,18 @@
         },
         {
           "command": "overtex.library.reveal",
+          "when": "false"
+        },
+        {
+          "command": "overtex.labels.refresh",
+          "when": "false"
+        },
+        {
+          "command": "overtex.labels.rename",
+          "when": "false"
+        },
+        {
+          "command": "overtex.labels.insertRef",
           "when": "false"
         }
       ]

@@ -420,6 +420,60 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('The Labels panel lists labels, finds references and renames across files', async () => {
+    const root = vscode.workspace.workspaceFolders![0].uri.fsPath;
+    const closed = path.join(root, 'labels-closed.tex');
+    const opened = path.join(root, 'labels-open.tex');
+    try {
+      fs.writeFileSync(closed, '\\section{A}\\label{sec:old}\n% \\ref{sec:commented}\n\\begin{figure}\\label{fig:one}\\end{figure}\n');
+      fs.writeFileSync(opened, 'See \\cref{sec:old,fig:one} and \\ref{sec:typo}.\n');
+      await vscode.commands.executeCommand('overtex.labels.refresh');
+      const groups = await e2e.labelGroups();
+      const group = (name: string) => groups.find((g) => g.group === name)?.keys ?? [];
+      assert.deepStrictEqual(group('Undefined references'), ['sec:typo'], JSON.stringify(groups));
+      assert.deepStrictEqual(group('Sections'), ['sec:old'], JSON.stringify(groups));
+      assert.deepStrictEqual(group('Figures'), ['fig:one'], JSON.stringify(groups));
+
+      const doc = await vscode.languages.setTextDocumentLanguage(await vscode.workspace.openTextDocument(opened), 'latex');
+      await vscode.window.showTextDocument(doc);
+      const onLabel = new vscode.Position(0, 12);
+      const definitions = await vscode.commands.executeCommand<vscode.Location[]>('vscode.executeDefinitionProvider', doc.uri, onLabel);
+      assert.ok(definitions.some((d) => d.uri.fsPath === closed && d.range.start.line === 0), JSON.stringify(definitions));
+      const references = await vscode.commands.executeCommand<vscode.Location[]>('vscode.executeReferenceProvider', doc.uri, onLabel);
+      assert.strictEqual(references.filter((r) => r.uri.fsPath === opened).length, 1, JSON.stringify(references));
+
+      // The panel's rename reaches a closed file and saves it.
+      await vscode.commands.executeCommand('overtex.labels.rename', 'sec:old', 'sec:new');
+      assert.ok(doc.getText().includes('\\cref{sec:new,fig:one}'), doc.getText());
+      assert.ok(fs.readFileSync(closed, 'utf8').includes('\\label{sec:new}'), fs.readFileSync(closed, 'utf8'));
+
+      // Pointing the undefined reference at a label removes it from the undefined group.
+      await vscode.commands.executeCommand('overtex.labels.rename', 'sec:typo', 'sec:new');
+      assert.ok(doc.getText().includes('\\ref{sec:new}'), doc.getText());
+      assert.strictEqual((await e2e.labelGroups()).some((g) => g.group === 'Undefined references'), false);
+
+      // A label's new name cannot be another label's: nothing changes.
+      const before = doc.getText();
+      await vscode.commands.executeCommand('overtex.labels.rename', 'fig:one', 'sec:new');
+      assert.strictEqual(doc.getText(), before);
+
+      // F2 goes through the rename provider.
+      const edit = await vscode.commands.executeCommand<vscode.WorkspaceEdit>('vscode.executeDocumentRenameProvider', doc.uri, onLabel, 'sec:f2');
+      assert.ok(edit.entries().some(([uri]) => uri.fsPath === closed), 'the rename should reach the closed file');
+
+      const editor = vscode.window.activeTextEditor!;
+      editor.selection = new vscode.Selection(1, 0, 1, 0);
+      await vscode.commands.executeCommand('overtex.labels.insertRef', 'fig:one');
+      assert.ok(doc.getText().includes('\\ref{fig:one}\n') || doc.getText().endsWith('\\ref{fig:one}'), doc.getText());
+      await vscode.commands.executeCommand('workbench.action.files.save');
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    } finally {
+      fs.rmSync(closed, { force: true });
+      fs.rmSync(opened, { force: true });
+      await vscode.commands.executeCommand('overtex.labels.refresh');
+    }
+  });
+
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
   }

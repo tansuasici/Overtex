@@ -23,6 +23,7 @@ import {
   shortAuthors,
 } from './latex/library';
 import { mergePicks } from './latex/zotero';
+import { TexFiles } from './texFiles';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 const SORT_STATE = 'overtex.papers.sort';
@@ -64,73 +65,13 @@ class PaperItem extends vscode.TreeItem {
 
 type Node = GroupItem | PaperItem;
 
-/** Which keys the workspace's .tex files cite, keeping closed files' answers until they change. */
-class CitationScan implements vscode.Disposable {
-  private readonly closed = new Map<string, CitedKeys>();
-  private readonly watcher = vscode.workspace.createFileSystemWatcher('**/*.tex');
-  private readonly subscriptions: vscode.Disposable[];
-
-  constructor(onChange: () => void) {
-    const forget = (uri: vscode.Uri) => {
-      this.closed.delete(uri.fsPath);
-      onChange();
-    };
-    this.subscriptions = [
-      this.watcher,
-      this.watcher.onDidChange(forget),
-      this.watcher.onDidCreate(forget),
-      this.watcher.onDidDelete(forget),
-      vscode.workspace.onDidChangeTextDocument((e) => {
-        if (e.contentChanges.length > 0 && TEX_LANGUAGES.has(e.document.languageId)) {
-          onChange();
-        }
-      }),
-      // Closing without saving leaves the file as it was on disk, not as the editor had it.
-      vscode.workspace.onDidCloseTextDocument((doc) => {
-        if (TEX_LANGUAGES.has(doc.languageId)) {
-          forget(doc.uri);
-        }
-      }),
-    ];
-  }
-
-  async cited(): Promise<CitedKeys> {
-    const files = await vscode.workspace.findFiles('**/*.tex', '**/node_modules/**', 2000);
-    const open = new Map(vscode.workspace.textDocuments.map((doc) => [doc.uri.fsPath, doc]));
-    return mergeCited(
-      await Promise.all(
-        files.map(async (file) => {
-          const doc = open.get(file.fsPath);
-          if (doc) {
-            return citedKeys(doc.getText());
-          }
-          let found = this.closed.get(file.fsPath);
-          if (!found) {
-            try {
-              found = citedKeys(Buffer.from(await vscode.workspace.fs.readFile(file)).toString('utf-8'));
-            } catch {
-              return { keys: new Set<string>(), all: false };
-            }
-            this.closed.set(file.fsPath, found);
-          }
-          return found;
-        })
-      )
-    );
-  }
-
-  dispose(): void {
-    this.subscriptions.forEach((s) => s.dispose());
-  }
-}
-
 class PapersProvider implements vscode.TreeDataProvider<Node> {
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.changed.event;
 
   constructor(
     private readonly index: BibIndex,
-    private readonly scan: CitationScan,
+    private readonly scan: TexFiles<CitedKeys>,
     private readonly sort: () => PaperSort
   ) {}
 
@@ -139,8 +80,8 @@ class PapersProvider implements vscode.TreeDataProvider<Node> {
   }
 
   async groups(): Promise<GroupItem[]> {
-    const [entries, cited] = await Promise.all([this.index.entries(), this.scan.cited()]);
-    return groupPapers(entries, cited, this.sort()).map(
+    const [entries, cited] = await Promise.all([this.index.entries(), this.scan.all()]);
+    return groupPapers(entries, mergeCited(cited.map((c) => c.value)), this.sort()).map(
       ({ group, papers }) => new GroupItem(group, papers.map((p) => new PaperItem(p, pdfOf(p))))
     );
   }
@@ -182,7 +123,7 @@ export function registerLibrary(context: vscode.ExtensionContext, options: Libra
     clearTimeout(timer);
     timer = setTimeout(() => provider.refresh(), 500);
   };
-  const scan = new CitationScan(refreshSoon);
+  const scan = new TexFiles<CitedKeys>((text) => citedKeys(text), refreshSoon);
   const provider = new PapersProvider(index, scan, sort);
   const pdfWatcher = vscode.workspace.createFileSystemWatcher('**/papers/*.pdf');
 

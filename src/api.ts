@@ -26,4 +26,6 @@ export interface OvertexE2e {
   sendToViewer(msg: E2eToViewerMessage): void;
   /** What the Papers panel lists: its groups in order, with the paper keys in order. */
   paperGroups(): Promise<{ group: string; keys: string[] }[]>;
+  /** What the Labels panel lists: its groups in order, with the label keys in order. */
+  labelGroups(): Promise<{ group: string; keys: string[] }[]>;
 }

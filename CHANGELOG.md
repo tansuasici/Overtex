@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Labels panel**: a new view in the Overtex sidebar lists the `\label`s in the workspace's `.tex` files by kind, with undefined references on top, how often each label is referenced, and a warning for duplicates. Go to any definition or reference, insert a `\ref` at the cursor, or rename a label across the files, closed ones included. Go to definition, find references and F2 rename now work on labels without TexLab too; when TexLab runs, it keeps handling those, for the files linked by `\input`.
 - The README and the Getting Started walkthrough mention the separate Overleaf Connect extension as an optional way to work on Overleaf projects. Overtex still does not need Overleaf and never connects to it.
 
 ## 0.3.0 (2026-11-09)
