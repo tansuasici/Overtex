@@ -344,6 +344,37 @@ export async function run(): Promise<void> {
     assert.deepStrictEqual(report.findings, []);
   });
 
+  await step('history keeps a snapshot per build, and compares one with the files now', async () => {
+    const before = e2e!.snapshots();
+    assert.ok(before.length >= 1, 'the first build left a snapshot');
+    assert.ok(before[0].pdf, 'the snapshot kept the PDF');
+    assert.ok(before[0].files.some((f) => f.path === 'chapters/part.tex'), 'the snapshot has the \\input file');
+    const original = await vscode.workspace.fs.readFile(vscode.Uri.file(part));
+    try {
+      await vscode.workspace.fs.writeFile(vscode.Uri.file(part), Buffer.concat([Buffer.from(original), Buffer.from('\nA sentence added after the snapshot.\n')]));
+      await openAt(main, 0);
+      await vscode.commands.executeCommand('overtex.history.snapshot');
+      const after = e2e!.snapshots();
+      assert.strictEqual(after.length, before.length + 1, 'a new snapshot');
+      assert.strictEqual(after[0].trigger, 'manual');
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.history.snapshot'), undefined, 'nothing changed, so no snapshot');
+
+      const loaded = nextMessage(e2e!, 'e2e:loaded', 120000);
+      await vscode.commands.executeCommand('overtex.history.openPdf', before[0].id);
+      assert.strictEqual((await loaded).pages, 3, 'the snapshot PDF opens in the preview');
+
+      const result = await vscode.commands.executeCommand<import('../../src/latex/latexdiff').CompareResult>('overtex.history.compare', before[0].id);
+      if (!result) {
+        assert.ok(!process.env.OVERTEX_REQUIRE_TEX, 'latexdiff did not run');
+      } else {
+        assert.strictEqual(result.status, 'built');
+        assert.ok(result.status === 'built' && /\\DIFadd\{[^}]*snapshot/.test(result.diffText), 'the added sentence is marked');
+      }
+    } finally {
+      await vscode.workspace.fs.writeFile(vscode.Uri.file(part), original);
+    }
+  });
+
   await step('compare versions marks up a change against another file', async () => {
     const old = path.join(root, 'old-version.tex');
     const text = Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(main))).toString('utf-8');

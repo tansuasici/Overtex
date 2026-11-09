@@ -80,6 +80,11 @@
           "id": "overtex.labels",
           "name": "Labels",
           "when": "overtex.active"
+        },
+        {
+          "id": "overtex.history",
+          "name": "History",
+          "when": "overtex.active"
         }
       ]
     },
@@ -91,6 +96,10 @@
       {
         "view": "overtex.labels",
         "contents": "No labels yet. Labels and references are read from the .tex files in this workspace."
+      },
+      {
+        "view": "overtex.history",
+        "contents": "No snapshots yet. Overtex keeps a snapshot of the sources and the PDF after each successful build.\n[Save Snapshot](command:overtex.history.snapshot)"
       }
     ],
     "commands": [
@@ -278,6 +287,53 @@
         "title": "Insert Reference",
         "category": "Overtex",
         "icon": "$(references)"
+      },
+      {
+        "command": "overtex.history.snapshot",
+        "title": "Save Snapshot",
+        "category": "Overtex",
+        "icon": "$(device-camera)"
+      },
+      {
+        "command": "overtex.history.refresh",
+        "title": "Refresh History",
+        "category": "Overtex",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "overtex.history.openFile",
+        "title": "Compare File with Current",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.history.restoreFile",
+        "title": "Restore This Version",
+        "category": "Overtex",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "overtex.history.openPdf",
+        "title": "Open Snapshot PDF",
+        "category": "Overtex",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "overtex.history.compare",
+        "title": "Compare Snapshot with Current (latexdiff)",
+        "category": "Overtex",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "overtex.history.label",
+        "title": "Name Snapshot",
+        "category": "Overtex",
+        "icon": "$(bookmark)"
+      },
+      {
+        "command": "overtex.history.delete",
+        "title": "Delete Snapshot",
+        "category": "Overtex",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -323,6 +379,16 @@
           "command": "overtex.labels.refresh",
           "when": "view == overtex.labels",
           "group": "navigation@1"
+        },
+        {
+          "command": "overtex.history.snapshot",
+          "when": "view == overtex.history",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overtex.history.refresh",
+          "when": "view == overtex.history",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -380,6 +446,51 @@
           "command": "overtex.labels.rename",
           "when": "view == overtex.labels && viewItem =~ /label/",
           "group": "1_use@2"
+        },
+        {
+          "command": "overtex.history.openPdf",
+          "when": "view == overtex.history && viewItem =~ /snapshotWithPdf/",
+          "group": "inline@1"
+        },
+        {
+          "command": "overtex.history.compare",
+          "when": "view == overtex.history && viewItem =~ /^snapshot( |$)/",
+          "group": "inline@2"
+        },
+        {
+          "command": "overtex.history.openPdf",
+          "when": "view == overtex.history && viewItem =~ /snapshotWithPdf/",
+          "group": "1_use@1"
+        },
+        {
+          "command": "overtex.history.compare",
+          "when": "view == overtex.history && viewItem =~ /^snapshot( |$)/",
+          "group": "1_use@2"
+        },
+        {
+          "command": "overtex.history.label",
+          "when": "view == overtex.history && viewItem =~ /^snapshot( |$)/",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "overtex.history.delete",
+          "when": "view == overtex.history && viewItem =~ /^snapshot( |$)/",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "overtex.history.restoreFile",
+          "when": "view == overtex.history && viewItem == snapshotFile",
+          "group": "inline"
+        },
+        {
+          "command": "overtex.history.openFile",
+          "when": "view == overtex.history && viewItem == snapshotFile",
+          "group": "1_use@1"
+        },
+        {
+          "command": "overtex.history.restoreFile",
+          "when": "view == overtex.history && viewItem == snapshotFile",
+          "group": "1_use@2"
         }
       ],
       "commandPalette": [
@@ -421,6 +532,18 @@
         },
         {
           "command": "overtex.labels.insertRef",
+          "when": "false"
+        },
+        {
+          "command": "overtex.history.refresh",
+          "when": "false"
+        },
+        {
+          "command": "overtex.history.openFile",
+          "when": "false"
+        },
+        {
+          "command": "overtex.history.restoreFile",
           "when": "false"
         }
       ]
@@ -607,6 +730,17 @@
           "default": 0,
           "minimum": 0,
           "markdownDescription": "Word target for the document, shown as `1,234 / 5,000 words` with progress in the tooltip. `0` means no goal."
+        },
+        "overtex.history.maxSnapshots": {
+          "type": "integer",
+          "default": 50,
+          "minimum": 0,
+          "markdownDescription": "How many snapshots the History panel keeps per document; older ones are removed, except named ones. Overtex takes a snapshot of the `.tex`, `.bib`, `.sty`, `.cls` and `.bst` files after each successful build in which they changed. `0` turns history off."
+        },
+        "overtex.history.keepPdf": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Keep each build's PDF with its snapshot, so that **Open Snapshot PDF** shows the document as it was. A PDF is stored once however many snapshots share it."
         },
         "overtex.highlights.enabled": {
           "type": "boolean",

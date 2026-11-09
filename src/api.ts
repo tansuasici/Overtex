@@ -34,4 +34,6 @@ export interface OvertexE2e {
   labelGroups(): Promise<{ group: string; keys: string[] }[]>;
   /** Inserts what dropping `files` at the cursor of the active .tex editor inserts. False if nothing was inserted. */
   insertFiles(files: vscode.Uri[]): Promise<boolean>;
+  /** The History panel's snapshots of the main document, newest first. */
+  snapshots(): { id: string; time: number; label?: string; trigger: string; files: { path: string }[]; pdf?: string }[];
 }

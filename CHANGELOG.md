@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **History**: a new History view in the Overtex sidebar keeps a snapshot of the sources and PDF after each successful build, and on **Save Snapshot**. Each snapshot lists the files it changed; a file can be compared with its current version or restored, and a snapshot can open its PDF or be marked up against the files now with latexdiff. Named snapshots are kept; unnamed ones past `overtex.history.maxSnapshots` (default 50) are removed. A file's content is stored once however many snapshots hold it, in VS Code's workspace storage, not the project folder. Figures are not kept.
 - **Check Spelling and Grammar**: a new command checks the active `.tex` file with a LanguageTool server on your computer (`brew install languagetool`, then `brew services start languagetool`). Only the prose is sent as text; math, comments, citation keys, code and tables are left out, and the findings land on the right spot in the source. Quick fixes apply a suggestion, add a word to the dictionary or turn a rule off. The language comes from babel or polyglossia, in the file or the main file, and is American English when the document names none. Turkish is not supported, since LanguageTool has none. `overtex.grammar.checkOnSave` checks on each save.
 
 ## 0.5.0 (2026-11-10)

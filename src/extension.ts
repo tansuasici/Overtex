@@ -34,6 +34,7 @@ import { GrammarCheck } from './grammarCheck';
 import { WordCounter } from './wordCount';
 import { Highlighter } from './highlighter';
 import { registerMathPreview } from './mathPreview';
+import { registerHistory } from './history';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 
@@ -99,6 +100,14 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     onDidEndBuild.event((result) => result.success && void words.update(result.mainFile)),
     vscode.workspace.onDidChangeConfiguration((e) => e.affectsConfiguration('overtex.wordCount') && words.refresh())
   );
+  // A snapshot after each successful build feeds the History panel.
+  const history = registerHistory(context, {
+    mainFile,
+    outDir: (main) => outputPaths(main, buildSettings().outDir).dir,
+    showPdf: (pdf) => pdfPanel.show(pdf),
+    log,
+  });
+  context.subscriptions.push(onDidEndBuild.event((result) => result.success && !result.cancelled && history.record(result.mainFile, result.pdfFile, 'build')));
   context.subscriptions.push(new Highlighter(), registerMathPreview(context.extensionPath, mainFile));
   void texlab.start();
 
@@ -371,6 +380,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     paperGroups: () => papers.groups(),
     labelGroups: () => labels.groups(),
     insertFiles: (files) => insertHelpers.insertFiles(files),
+    snapshots: () => history.snapshots(),
   };
 
   return {
