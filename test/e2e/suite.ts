@@ -255,6 +255,36 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('slideshow: one page at a time, keys, forward search, Esc', async () => {
+    const after = async (act: () => unknown) => {
+      const shown = nextMessage(e2e, 'e2e:slide');
+      await act();
+      return shown;
+    };
+    const key = (k: string) => after(() => e2e.sendToViewer({ type: 'e2e:key', key: k }));
+    let state = await after(() => vscode.commands.executeCommand('overtex.viewer.present'));
+    assert.strictEqual(state.presenting, true, 'the slideshow starts');
+    assert.strictEqual(state.visible, 1, 'one page is shown');
+    assert.ok(state.fits, 'the page fits the preview');
+    assert.strictEqual((await key('Home')).slide, 0);
+    assert.strictEqual((await key('ArrowRight')).slide, 1);
+    assert.strictEqual((await key('ArrowLeft')).slide, 0);
+    assert.strictEqual((await key('End')).slide, 2);
+    state = await key(' ');
+    assert.strictEqual(state.slide, 2, 'stays on the last page');
+
+    await openAt(main, 4);
+    const revealed = nextMessage(e2e, 'e2e:revealed');
+    state = await after(() => vscode.commands.executeCommand('overtex.forwardSearch'));
+    assert.strictEqual(state.slide, 1, 'forward search shows the slide');
+    assert.strictEqual(state.visible, 1);
+    assert.ok((await revealed).inView, 'the marked line is on the slide');
+
+    state = await key('Escape');
+    assert.strictEqual(state.presenting, false, 'Esc ends it');
+    assert.strictEqual(Math.floor(state.position + 0.01), 1, 'the preview is left at that page');
+  });
+
   // Last: these show a notification and open an editor, which would get in the way of the viewer steps above.
   await step('setup check finds latexmk and the engine', async () => {
     const report = await vscode.commands.executeCommand<import('../../src/latex/setup').SetupReport>('overtex.checkSetup');

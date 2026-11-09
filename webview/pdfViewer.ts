@@ -23,6 +23,9 @@ interface ViewState {
   hideDone?: boolean;
   /** Where the viewer was scrolled to: a moved or restored preview starts from an empty page. */
   anchor?: Anchor | null;
+  /** A slideshow in progress, and the page it is on (0-based). */
+  presenting?: boolean;
+  slide?: number;
 }
 
 interface PageView {
@@ -78,6 +81,9 @@ let zoom: Zoom = vscode.getState()?.zoom ?? 'page-width';
 let returnTo = vscode.getState()?.anchor ?? null;
 let scale = 1;
 let loadSeq = 0;
+/** In a slideshow only the page at `slide` is shown, so page positions come from `slide`, never from the scroll offset. */
+let presenting = vscode.getState()?.presenting ?? false;
+let slide = vscode.getState()?.slide ?? 0;
 
 const visibility = new IntersectionObserver(
   (entries) => {
@@ -136,7 +142,11 @@ async function load(data: Uint8Array): Promise<void> {
   pages = views;
   emptyEl.hidden = true;
   rebuildPageElements();
-  restoreAnchor(anchor);
+  if (presenting) {
+    showSlide(slide); // A rebuild during a talk stays on the same slide.
+  } else {
+    restoreAnchor(anchor);
+  }
   updatePageInfo();
   if (returnTo) {
     window.setTimeout(() => {
@@ -230,6 +240,11 @@ function release(view: PageView): void {
 }
 
 function resolveScale(): number {
+  if (presenting) {
+    // Each slide fits the whole preview; the zoom is left alone for when the slideshow ends.
+    const view = pages[slide] ?? pages[0];
+    return view ? Math.max(0.1, Math.min(viewer.clientWidth / view.width, viewer.clientHeight / view.height)) : 1;
+  }
   if (typeof zoom === 'number') {
     return zoom;
   }
@@ -247,18 +262,22 @@ function resolveScale(): number {
 }
 
 function applyZoom(next: Zoom): void {
-  const anchor = captureAnchor();
+  const anchor = presenting ? null : captureAnchor();
   zoom = next;
   saveState();
   syncZoomSelect();
+  relayout();
+  restoreAnchor(anchor);
+}
+
+/** Sizes the pages for the current scale and re-renders what is on screen at it. */
+function relayout(): void {
   scale = resolveScale();
   for (const view of pages) {
     setPageSize(view.el, view);
     view.canvas?.style.setProperty('width', `${Math.floor(view.width * scale)}px`);
     view.canvas?.style.setProperty('height', `${Math.floor(view.height * scale)}px`);
   }
-  restoreAnchor(anchor);
-  // Re-render what is on screen at the new resolution.
   visibility.disconnect();
   pages.forEach((v) => visibility.observe(v.el));
 }
@@ -311,8 +330,101 @@ function scrollPosition(): number {
 }
 
 function updatePageInfo(): void {
-  const anchor = captureAnchor();
-  pageInfo.textContent = pages.length ? `${(anchor?.page ?? 0) + 1} / ${pages.length}` : '';
+  const current = presenting ? slide : (captureAnchor()?.page ?? 0);
+  pageInfo.textContent = pages.length ? `${current + 1} / ${pages.length}` : '';
+  presentInfo.textContent = pageInfo.textContent;
+}
+
+// ---- Slideshow ----
+
+const presentButton = document.getElementById('present') as HTMLButtonElement;
+const presentInfo = document.getElementById('present-info') as HTMLSpanElement;
+
+function showSlide(index: number): void {
+  slide = Math.max(0, Math.min(index, pages.length - 1));
+  for (const view of pages) {
+    view.el.hidden = view.index !== slide;
+  }
+  relayout(); // Slides can differ in size.
+  updatePageInfo();
+  saveState();
+  reportSlide();
+}
+
+function setPresenting(on: boolean): void {
+  if (on === presenting) {
+    return;
+  }
+  if (on) {
+    if (holdsUnsavedText()) {
+      noteText.focus();
+      return;
+    }
+    closeEditor();
+    slide = captureAnchor()?.page ?? 0;
+    presenting = true;
+    syncPresentUi();
+    showSlide(slide);
+    viewer.focus({ preventScroll: true });
+    return;
+  }
+  presenting = false;
+  syncPresentUi();
+  for (const view of pages) {
+    view.el.hidden = false;
+  }
+  relayout();
+  restoreAnchor({ page: slide, offset: 0 });
+  updatePageInfo();
+  saveState();
+  reportSlide();
+}
+
+function syncPresentUi(): void {
+  document.body.classList.toggle('presenting', presenting);
+  presentButton.setAttribute('aria-pressed', String(presenting));
+}
+
+const SLIDE_KEYS: Record<string, (current: number) => number> = {
+  ArrowRight: (i) => i + 1,
+  ArrowDown: (i) => i + 1,
+  PageDown: (i) => i + 1,
+  ' ': (i) => i + 1,
+  Enter: (i) => i + 1,
+  ArrowLeft: (i) => i - 1,
+  ArrowUp: (i) => i - 1,
+  PageUp: (i) => i - 1,
+  Backspace: (i) => i - 1,
+  Home: () => 0,
+  End: () => Number.MAX_SAFE_INTEGER,
+};
+
+function onSlideKey(event: KeyboardEvent): void {
+  if (!presenting || event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+  if ((event.key === 'Enter' || event.key === ' ') && event.target instanceof HTMLButtonElement) {
+    return; // The Exit button.
+  }
+  if (event.key === 'Escape') {
+    setPresenting(false);
+  } else if (SLIDE_KEYS[event.key]) {
+    showSlide(SLIDE_KEYS[event.key](slide));
+  } else {
+    return;
+  }
+  event.preventDefault();
+}
+
+function reportSlide(): void {
+  if (!e2e) {
+    return;
+  }
+  const shown = pages.filter((v) => !v.el.hidden);
+  const area = viewer.getBoundingClientRect();
+  const box = shown[0]?.el.getBoundingClientRect();
+  const fits = box !== undefined && box.left >= area.left - 1 && box.right <= area.right + 1 && box.top >= area.top - 1 && box.bottom <= area.bottom + 1;
+  vscode.postMessage({ type: 'e2e:slide', presenting, slide, visible: shown.length, fits, position: scrollPosition() });
 }
 
 // ---- SyncTeX ----
@@ -322,8 +434,12 @@ function reveal(target: PageRect): void {
   if (!view) {
     return;
   }
-  const top = view.el.offsetTop + target.y * scale;
-  viewer.scrollTo({ top: Math.max(0, top - viewer.clientHeight / 3), behavior: 'smooth' });
+  if (presenting) {
+    showSlide(view.index);
+  } else {
+    const top = view.el.offsetTop + target.y * scale;
+    viewer.scrollTo({ top: Math.max(0, top - viewer.clientHeight / 3), behavior: 'smooth' });
+  }
 
   const marker = document.createElement('div');
   marker.className = 'synctex-marker';
@@ -527,7 +643,8 @@ function icon(path: string): SVGSVGElement {
 }
 
 function saveState(): void {
-  vscode.setState({ zoom, notesVisible, notesListOpen, hideDone, anchor: returnTo ?? captureAnchor() });
+  const anchor = returnTo ?? (presenting ? { page: slide, offset: 0 } : captureAnchor());
+  vscode.setState({ zoom, notesVisible, notesListOpen, hideDone, anchor, presenting, slide });
 }
 
 /** A position on the page as a percentage, so that a pin stays in place at any zoom. */
@@ -832,7 +949,7 @@ hideDoneBox.addEventListener('change', () => {
 
 pagesEl.addEventListener('dblclick', (event) => {
   const pageEl = (event.target as HTMLElement).closest<HTMLElement>('.page');
-  if (!pageEl || notes === null || event[modifierKey]) {
+  if (!pageEl || notes === null || event[modifierKey] || presenting) {
     return;
   }
   ensureNotesVisible();
@@ -848,6 +965,9 @@ pagesEl.addEventListener('dblclick', (event) => {
 
 pagesEl.addEventListener('click', (event) => {
   if (!event[modifierKey]) {
+    if (presenting) {
+      return; // The viewer's own click handler moves to the next slide.
+    }
     // A click beside an untouched editor dismisses it; one that holds text stays open.
     if (!(event.target as HTMLElement).closest('.note-pin') && !holdsUnsavedText()) {
       closeEditor();
@@ -903,9 +1023,21 @@ zoomSelect.addEventListener('change', () => {
   applyZoom(value === 'page-width' || value === 'page-fit' ? value : Number(value));
 });
 
+presentButton.addEventListener('click', () => setPresenting(true));
+document.getElementById('present-exit')!.addEventListener('click', () => setPresenting(false));
+window.addEventListener('keydown', onSlideKey);
+viewer.addEventListener('click', (event) => {
+  if (presenting && !event[modifierKey]) {
+    showSlide(slide + 1);
+  }
+});
+
 viewer.addEventListener(
   'wheel',
   (event) => {
+    if (presenting) {
+      return;
+    }
     if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
       stepZoom(event.deltaY < 0 ? 1 : -1);
@@ -929,6 +1061,10 @@ let resizeTimer: number | undefined;
 new ResizeObserver(() => {
   clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(() => {
+    if (presenting) {
+      relayout();
+      return;
+    }
     if (typeof zoom !== 'number') {
       applyZoom(zoom);
     }
@@ -961,6 +1097,9 @@ window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
     case 'notes':
       notes = msg.notes;
       renderNotes();
+      break;
+    case 'present':
+      setPresenting(true);
       break;
     case 'e2e:click':
       if (e2e) {
@@ -998,6 +1137,11 @@ window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
         void e2eShowNote(msg.id);
       }
       break;
+    case 'e2e:key':
+      if (e2e) {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: msg.key, cancelable: true }));
+      }
+      break;
     case 'e2e:zoom':
       if (e2e) {
         applyZoom(msg.zoom);
@@ -1009,4 +1153,5 @@ window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
 
 syncNotesUi();
 syncZoomSelect();
+syncPresentUi();
 vscode.postMessage({ type: 'ready' });

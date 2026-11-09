@@ -22,6 +22,8 @@ export type ToViewerMessage =
   | { type: 'colorScheme'; scheme: ColorScheme }
   /** The saved notes, after any change. `null` means this PDF has no notes (Compare Versions output). */
   | { type: 'notes'; notes: Note[] | null }
+  /** Starts the slideshow: one page at a time, fit to the preview, on the page the viewer is at. */
+  | { type: 'present' }
   | E2eToViewerMessage;
 
 export type FromViewerMessage =
@@ -55,7 +57,9 @@ export type E2eToViewerMessage =
   /** Clicks a note's row in the note list, then reports whether its pin came into view. */
   | { type: 'e2e:showNote'; id: string }
   /** Sets the zoom, then reports where the pins are. */
-  | { type: 'e2e:zoom'; zoom: 'page-width' | number };
+  | { type: 'e2e:zoom'; zoom: 'page-width' | number }
+  /** Presses a key in the viewer, as a user would during a slideshow. */
+  | { type: 'e2e:key'; key: string };
 
 export type E2eFromViewerMessage =
   | { type: 'e2e:loaded'; pages: number }
@@ -78,7 +82,13 @@ export type E2eFromViewerMessage =
       listOpen: boolean;
       list: { id: string; label: string; done: boolean }[];
     }
-  | { type: 'e2e:noteShown'; id: string; inView: boolean };
+  | { type: 'e2e:noteShown'; id: string; inView: boolean }
+  /**
+   * Sent whenever the slideshow shows a page, starts or ends. `slide` is 0-based, `visible` how many
+   * pages are shown, `fits` whether the shown page lies wholly inside the preview, and `position`
+   * how many pages down the viewer is (meaningful once the slideshow has ended).
+   */
+  | { type: 'e2e:slide'; presenting: boolean; slide: number; visible: number; fits: boolean; position: number };
 
 export function isE2eMessage(msg: { type: string }): msg is E2eFromViewerMessage {
   return msg.type.startsWith('e2e:');

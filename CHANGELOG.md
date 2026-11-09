@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Export Review PDF**: a new command builds `main-review.pdf` for co-authors or reviewers. Pick what it shows: line numbers, your open PDF notes as margin notes, and the changes since a git commit or another `.tex` file, marked up with latexdiff. Each note goes beside the source line SyncTeX finds for it, in `\input` files too; a note inside a table goes above the table. Done notes are left out, and your sources are not changed.
+- **Present slides**: the PDF preview's new ▭ button and **Present PDF as Slides** show one page at a time, fit to the preview on black, for Beamer talks. Arrow keys, Space, Page Up/Down, Home/End or a click move through the slides, and Esc goes back to the page you stopped on. A rebuild stays on the same slide, forward search shows the slide for the cursor's line. For a projector, move the preview to its own window first.
 
 ## 0.4.0 (2026-11-09)
 

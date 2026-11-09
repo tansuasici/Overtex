@@ -30,6 +30,7 @@ export class PdfPanel implements vscode.Disposable {
   private ready = false;
   private pdfFile: string | undefined;
   private pendingReveal: PageRect | undefined;
+  private pendingPresent = false;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly mediaRoot: vscode.Uri;
   /** Set when the setting could not be written; the preview shows it until the setting changes. */
@@ -96,6 +97,19 @@ export class PdfPanel implements vscode.Disposable {
       this.post({ type: 'reveal', target });
     } else {
       this.pendingReveal = target;
+    }
+  }
+
+  /** Starts the slideshow in the preview and gives it the keyboard, so the arrow keys move through the slides. */
+  present(): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.reveal(undefined, false);
+    if (this.ready) {
+      this.post({ type: 'present' });
+    } else {
+      this.pendingPresent = true;
     }
   }
 
@@ -335,6 +349,10 @@ export class PdfPanel implements vscode.Disposable {
           this.post({ type: 'reveal', target: this.pendingReveal });
           this.pendingReveal = undefined;
         }
+        if (this.pendingPresent) {
+          this.post({ type: 'present' });
+          this.pendingPresent = false;
+        }
         break;
       case 'inverseSearch':
         if (this.pdfFile) {
@@ -418,6 +436,7 @@ export class PdfPanel implements vscode.Disposable {
       <option value="2">200%</option>
     </select>
     <button id="zoom-in" title="Zoom in" aria-label="Zoom in"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9M8 3.5v9"/></svg></button>
+    <button id="present" title="Present (Esc to stop)" aria-label="Present"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3h13M2.5 3v7.5h11V3M8 10.5V13M5.5 14.5L8 13l2.5 1.5"/></svg></button>
     <button id="dark-mode" title="Dark pages" aria-label="Dark pages" aria-pressed="false"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 0 1 0 11z" fill="currentColor" stroke="none"/></svg></button>
     <button id="toggle-notes" title="Hide notes" aria-label="Show notes" aria-pressed="true"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3h11v8H7.5l-3 2.5V11h-2z"/></svg></button>
     <button id="toggle-notes-list" aria-pressed="false"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4l1.2 1.2L6 3M2.5 11l1.2 1.2L6 10M8.5 4.5h5M8.5 11.5h5"/></svg><span id="notes-count" class="count"></span></button>
@@ -427,6 +446,7 @@ export class PdfPanel implements vscode.Disposable {
     <span class="hint">${isMac ? '⌘' : 'Ctrl'}+click to jump to source</span>
   </div>
   <div id="viewer" tabindex="0"><div id="pages"></div><p id="empty">Build the project to see the PDF.</p></div>
+  <div id="present-bar" class="present-bar"><span id="present-info"></span><button id="present-exit" title="Stop presenting (Esc)">Exit</button></div>
   <aside id="notes-list" class="notes-list" aria-label="Notes" hidden>
     <div class="notes-list-head">
       <div class="notes-list-title">

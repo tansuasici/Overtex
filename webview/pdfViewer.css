@@ -588,3 +588,75 @@ body.notes-list-open #viewer {
     opacity: 0;
   }
 }
+
+/* Slideshow: one page at a time, fit to the preview, on black. Last in the file so it wins over the
+   note list's room on the right. Dark pages stay off: slides have their own colors. */
+body.presenting {
+  background: #000;
+}
+
+body.presenting .toolbar,
+body.presenting .notes-list,
+body.presenting .notes-layer {
+  display: none;
+}
+
+body.presenting #viewer {
+  inset: 0;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+  background: #000;
+  cursor: pointer;
+}
+
+body.presenting #pages {
+  height: 100%;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+}
+
+body.presenting .page,
+body.presenting.dark-pages .page {
+  background: #fff;
+  box-shadow: none;
+}
+
+body.presenting.dark-pages .page canvas {
+  filter: none;
+}
+
+.present-bar {
+  display: none;
+}
+
+body.presenting .present-bar {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #ddd;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+body.presenting .present-bar:hover,
+body.presenting .present-bar:focus-within {
+  opacity: 1;
+}
+
+.present-bar button {
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 3px;
+  font: inherit;
+  cursor: pointer;
+}

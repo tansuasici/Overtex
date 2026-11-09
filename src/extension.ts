@@ -284,6 +284,12 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
       }
       await pdfPanel.moveToNewWindow();
     }),
+    vscode.commands.registerCommand('overtex.viewer.present', async () => {
+      if (!pdfPanel.isOpen) {
+        await viewPdf();
+      }
+      pdfPanel.present();
+    }),
     vscode.commands.registerCommand('overtex.forwardSearch', forwardSearch),
     vscode.commands.registerCommand('overtex.showLog', () => output.show()),
     vscode.commands.registerCommand('overtex.checkSetup', () => checkSetupCommand(output)),
