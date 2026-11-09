@@ -43,26 +43,32 @@ async function chooseFile(title: string, main: string): Promise<Version | undefi
   return picked?.[0] && { file: picked[0].fsPath };
 }
 
+const ANOTHER_FILE: VersionPick = { label: '$(file) Choose a .tex file…' };
+
+/** Asks for an earlier version: a commit of the main file's repository or another .tex file. */
+export async function chooseOldVersion(main: string, title: string, commits?: Commit[]): Promise<Version | undefined> {
+  const list = commits ?? (await listCommits(main));
+  const pick = await vscode.window.showQuickPick<VersionPick>([...list.map(commitPick), ANOTHER_FILE], {
+    title,
+    placeHolder: list.length ? 'Which commit or file should be compared?' : 'This folder has no git history. Choose a file to compare.',
+  });
+  if (!pick) {
+    return undefined;
+  }
+  return pick.version ?? (await chooseFile('Old version', main));
+}
+
 /** Asks for the old version, then for the new one: the files on disk, a later commit or another file. */
 async function chooseVersions(main: string): Promise<{ old: Version; new: Version } | undefined> {
   const commits = await listCommits(main);
-  const anotherFile: VersionPick = { label: '$(file) Choose a .tex file…' };
-
-  const oldPick = await vscode.window.showQuickPick<VersionPick>([...commits.map(commitPick), anotherFile], {
-    title: 'Compare Versions: old version',
-    placeHolder: commits.length ? 'Which commit or file should be compared?' : 'This folder has no git history. Choose a file to compare.',
-  });
-  if (!oldPick) {
-    return undefined;
-  }
-  const old = oldPick.version ?? (await chooseFile('Old version', main));
+  const old = await chooseOldVersion(main, 'Compare Versions: old version', commits);
   if (!old) {
     return undefined;
   }
 
-  const index = oldPick.version ? commits.findIndex((c) => 'revision' in old && c.hash === old.revision) : 0;
+  const index = 'revision' in old ? commits.findIndex((c) => c.hash === old.revision) : 0;
   const current: VersionPick = { label: `$(file-text) Current ${path.basename(main)}`, description: 'the files on disk', version: { file: main } };
-  const newPick = await vscode.window.showQuickPick<VersionPick>([current, ...commits.slice(0, index).map(commitPick), anotherFile], {
+  const newPick = await vscode.window.showQuickPick<VersionPick>([current, ...commits.slice(0, index).map(commitPick), ANOTHER_FILE], {
     title: 'Compare Versions: new version',
   });
   if (!newPick) {

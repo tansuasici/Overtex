@@ -35,6 +35,8 @@ jobs:
             latexdiff
             ulem
             listings
+            lineno
+            marginnote
 
       - run: npm ci
       - run: npm run typecheck

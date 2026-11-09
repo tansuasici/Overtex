@@ -72,6 +72,7 @@ Overleaf Connect is not part of the profile. Install it into the profile yoursel
 - **Word count** in the status bar, counted with `texcount` across `\input`/`\include` files after each successful build. Set `overtex.wordCount.goal` to see `1,234 / 5,000 words`; the tooltip splits text, headings and captions and shows how many words you added this session. **Overtex: Count Words** counts on demand.
 - **Check Bibliography**: checks the `.bib` in the editor (or the ones the main file names) for entries missing fields their type needs, DOIs that do not exist, point at a different paper or repeat another entry's, and arXiv preprints that have since been published, with the journal and DOI to cite instead. It looks DOIs up on doi.org (Crossref and DataCite) and arXiv IDs on the arXiv API. Findings go to the Problems panel; entries that could not be reached are marked as unchecked, not wrong. Add Citation, Check Bibliography and Download Paper PDF are the only Overtex features that use the internet, and only when you run them.
 - **Compare Versions**: marks up what changed between two git commits, a commit and the files on disk, or two `.tex` files, with deleted and added text shown in the PDF. Changes in `\input` files are included. It runs [latexdiff](https://ctan.org/pkg/latexdiff), which comes with TeX Live and MiKTeX, and writes `main-diff.pdf`; your sources and git state are not touched.
+- **Export Review PDF**: writes `main-review.pdf`, a copy to send to co-authors or reviewers, with line numbers, your open PDF notes as margin notes beside the lines they were pinned to, and, if you pick a version, the changes since then marked up as in Compare Versions. Your sources are not changed; the copy is built in a temporary folder.
 - **Check Submission**: builds the project and lists what reviewers and arXiv tend to reject: more pages than `overtex.submission.pageLimit`, the `draft` class option, undefined references and citations (`??`), bitmap (Type 3) fonts, `\todo`/TODO/FIXME left in the text, and PDF notes not marked done. For double-blind review, turn on `overtex.submission.anonymous` and it also points at author names, affiliations, `\thanks`, acknowledgments and `pdfauthor`. Findings go to the Problems panel and are cleared by the next build. Fonts inside included PDF figures are not checked.
 
 ## Requirements
@@ -103,7 +104,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 - Only the workspace folder is mounted, so `overtex.latex.outDir` must stay inside it, and files outside it, such as a `texmf` tree in your home folder, are not found.
 - The network is off during the build, so a `.latexmkrc` or `-shell-escape` command cannot reach the internet.
 - Jumping with SyncTeX and the word count still run on your machine, so they need `synctex` and `texcount` there. Without them, building and the preview work and those two features do not.
-- Compare Versions also needs `latexdiff` on your machine.
+- Compare Versions also needs `latexdiff` on your machine, as does Export Review PDF when it marks up changes. The review copy uses the `lineno` and `marginnote` packages.
 - On Windows the folder is mounted at `/workspace`, so paths in the build's output files are container paths. SyncTeX jumps, and possibly Problems panel locations, Export for arXiv and Check Submission, may not match your files. Windows is untested.
 
 ## Commands
@@ -114,7 +115,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | Overtex: View PDF | `⌘⌥V` / `Ctrl+Alt+V` |
 | Overtex: Jump to PDF (forward search) | `⌘⌥J` / `Ctrl+Alt+J` |
 | Overtex: Cancel Build, Clean Auxiliary Files, Show Build Log, Toggle Dark PDF Preview, Move PDF Preview to New Window | |
-| Overtex: Add Citation from DOI or arXiv, Add Paper, Cite from Zotero, Insert Table from CSV, Insert Figure, Check Bibliography, Compare Versions, Export for arXiv, Check Submission, Count Words | |
+| Overtex: Add Citation from DOI or arXiv, Add Paper, Cite from Zotero, Insert Table from CSV, Insert Figure, Check Bibliography, Compare Versions, Export Review PDF, Export for arXiv, Check Submission, Count Words | |
 | Overtex: Check LaTeX Installation, New LaTeX Document, Getting Started | |
 
 ## Settings

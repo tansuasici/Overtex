@@ -332,6 +332,47 @@ export async function run(): Promise<void> {
     assert.strictEqual((await notes).enabled, false, 'the marked-up PDF takes no notes');
   });
 
+  await step('review PDF puts open notes in the margin of a numbered copy', async () => {
+    const file = path.join(root, 'main.overtex-notes.json');
+    // At the forward search results, so that SyncTeX finds lines in main.tex and chapters/part.tex.
+    const note = (id: string, target: PageRect, text: string, done?: string) => ({
+      id,
+      page: target.page,
+      x: target.x + (target.width > 0 ? target.width : 40) / 2,
+      y: target.y + target.height / 2,
+      text,
+      createdAt: '2026-11-09T00:00:00.000Z',
+      ...(done ? { doneAt: done } : {}),
+    });
+    const notes = [note('in-main', targets['main.tex'], 'Cite 50% of this'), note('in-part', targets['part.tex'], 'And here'), note('done', targets['main.tex'], 'Old', '2026-11-09T01:00:00.000Z')];
+    fs.writeFileSync(file, `${JSON.stringify({ version: 1, notes })}\n`);
+    const before = fs.readFileSync(main, 'utf8');
+    try {
+      await openAt(main, 0);
+      // The command builds main.pdf first to place the notes, so the review copy is the last load.
+      const seen: E2eFromViewerMessage[] = [];
+      const sub = e2e!.onViewerMessage((msg) => seen.push(msg));
+      let result: import('../../src/latex/review').ReviewResult | undefined;
+      try {
+        result = await vscode.commands.executeCommand<import('../../src/latex/review').ReviewResult>('overtex.exportReviewPdf', { lineNumbers: true, notes: true });
+        await waitFor('the review copy in the preview, without notes', () => seen.some((m) => m.type === 'e2e:notes' && !m.enabled), 120000);
+      } finally {
+        sub.dispose();
+      }
+      assert.ok(result && result.status === 'built', `status: ${result?.status}`);
+      assert.strictEqual(result.placed, 2, 'both open notes placed, the done one left out');
+      assert.strictEqual(path.basename(result.pdf), 'main-review.pdf');
+      assert.ok(result.complete, 'the review copy built without errors');
+      const loads = seen.filter((m): m is ViewerMessage<'e2e:loaded'> => m.type === 'e2e:loaded');
+      const shown = seen.filter((m): m is ViewerMessage<'e2e:notes'> => m.type === 'e2e:notes');
+      assert.ok(loads[loads.length - 1].pages >= 3);
+      assert.strictEqual(shown[shown.length - 1].enabled, false, 'the review copy takes no notes');
+      assert.strictEqual(fs.readFileSync(main, 'utf8'), before, 'the source is untouched');
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
+  });
+
   await step('cite from Zotero adds the pick to the .bib and cites it', async () => {
     // A stand-in for Better BibTeX: what a real one sends has not been checked against this.
     const picks = ['@article{einsteinCanQuantum1935,\n  title = {Can Quantum-Mechanical Description of Physical Reality Be Considered Complete?},\n  year = {1935},\n  doi = {10.1103/PhysRev.47.777},\n  file = {/Users/someone/Zotero/storage/ABC/epr.pdf}\n}\n'];

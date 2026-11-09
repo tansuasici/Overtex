@@ -26,6 +26,7 @@ import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
 import { citeFromZotero } from './citeFromZotero';
 import { CompareArgs, compareVersionsCommand } from './compareVersions';
+import { ReviewArgs, exportReviewPdfCommand } from './reviewPdf';
 import { exportArxiv } from './exportArxiv';
 import { SubmissionCheck } from './checkSubmission';
 import { BibliographyCheck } from './checkBib';
@@ -297,6 +298,22 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.compareVersions', (args?: CompareArgs) =>
       requireTrust('Comparing versions')
         ? compareVersionsCommand({ mainFile, saveSources, showPdf: (pdf) => pdfPanel.show(pdf), log, showLog: () => output.show() }, args)
+        : undefined
+    ),
+    vscode.commands.registerCommand('overtex.exportReviewPdf', (args?: ReviewArgs) =>
+      requireTrust('Exporting a review PDF')
+        ? exportReviewPdfCommand(
+            {
+              mainFile,
+              build,
+              inverse: (pdf, page, x, y) => synctex.inverse(pdf, page, x, y),
+              saveSources,
+              showPdf: (pdf) => pdfPanel.show(pdf),
+              log,
+              showLog: () => output.show(),
+            },
+            args
+          )
         : undefined
     ),
     vscode.commands.registerCommand('overtex.viewer.toggleDarkMode', () => pdfPanel.toggleColorScheme()),

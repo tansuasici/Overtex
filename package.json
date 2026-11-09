@@ -187,6 +187,11 @@
         "category": "Overtex"
       },
       {
+        "command": "overtex.exportReviewPdf",
+        "title": "Export Review PDF",
+        "category": "Overtex"
+      },
+      {
         "command": "overtex.countWords",
         "title": "Count Words",
         "category": "Overtex"

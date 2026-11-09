@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Export Review PDF**: a new command builds `main-review.pdf` for co-authors or reviewers. Pick what it shows: line numbers, your open PDF notes as margin notes, and the changes since a git commit or another `.tex` file, marked up with latexdiff. Each note goes beside the source line SyncTeX finds for it, in `\input` files too; a note inside a table goes above the table. Done notes are left out, and your sources are not changed.
+
 ## 0.4.0 (2026-11-09)
 
 - **Overtex profile**: `profile/Overtex.code-profile` is a VS Code profile to import with **Profiles: Import Profile…**, from the file or its GitHub URL. It installs Overtex into a separate profile with a quieter editor (no minimap, breadcrumbs, sticky scroll, tips or AI chat; wrapped lines; a slightly larger font) and leaves your other profiles alone. `node scripts/profile.mjs` regenerates it. See README, *A separate, uncluttered profile*.

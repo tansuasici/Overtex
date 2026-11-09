@@ -18,6 +18,21 @@ export interface CompareRequest {
   build: BuildSettings;
   signal?: AbortSignal;
   log?: (text: string) => void;
+  /** Changes a file of the new version as it is copied, given its path on disk. Not applied to a revision. */
+  editNew?: (file: string, data: Buffer) => Buffer;
+  /** Changes latexdiff's output before it is built. */
+  transformDiff?: (text: string) => string;
+  /** What the PDF's name gets after the main file's; `-diff` unless set. */
+  suffix?: string;
+}
+
+/** What building a copy of the document needs. */
+export interface CopyBuild {
+  mainFile: string;
+  build: BuildSettings;
+  signal?: AbortSignal;
+  log?: (text: string) => void;
+  suffix?: string;
 }
 
 export type CompareResult =
@@ -202,8 +217,9 @@ async function snapshotRevision(request: CompareRequest, revision: string, dest:
 }
 
 /** Copies the sources around `file`, from its repository's root if it has one. Returns the copy of `file`. */
-async function snapshotFile(file: string, dest: string, signal?: AbortSignal): Promise<string> {
+async function snapshotFile(file: string, dest: string, signal?: AbortSignal, edit?: (file: string, data: Buffer) => Buffer): Promise<string> {
   const real = fs.realpathSync(file);
+  const read = (source: string): Buffer => (edit ? edit(source, fs.readFileSync(source)) : fs.readFileSync(source));
   const root = (await gitRoot(real, signal)) ?? path.dirname(real);
   let copied = 0;
   const walk = (dir: string, depth: number): void => {
@@ -214,19 +230,19 @@ async function snapshotFile(file: string, dest: string, signal?: AbortSignal): P
           walk(full, depth + 1);
         }
       } else if (entry.isFile() && copied < MAX_COPIED_FILES && keepInSnapshot(entry.name, true) && fs.statSync(full).size <= MAX_COPIED_BYTES) {
-        write(path.join(dest, path.relative(root, full)), fs.readFileSync(full));
+        write(path.join(dest, path.relative(root, full)), read(full));
         copied++;
       }
     }
   };
   walk(root, 0);
   const copy = path.join(dest, path.relative(root, real));
-  write(copy, fs.readFileSync(real));
+  write(copy, read(real));
   return copy;
 }
 
-function snapshot(request: CompareRequest, version: Version, dest: string, sourcesOnly: boolean): Promise<string> {
-  return 'revision' in version ? snapshotRevision(request, version.revision, dest, sourcesOnly) : snapshotFile(version.file, dest, request.signal);
+function snapshot(request: CompareRequest, version: Version, dest: string, sourcesOnly: boolean, edit?: (file: string, data: Buffer) => Buffer): Promise<string> {
+  return 'revision' in version ? snapshotRevision(request, version.revision, dest, sourcesOnly) : snapshotFile(version.file, dest, request.signal, edit);
 }
 
 async function runLatexdiff(request: CompareRequest, oldFile: string, newFile: string, cwd: string): Promise<Buffer> {
@@ -247,16 +263,17 @@ async function runLatexdiff(request: CompareRequest, oldFile: string, newFile: s
 }
 
 /**
- * Builds the diff from a temporary folder inside `cwd`, so that figures, the bibliography and
- * .latexmkrc are found as in a normal build and no absolute path reaches TeX.
+ * Builds a changed copy of the document from a temporary folder inside `cwd`, so that figures, the
+ * bibliography and .latexmkrc are found as in a normal build and no absolute path reaches TeX. The
+ * PDF is copied beside the build output as `<main><suffix>.pdf`.
  */
-async function buildDiff(request: CompareRequest, diff: Buffer, cwd: string, root?: string): Promise<{ pdf: string; complete: boolean }> {
-  const base = `${path.basename(request.mainFile, path.extname(request.mainFile))}-diff`;
+export async function buildCopy(request: CopyBuild, tex: Buffer, cwd: string, root?: string): Promise<{ pdf: string; complete: boolean }> {
+  const base = `${path.basename(request.mainFile, path.extname(request.mainFile))}${request.suffix ?? '-diff'}`;
   const scratch = fs.mkdtempSync(path.join(cwd, 'overtex-diff-'));
   try {
-    const tex = path.join(scratch, `${base}.tex`);
-    fs.writeFileSync(tex, diff);
-    const { command, args, env } = diffCommand(tex, path.basename(scratch), cwd, root, request.build);
+    const texFile = path.join(scratch, `${base}.tex`);
+    fs.writeFileSync(texFile, tex);
+    const { command, args, env } = diffCommand(texFile, path.basename(scratch), cwd, root, request.build);
     const result = await run(command, args, {
       cwd,
       signal: request.signal,
@@ -269,7 +286,7 @@ async function buildDiff(request: CompareRequest, diff: Buffer, cwd: string, roo
     request.log?.(result.stdout.toString('utf-8') + result.stderr);
     const built = path.join(scratch, `${base}.pdf`);
     if (!fs.existsSync(built)) {
-      throw new CompareError('build-failed', 'the marked-up document did not build.');
+      throw new CompareError('build-failed', `${base}.tex did not build.`);
     }
     const outDir = outputPaths(request.mainFile, request.build.outDir).dir;
     fs.mkdirSync(outDir, { recursive: true });
@@ -288,7 +305,7 @@ export async function compareVersions(request: CompareRequest): Promise<CompareR
     const newIsRevision = 'revision' in request.new;
     const oldFile = await snapshot(request, request.old, path.join(tmp, 'old'), true);
     // A revision is built from its snapshot, so that one needs its figures and .bib files too.
-    const newFile = await snapshot(request, request.new, path.join(tmp, 'new'), !newIsRevision);
+    const newFile = await snapshot(request, request.new, path.join(tmp, 'new'), !newIsRevision, request.editNew);
     const diff = await runLatexdiff(request, oldFile, newFile, tmp);
     const diffText = diff.toString('utf-8');
     if (!hasDifferences(diffText)) {
@@ -297,7 +314,8 @@ export async function compareVersions(request: CompareRequest): Promise<CompareR
     const cwd = 'file' in request.new ? path.dirname(request.new.file) : path.dirname(newFile);
     // A revision's snapshot lies outside the workspace, so Docker mounts the snapshot itself.
     const root = 'file' in request.new ? undefined : path.join(tmp, 'new');
-    return { status: 'built', diffText, ...(await buildDiff(request, diff, cwd, root)) };
+    const tex = request.transformDiff ? Buffer.from(request.transformDiff(diffText), 'utf-8') : diff;
+    return { status: 'built', diffText, ...(await buildCopy(request, tex, cwd, root)) };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
