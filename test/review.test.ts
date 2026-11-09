@@ -112,22 +112,24 @@ describe('preamble', () => {
 });
 
 describe('flattenInputs', () => {
+  // Resolved, so that the names match on Windows too, where /p becomes a drive path.
+  const p = (name: string) => path.resolve('/p', name);
   const files: Record<string, string> = {
-    '/p/main.tex': 'A\n\\input{ch/one}\n% \\input{ch/gone}\n\\include{two} after\n\\input{missing}\n',
-    '/p/ch/one.tex': 'One \\input{ch/three.tex}',
-    '/p/ch/three.tex': 'Three',
-    '/p/two.tex': 'Two',
+    [p('main.tex')]: 'A\n\\input{ch/one}\n% \\input{ch/gone}\n\\include{two} after\n\\input{missing}\n',
+    [p('ch/one.tex')]: 'One \\input{ch/three.tex}',
+    [p('ch/three.tex')]: 'Three',
+    [p('two.tex')]: 'Two',
   };
   const read = (file: string) => files[file];
 
   it('pastes inputs from the main file folder, recursively, and leaves the rest', () => {
-    expect(flattenInputs('/p/main.tex', read)).toBe(
+    expect(flattenInputs(p('main.tex'), read)).toBe(
       'A\nOne Three\n\n\n% \\input{ch/gone}\n\\clearpage\nTwo\n\\clearpage  after\n\\input{missing}\n'
     );
   });
 
   it('stops at a file that inputs itself', () => {
-    const out = flattenInputs('/p/loop.tex', (f) => (f === '/p/loop.tex' ? 'x \\input{loop}' : undefined));
+    const out = flattenInputs(p('loop.tex'), (f) => (f === p('loop.tex') ? 'x \\input{loop}' : undefined));
     expect(out.match(/x /g)).toHaveLength(11);
   });
 });
