@@ -48,7 +48,9 @@ try {
     extensionDevelopmentPath: root,
     extensionTestsPath: path.join(root, 'out-e2e', 'suite.js'),
     extensionTestsEnv: { OVERTEX_E2E: '1' },
-    launchArgs: [workspace, '--disable-extensions', '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', `--user-data-dir=${userData}`],
+    // The last three flags: a test window behind other windows otherwise stops drawing, and the viewer
+    // steps time out in about half of the local runs.
+    launchArgs: [workspace, '--disable-extensions', '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', `--user-data-dir=${userData}`, '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'],
   });
 } catch (err) {
   console.error(err instanceof Error ? err.message : err);

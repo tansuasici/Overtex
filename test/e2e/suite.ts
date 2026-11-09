@@ -474,6 +474,84 @@ export async function run(): Promise<void> {
     }
   });
 
+  // These rearrange the editor groups, so they run last.
+  const closeViewer = async () => {
+    await api.viewPdf();
+    await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
+    const tab = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((t) => t.label === 'main.pdf');
+    assert.ok(tab, 'the preview tab');
+    await vscode.window.tabGroups.close(tab);
+    await waitFor('the preview to close', () => e2e!.viewerColumn() === undefined);
+  };
+
+  await step('the preview stays in the group it was moved to, and reopens there', async () => {
+    await openAt(main, 0);
+    const other = await vscode.workspace.openTextDocument(part);
+    await vscode.window.showTextDocument(other, { viewColumn: vscode.ViewColumn.Two });
+    await api.viewPdf();
+    assert.strictEqual(e2e.viewerColumn(), vscode.ViewColumn.Two, 'starts beside the editor');
+
+    await vscode.commands.executeCommand('workbench.action.moveEditorToNextGroup');
+    await waitFor('the move to group 3', () => e2e.viewerColumn() === vscode.ViewColumn.Three);
+
+    // Hidden behind another editor in its group, then brought forward: it must not move.
+    await vscode.window.showTextDocument(other, { viewColumn: vscode.ViewColumn.Three });
+    await waitFor('the preview to be hidden', () => vscode.window.tabGroups.all[2]?.activeTab?.label === 'part.tex');
+    await openAt(main, 0);
+    await api.viewPdf();
+    await waitFor('the preview to come forward', () => vscode.window.tabGroups.all[2]?.activeTab?.label === 'main.pdf');
+    assert.strictEqual(e2e.viewerColumn(), vscode.ViewColumn.Three, 'still in group 3');
+
+    await closeViewer();
+    await openAt(main, 0);
+    const loaded = nextMessage(e2e, 'e2e:loaded');
+    await api.viewPdf();
+    await loaded;
+    assert.strictEqual(e2e.viewerColumn(), vscode.ViewColumn.Three, 'reopens in group 3');
+  });
+
+  await step('a restored preview gets its PDF back, and a second one is dropped', async () => {
+    await closeViewer();
+    const restored = vscode.window.createWebviewPanel('overtex.pdfPreview', 'stale title', vscode.ViewColumn.Two, { retainContextWhenHidden: true });
+    const loaded = nextMessage(e2e, 'e2e:loaded');
+    await e2e.restoreViewer(restored);
+    assert.strictEqual((await loaded).pages, 3);
+    assert.strictEqual(restored.title, 'main.pdf');
+
+    const second = vscode.window.createWebviewPanel('overtex.pdfPreview', 'second', vscode.ViewColumn.Two);
+    let disposed = false;
+    second.onDidDispose(() => (disposed = true));
+    await e2e.restoreViewer(second);
+    assert.ok(disposed, 'the second panel is closed');
+    assert.ok(e2e.viewerColumn() !== undefined, 'the first panel stays');
+  });
+
+  await step('moves the preview to a new window and keeps the page', async () => {
+    // Zoomed in so that the search has to scroll: at fit width page 2 can already be on screen.
+    const zoomed = nextMessage(e2e, 'e2e:notes');
+    e2e.sendToViewer({ type: 'e2e:zoom', zoom: 3 });
+    await zoomed;
+    await openAt(main, 4);
+    const revealed = nextMessage(e2e, 'e2e:revealed');
+    await vscode.commands.executeCommand('overtex.forwardSearch');
+    const before = await revealed;
+    assert.strictEqual(before.target.page, 2);
+    assert.ok(before.position > 0.5, `the search did not scroll (${before.position} pages down)`);
+    await new Promise((r) => setTimeout(r, 500)); // The viewer saves its place shortly after scrolling.
+
+    // Only the preview moves, not the source file, and the webview starts over in the new window.
+    const settled = nextMessage(e2e, 'e2e:settled');
+    await vscode.commands.executeCommand('overtex.viewer.moveToNewWindow');
+    const { position } = await settled;
+    assert.ok(Math.abs(position - before.position) < 0.02, `the viewer moved from ${before.position} to ${position} pages down`);
+    const holding = (label: string) => vscode.window.tabGroups.all.find((g) => g.tabs.some((t) => t.label === label));
+    assert.deepStrictEqual(
+      holding('main.pdf')?.tabs.map((t) => t.label),
+      ['main.pdf']
+    );
+    assert.notStrictEqual(holding('main.pdf'), holding('main.tex'));
+  });
+
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
   }

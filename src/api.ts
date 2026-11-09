@@ -24,6 +24,10 @@ export interface OvertexApi {
 export interface OvertexE2e {
   readonly onViewerMessage: vscode.Event<E2eFromViewerMessage>;
   sendToViewer(msg: E2eToViewerMessage): void;
+  /** The editor group the preview is in. */
+  viewerColumn(): vscode.ViewColumn | undefined;
+  /** Does what happens when VS Code brings the preview back after a reload, which a test cannot trigger. */
+  restoreViewer(panel: vscode.WebviewPanel): Promise<void>;
   /** What the Papers panel lists: its groups in order, with the paper keys in order. */
   paperGroups(): Promise<{ group: string; keys: string[] }[]>;
   /** What the Labels panel lists: its groups in order, with the label keys in order. */

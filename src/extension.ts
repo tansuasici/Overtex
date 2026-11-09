@@ -54,7 +54,13 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     (pdfFile, page, x, y) => void inverseSearch(pdfFile, page, x, y),
     log,
     settings.viewerColorScheme,
+    context.workspaceState,
     e2eEvents && ((msg) => e2eEvents.fire(msg))
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer(PdfPanel.viewType, {
+      deserializeWebviewPanel: (panel) => pdfPanel.restore(panel),
+    })
   );
   if (e2eEvents) {
     context.subscriptions.push(e2eEvents);
@@ -266,6 +272,12 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.build', () => build()),
     vscode.commands.registerCommand('overtex.cancelBuild', () => builder.cancel()),
     vscode.commands.registerCommand('overtex.viewPdf', viewPdf),
+    vscode.commands.registerCommand('overtex.viewer.moveToNewWindow', async () => {
+      if (!pdfPanel.isOpen) {
+        await viewPdf();
+      }
+      await pdfPanel.moveToNewWindow();
+    }),
     vscode.commands.registerCommand('overtex.forwardSearch', forwardSearch),
     vscode.commands.registerCommand('overtex.showLog', () => output.show()),
     vscode.commands.registerCommand('overtex.checkSetup', () => checkSetupCommand(output)),
@@ -322,6 +334,8 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const e2e: OvertexE2e | undefined = e2eEvents && {
     onViewerMessage: e2eEvents.event,
     sendToViewer: (msg) => pdfPanel.postE2e(msg),
+    viewerColumn: () => pdfPanel.column,
+    restoreViewer: (panel) => pdfPanel.restore(panel),
     paperGroups: () => papers.groups(),
     labelGroups: () => labels.groups(),
   };

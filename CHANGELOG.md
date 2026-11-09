@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **PDF preview layout**: the preview stays in the split you drag it to, instead of moving back beside the editor when it comes forward, and opens there again after you close it. **Move PDF Preview to New Window** (also a button in its tab bar) puts it in its own window, for a second screen. After a window reload or restart it comes back with the same PDF, page and zoom.
 - **Labels panel**: a new view in the Overtex sidebar lists the `\label`s in the workspace's `.tex` files by kind, with undefined references on top, how often each label is referenced, and a warning for duplicates. Go to any definition or reference, insert a `\ref` at the cursor, or rename a label across the files, closed ones included. Go to definition, find references and F2 rename now work on labels without TexLab too; when TexLab runs, it keeps handling those, for the files linked by `\input`.
 - The README and the Getting Started walkthrough mention the separate Overleaf Connect extension as an optional way to work on Overleaf projects. Overtex still does not need Overleaf and never connects to it.
 

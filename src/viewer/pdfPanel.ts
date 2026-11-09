@@ -10,9 +10,21 @@ import type { ColorScheme } from '../shared/colorScheme';
 import type { E2eFromViewerMessage, E2eToViewerMessage, FromViewerMessage, PageRect, ToViewerMessage } from '../shared/messages';
 import type { Note } from '../shared/notes';
 
+/** What is kept per workspace, so that the preview comes back as it was. */
+interface RememberedPreview {
+  pdfFile?: string;
+  notesFile?: string;
+  /** The editor group the preview was last in. */
+  column?: vscode.ViewColumn;
+}
+
+const REMEMBERED_KEY = 'overtex.viewer.preview';
+/** How long to wait for VS Code to activate the preview before moving it. */
+const ACTIVATE_TIMEOUT_MS = 2000;
+
 /** A single PDF preview tab rendered with PDF.js inside a webview. */
 export class PdfPanel implements vscode.Disposable {
-  private static readonly viewType = 'overtex.pdfPreview';
+  static readonly viewType = 'overtex.pdfPreview';
 
   private panel: vscode.WebviewPanel | undefined;
   private ready = false;
@@ -34,6 +46,7 @@ export class PdfPanel implements vscode.Disposable {
     private readonly onInverseSearch: (pdfFile: string, page: number, x: number, y: number) => void,
     private readonly log: (text: string) => void,
     private readonly colorScheme: () => ColorScheme,
+    private readonly store: vscode.Memento,
     /** Receives the viewer's test messages; set only by the end-to-end tests. */
     private readonly onE2eMessage?: (msg: E2eFromViewerMessage) => void
   ) {
@@ -48,12 +61,17 @@ export class PdfPanel implements vscode.Disposable {
     return this.panel !== undefined;
   }
 
+  /** The editor group the preview is in. */
+  get column(): vscode.ViewColumn | undefined {
+    return this.panel?.viewColumn;
+  }
+
   /** Opens the preview (or brings it forward) and loads `pdfFile`. */
   async show(pdfFile: string, preserveFocus = true, notesFile?: string): Promise<void> {
     if (!this.panel) {
       this.create();
     } else if (!this.panel.visible) {
-      this.panel.reveal(vscode.ViewColumn.Beside, preserveFocus);
+      this.panel.reveal(undefined, preserveFocus); // Stays in the group the user put it in.
     }
     this.notesFile = notesFile;
     await this.load(pdfFile);
@@ -72,13 +90,90 @@ export class PdfPanel implements vscode.Disposable {
       return;
     }
     if (!this.panel.visible) {
-      this.panel.reveal(vscode.ViewColumn.Beside, true);
+      this.panel.reveal(undefined, true);
     }
     if (this.ready) {
       this.post({ type: 'reveal', target });
     } else {
       this.pendingReveal = target;
     }
+  }
+
+  /** Moves the preview out to its own window. VS Code offers the way back in that window's tab bar. */
+  async moveToNewWindow(): Promise<void> {
+    if (!this.panel) {
+      return;
+    }
+    // The command moves whichever editor is active, so without this it would take the source file.
+    if (!(await this.activate(this.panel))) {
+      void vscode.window.showWarningMessage('Overtex could not move the PDF preview to a new window. Drag its tab out of the window instead.');
+      return;
+    }
+    try {
+      await vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow');
+    } catch (err) {
+      this.log(`Could not move the PDF preview to a new window: ${err instanceof Error ? err.message : String(err)}\n`);
+      void vscode.window.showWarningMessage('Overtex could not move the PDF preview to a new window. Drag its tab out of the window instead.');
+    }
+  }
+
+  private activate(panel: vscode.WebviewPanel): Promise<boolean> {
+    panel.reveal(undefined, false);
+    if (panel.active) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const finish = (active: boolean) => {
+        clearTimeout(timer);
+        sub.dispose();
+        resolve(active);
+      };
+      const timer = setTimeout(() => finish(false), ACTIVATE_TIMEOUT_MS);
+      const sub = panel.onDidChangeViewState(() => {
+        if (panel.active) {
+          finish(true);
+        }
+      });
+    });
+  }
+
+  /** Takes over a preview that VS Code brought back after a window reload or restart. */
+  async restore(panel: vscode.WebviewPanel): Promise<void> {
+    if (this.panel) {
+      panel.dispose(); // A build opened one first.
+      return;
+    }
+    panel.webview.options = this.webviewOptions();
+    this.adopt(panel);
+    const { pdfFile, notesFile } = this.remembered();
+    const exists = pdfFile !== undefined && (await fileExists(pdfFile));
+    if (!this.holds(panel) || this.pdfFile !== undefined) {
+      return; // Closed, or given a newer PDF, in the meantime.
+    }
+    if (exists) {
+      this.notesFile = notesFile;
+      await this.load(pdfFile);
+    } else {
+      panel.title = 'PDF Preview';
+    }
+  }
+
+  private holds(panel: vscode.WebviewPanel): boolean {
+    return this.panel === panel;
+  }
+
+  private remembered(): RememberedPreview {
+    return this.store.get<RememberedPreview>(REMEMBERED_KEY) ?? {};
+  }
+
+  private remember(change: RememberedPreview): void {
+    void this.store.update(REMEMBERED_KEY, { ...this.remembered(), ...change });
+  }
+
+  /** The group the preview was last in, unless that would cover the file being edited. */
+  private openingColumn(): vscode.ViewColumn {
+    const { column } = this.remembered();
+    return column !== undefined && column !== vscode.window.activeTextEditor?.viewColumn ? column : vscode.ViewColumn.Beside;
   }
 
   /** Sends the current `overtex.viewer.colorScheme` to the open preview. */
@@ -122,22 +217,38 @@ export class PdfPanel implements vscode.Disposable {
   }
 
   private create(): void {
-    this.ready = false;
-    this.panel = vscode.window.createWebviewPanel(
-      PdfPanel.viewType,
-      'PDF Preview',
-      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [this.mediaRoot],
-      }
+    this.adopt(
+      vscode.window.createWebviewPanel(
+        PdfPanel.viewType,
+        'PDF Preview',
+        { viewColumn: this.openingColumn(), preserveFocus: true },
+        { ...this.webviewOptions(), retainContextWhenHidden: true }
+      )
     );
-    this.panel.iconPath = new vscode.ThemeIcon('file-pdf');
-    this.panel.webview.html = this.html(this.panel.webview);
+  }
 
-    this.panel.webview.onDidReceiveMessage((msg: FromViewerMessage) => this.onMessage(msg), null, this.disposables);
-    this.panel.onDidDispose(
+  private webviewOptions(): vscode.WebviewOptions {
+    return { enableScripts: true, localResourceRoots: [this.mediaRoot] };
+  }
+
+  private adopt(panel: vscode.WebviewPanel): void {
+    this.ready = false;
+    this.pdfFile = undefined;
+    this.panel = panel;
+    panel.iconPath = new vscode.ThemeIcon('file-pdf');
+    panel.webview.html = this.html(panel.webview);
+
+    panel.webview.onDidReceiveMessage((msg: FromViewerMessage) => this.onMessage(msg), null, this.disposables);
+    panel.onDidChangeViewState(
+      () => {
+        if (panel.viewColumn !== undefined) {
+          this.remember({ column: panel.viewColumn });
+        }
+      },
+      null,
+      this.disposables
+    );
+    panel.onDidDispose(
       () => {
         this.panel = undefined;
         this.ready = false;
@@ -152,6 +263,7 @@ export class PdfPanel implements vscode.Disposable {
     if (!this.panel) {
       return;
     }
+    this.remember({ pdfFile, notesFile: this.notesFile });
     this.panel.title = path.basename(pdfFile);
     if (!this.ready) {
       return; // Sent once the viewer reports ready.
@@ -335,6 +447,15 @@ export class PdfPanel implements vscode.Disposable {
   dispose(): void {
     this.panel?.dispose();
     this.disposables.forEach((d) => d.dispose());
+  }
+}
+
+async function fileExists(file: string): Promise<boolean> {
+  try {
+    await vscode.workspace.fs.stat(vscode.Uri.file(file));
+    return true;
+  } catch {
+    return false;
   }
 }
 

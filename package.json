@@ -37,7 +37,8 @@
   "activationEvents": [
     "onLanguage:latex",
     "onLanguage:bibtex",
-    "workspaceContains:**/*.tex"
+    "workspaceContains:**/*.tex",
+    "onWebviewPanel:overtex.pdfPreview"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -108,6 +109,12 @@
         "title": "View PDF",
         "category": "Overtex",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "overtex.viewer.moveToNewWindow",
+        "title": "Move PDF Preview to New Window",
+        "category": "Overtex",
+        "icon": "$(empty-window)"
       },
       {
         "command": "overtex.forwardSearch",
@@ -257,6 +264,11 @@
           "command": "overtex.viewPdf",
           "when": "editorLangId == latex",
           "group": "navigation@2"
+        },
+        {
+          "command": "overtex.viewer.moveToNewWindow",
+          "when": "activeWebviewPanelId == 'overtex.pdfPreview' && !isAuxiliaryWindow",
+          "group": "navigation"
         }
       ],
       "view/title": [

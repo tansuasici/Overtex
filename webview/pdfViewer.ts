@@ -21,6 +21,8 @@ interface ViewState {
   notesVisible?: boolean;
   notesListOpen?: boolean;
   hideDone?: boolean;
+  /** Where the viewer was scrolled to: a moved or restored preview starts from an empty page. */
+  anchor?: Anchor | null;
 }
 
 interface PageView {
@@ -69,6 +71,11 @@ const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]
 let doc: PDFDocumentProxy | null = null;
 let pages: PageView[] = [];
 let zoom: Zoom = vscode.getState()?.zoom ?? 'page-width';
+/**
+ * The saved place in a moved or restored preview, kept until its layout settles: a new window can lay
+ * out the viewer too small at first for the place to fit, and that would lose it.
+ */
+let returnTo = vscode.getState()?.anchor ?? null;
 let scale = 1;
 let loadSeq = 0;
 
@@ -93,7 +100,7 @@ const visibility = new IntersectionObserver(
 
 async function load(data: Uint8Array): Promise<void> {
   const seq = ++loadSeq;
-  const anchor = captureAnchor();
+  const anchor = returnTo ?? captureAnchor();
   let next: PDFDocumentProxy;
   await workerReady;
   try {
@@ -131,6 +138,14 @@ async function load(data: Uint8Array): Promise<void> {
   rebuildPageElements();
   restoreAnchor(anchor);
   updatePageInfo();
+  if (returnTo) {
+    window.setTimeout(() => {
+      returnTo = null;
+      if (e2e) {
+        vscode.postMessage({ type: 'e2e:settled', position: scrollPosition() });
+      }
+    }, 2000);
+  }
   void previous?.loadingTask.destroy();
   if (e2e) {
     vscode.postMessage({ type: 'e2e:loaded', pages: pages.length });
@@ -289,6 +304,12 @@ function restoreAnchor(anchor: Anchor | null): void {
   }
 }
 
+/** How many pages down the viewer is, for the end-to-end tests. */
+function scrollPosition(): number {
+  const at = captureAnchor();
+  return at ? at.page + at.offset : 0;
+}
+
 function updatePageInfo(): void {
   const anchor = captureAnchor();
   pageInfo.textContent = pages.length ? `${(anchor?.page ?? 0) + 1} / ${pages.length}` : '';
@@ -337,7 +358,7 @@ async function reportReveal(view: PageView, target: PageRect, height: number): P
   await scrollSettled();
   const top = view.el.offsetTop + target.y * scale - viewer.scrollTop;
   const bottom = top + height * scale;
-  vscode.postMessage({ type: 'e2e:revealed', target, inView: top >= 0 && bottom <= viewer.clientHeight });
+  vscode.postMessage({ type: 'e2e:revealed', target, inView: top >= 0 && bottom <= viewer.clientHeight, position: scrollPosition() });
 }
 
 /** Clicks like a user would: scrolls the point into view and dispatches a mouse event there. */
@@ -506,7 +527,7 @@ function icon(path: string): SVGSVGElement {
 }
 
 function saveState(): void {
-  vscode.setState({ zoom, notesVisible, notesListOpen, hideDone });
+  vscode.setState({ zoom, notesVisible, notesListOpen, hideDone, anchor: returnTo ?? captureAnchor() });
 }
 
 /** A position on the page as a percentage, so that a pin stays in place at any zoom. */
@@ -893,14 +914,26 @@ viewer.addEventListener(
   { passive: false }
 );
 
-viewer.addEventListener('scroll', updatePageInfo, { passive: true });
+let scrollSaveTimer: number | undefined;
+viewer.addEventListener(
+  'scroll',
+  () => {
+    updatePageInfo();
+    clearTimeout(scrollSaveTimer);
+    scrollSaveTimer = window.setTimeout(saveState, 200);
+  },
+  { passive: true }
+);
 
 let resizeTimer: number | undefined;
 new ResizeObserver(() => {
-  if (typeof zoom !== 'number') {
-    clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => applyZoom(zoom), 100);
-  }
+  clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(() => {
+    if (typeof zoom !== 'number') {
+      applyZoom(zoom);
+    }
+    restoreAnchor(returnTo);
+  }, 100);
 }).observe(viewer);
 
 /** Normalises PDF bytes from postMessage: ArrayBuffer, typed array, or a JSON-ified Buffer. */

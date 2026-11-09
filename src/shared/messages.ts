@@ -59,8 +59,10 @@ export type E2eToViewerMessage =
 
 export type E2eFromViewerMessage =
   | { type: 'e2e:loaded'; pages: number }
+  /** A moved or restored preview's layout has settled: how many pages down it ended up. */
+  | { type: 'e2e:settled'; position: number }
   /** Sent once a reveal has scrolled; `inView` says whether the whole target box is on screen. */
-  | { type: 'e2e:revealed'; target: PageRect; inView: boolean }
+  | { type: 'e2e:revealed'; target: PageRect; inView: boolean; position: number }
   /** Sent whenever the page color scheme is applied. */
   | { type: 'e2e:colorScheme'; dark: boolean }
   /**
