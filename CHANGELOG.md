@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-11-09)
 
 - **Overtex profile**: `profile/Overtex.code-profile` is a VS Code profile to import with **Profiles: Import Profile…**, from the file or its GitHub URL. It installs Overtex into a separate profile with a quieter editor (no minimap, breadcrumbs, sticky scroll, tips or AI chat; wrapped lines; a slightly larger font) and leaves your other profiles alone. `node scripts/profile.mjs` regenerates it. See README, *A separate, uncluttered profile*.
 - **PDF preview layout**: the preview stays in the split you drag it to, instead of moving back beside the editor when it comes forward, and opens there again after you close it. **Move PDF Preview to New Window** (also a button in its tab bar) puts it in its own window, for a second screen. After a window reload or restart it comes back with the same PDF, page and zoom.
