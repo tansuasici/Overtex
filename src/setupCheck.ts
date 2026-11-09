@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { buildSettings, settings } from './config';
 import { BuildTool, toolPathSetting } from './latex/builder';
 import { findExecutable } from './latex/executable';
-import { SetupOption, SetupReport, TEXLAB_INSTALL_URL, checkSetup, formatReport, setupOptions, texInstallHint } from './latex/setup';
+import { SetupOption, SetupReport, TEXLAB_INSTALL_URL, checkSetup, formatReport, setupOptions } from './latex/setup';
 import { TEXLAB_EXTENSION_ID } from './latex/texlabConfig';
 
 export const WALKTHROUGH_ID = 'tansuasici.overtex#overtex.gettingStarted';
@@ -97,9 +97,13 @@ async function notify(report: SetupReport, output: vscode.OutputChannel): Promis
     return;
   }
 
-  const hint = texInstallHint(process.platform, report.tool);
   const setUp = 'Set Up…';
-  const choice = await vscode.window.showWarningMessage(`Overtex: ${missing} not found. ${hint.text}`, setUp, 'Re-check', showDetails);
+  const choice = await vscode.window.showWarningMessage(
+    `Overtex: ${missing} not found. Choose Set Up… to use Tectonic, which needs no TeX distribution, or to install one.`,
+    setUp,
+    'Re-check',
+    showDetails
+  );
   if (choice === setUp) {
     await chooseSetup(report.tool, output);
   } else if (choice === 'Re-check') {
