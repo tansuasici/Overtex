@@ -88,7 +88,16 @@ export type E2eFromViewerMessage =
    * pages are shown, `fits` whether the shown page lies wholly inside the preview, and `position`
    * how many pages down the viewer is (meaningful once the slideshow has ended).
    */
-  | { type: 'e2e:slide'; presenting: boolean; slide: number; visible: number; fits: boolean; position: number };
+  | {
+      type: 'e2e:slide';
+      presenting: boolean;
+      slide: number;
+      visible: number;
+      fits: boolean;
+      position: number;
+      /** The viewer's scroll box, for a failure message. */
+      layout: { scrollTop: number; height: number; scrollHeight: number; zoom: string };
+    };
 
 export function isE2eMessage(msg: { type: string }): msg is E2eFromViewerMessage {
   return msg.type.startsWith('e2e:');

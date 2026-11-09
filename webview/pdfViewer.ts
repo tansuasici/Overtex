@@ -374,10 +374,21 @@ function setPresenting(on: boolean): void {
     view.el.hidden = false;
   }
   relayout();
-  restoreAnchor({ page: slide, offset: 0 });
+  const back = { page: slide, offset: 0 };
+  restoreAnchor(back);
   updatePageInfo();
   saveState();
-  reportSlide();
+  // The toolbar and scrollbar come back, so the layout can still shift: put the page back once it has.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      if (!presenting && captureAnchor()?.page !== back.page) {
+        restoreAnchor(back);
+        updatePageInfo();
+        saveState();
+      }
+      reportSlide();
+    })
+  );
 }
 
 function syncPresentUi(): void {
@@ -424,7 +435,8 @@ function reportSlide(): void {
   const area = viewer.getBoundingClientRect();
   const box = shown[0]?.el.getBoundingClientRect();
   const fits = box !== undefined && box.left >= area.left - 1 && box.right <= area.right + 1 && box.top >= area.top - 1 && box.bottom <= area.bottom + 1;
-  vscode.postMessage({ type: 'e2e:slide', presenting, slide, visible: shown.length, fits, position: scrollPosition() });
+  const layout = { scrollTop: Math.round(viewer.scrollTop), height: viewer.clientHeight, scrollHeight: viewer.scrollHeight, zoom: String(zoom) };
+  vscode.postMessage({ type: 'e2e:slide', presenting, slide, visible: shown.length, fits, position: scrollPosition(), layout });
 }
 
 // ---- SyncTeX ----
