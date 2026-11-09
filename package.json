@@ -54,7 +54,8 @@
         "overtex.synctex.path",
         "overtex.latexdiff.path",
         "overtex.texlab.path",
-        "overtex.zotero.url"
+        "overtex.zotero.url",
+        "overtex.grammar.url"
       ]
     }
   },
@@ -200,6 +201,11 @@
       {
         "command": "overtex.countWords",
         "title": "Count Words",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.checkGrammar",
+        "title": "Check Spelling and Grammar",
         "category": "Overtex"
       },
       {
@@ -559,6 +565,37 @@
           ],
           "default": "light",
           "markdownDescription": "How the PDF preview draws pages. Only the preview changes; the PDF file is untouched. **Toggle Dark PDF Preview** and the preview's toolbar button switch between light and dark."
+        },
+        "overtex.grammar.url": {
+          "type": "string",
+          "default": "http://localhost:8081",
+          "markdownDescription": "Where Check Spelling and Grammar reaches a LanguageTool server. The default is a local one (`brew services start languagetool` listens on 8081). The text of the file being checked is sent to this address, so it leaves the machine only if you point it at a remote server."
+        },
+        "overtex.grammar.language": {
+          "type": "string",
+          "default": "auto",
+          "markdownDescription": "LanguageTool language code for checks, such as `en-US`, `en-GB` or `de-DE`. `auto` takes it from babel, polyglossia or the class options, in the file or in the main file, and checks American English when the document names none. LanguageTool has no Turkish."
+        },
+        "overtex.grammar.checkOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check spelling and grammar each time a LaTeX file is saved."
+        },
+        "overtex.grammar.dictionary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Words the spelling and grammar check does not report as misspelled."
+        },
+        "overtex.grammar.disabledRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "LanguageTool rule IDs to leave out, such as `EN_QUOTES`. The quick fix on a finding adds its rule here."
         },
         "overtex.wordCount.enabled": {
           "type": "boolean",

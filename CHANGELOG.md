@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Check Spelling and Grammar**: a new command checks the active `.tex` file with a LanguageTool server on your computer (`brew install languagetool`, then `brew services start languagetool`). Only the prose is sent as text; math, comments, citation keys, code and tables are left out, and the findings land on the right spot in the source. Quick fixes apply a suggestion, add a word to the dictionary or turn a rule off. The language comes from babel or polyglossia, in the file or the main file, and is American English when the document names none. Turkish is not supported, since LanguageTool has none. `overtex.grammar.checkOnSave` checks on each save.
+
 ## 0.5.0 (2026-11-10)
 
 - **Export Review PDF**: a new command builds `main-review.pdf` for co-authors or reviewers. Pick what it shows: line numbers, your open PDF notes as margin notes, and the changes since a git commit or another `.tex` file, marked up with latexdiff. Each note goes beside the source line SyncTeX finds for it, in `\input` files too; a note inside a table goes above the table. Done notes are left out, and your sources are not changed.

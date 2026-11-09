@@ -30,6 +30,7 @@ import { ReviewArgs, exportReviewPdfCommand } from './reviewPdf';
 import { exportArxiv } from './exportArxiv';
 import { SubmissionCheck } from './checkSubmission';
 import { BibliographyCheck } from './checkBib';
+import { GrammarCheck } from './grammarCheck';
 import { WordCounter } from './wordCount';
 import { Highlighter } from './highlighter';
 import { registerMathPreview } from './mathPreview';
@@ -80,6 +81,8 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const version = (context.extension.packageJSON as { version?: string }).version ?? '';
   const userAgent = `Overtex/${version} (https://github.com/tansuasici/Overtex)`;
   const bibCheck = new BibliographyCheck(mainFile, userAgent);
+  const grammar = new GrammarCheck(mainFile);
+  context.subscriptions.push(grammar);
   const papers = registerLibrary(context, { index: bibIndex, mainFile, userAgent, showPdf: (pdf) => pdfPanel.show(pdf) });
   const labels = registerLabels(context, {
     useFallbackProviders: () => !server.isRunning && !vscode.extensions.getExtension(TEXLAB_EXTENSION_ID),
@@ -301,6 +304,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     vscode.commands.registerCommand('overtex.checkSubmission', () => submission.run()),
     vscode.commands.registerCommand('overtex.checkBibliography', (uri?: vscode.Uri) => bibCheck.run(uri instanceof vscode.Uri ? uri : undefined)),
     vscode.commands.registerCommand('overtex.countWords', () => words.run()),
+    vscode.commands.registerCommand('overtex.checkGrammar', () => grammar.run()),
     vscode.commands.registerCommand('overtex.compareVersions', (args?: CompareArgs) =>
       requireTrust('Comparing versions')
         ? compareVersionsCommand({ mainFile, saveSources, showPdf: (pdf) => pdfPanel.show(pdf), log, showLog: () => output.show() }, args)

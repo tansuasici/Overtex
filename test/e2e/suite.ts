@@ -453,6 +453,73 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('spelling and grammar check marks a misspelling and fixes it', async () => {
+    // A stand-in for LanguageTool's /v2/check, answering for the first "teh" in what it is sent.
+    const sent: { language: string; text: string }[] = [];
+    const server = http.createServer((req, res) => {
+      if (req.url?.startsWith('/v2/languages')) {
+        res.end('[]');
+        return;
+      }
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const form = new URLSearchParams(body);
+        const pieces = (JSON.parse(form.get('data')!) as { annotation: ({ text: string } | { markup: string })[] }).annotation;
+        const joinedText = pieces.map((p) => ('text' in p ? p.text : p.markup)).join('');
+        sent.push({ language: form.get('language')!, text: pieces.map((p) => ('text' in p ? p.text : '')).join('') });
+        const at = joinedText.indexOf('teh');
+        const matches = at < 0 ? [] : [{
+          offset: at,
+          length: 3,
+          message: 'Possible spelling mistake found.',
+          replacements: [{ value: 'the' }],
+          rule: { id: 'MORFOLOGIK_RULE_EN_GB', issueType: 'misspelling', category: { id: 'TYPOS' } },
+        }];
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ matches }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const cfg = () => vscode.workspace.getConfiguration('overtex.grammar');
+    try {
+      await cfg().update('url', `http://127.0.0.1:${(server.address() as AddressInfo).port}`, vscode.ConfigurationTarget.Global);
+      const source = '\\documentclass{article}\n\\usepackage[british]{babel}\n\\begin{document}\nThis is teh text, $x = 1$ % not checked\n\\end{document}\n';
+      const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: source });
+      await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+
+      const problems = await vscode.commands.executeCommand<unknown[]>('overtex.checkGrammar');
+      assert.strictEqual(problems?.length, 1, 'one problem');
+      assert.strictEqual(sent[0].language, 'en-GB', 'language from babel');
+      assert.ok(!sent[0].text.includes('documentclass') && !sent[0].text.includes('not checked'), `only prose sent: ${sent[0].text}`);
+      const diags = vscode.languages.getDiagnostics(doc.uri).filter((d) => d.source === 'Overtex grammar');
+      assert.strictEqual(diags.length, 1);
+      assert.strictEqual(doc.getText(diags[0].range), 'teh', 'the finding sits on the word');
+
+      // An edit before the finding moves it along.
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(doc.uri, new vscode.Position(3, 0), 'Well. ');
+      await vscode.workspace.applyEdit(edit);
+      const moved = vscode.languages.getDiagnostics(doc.uri).filter((d) => d.source === 'Overtex grammar');
+      assert.strictEqual(moved.length, 1);
+      assert.strictEqual(doc.getText(moved[0].range), 'teh', 'still on the word after an edit');
+
+      const actions = await vscode.commands.executeCommand<vscode.CodeAction[]>('vscode.executeCodeActionProvider', doc.uri, moved[0].range);
+      const titles = actions.map((a) => a.title);
+      assert.ok(titles.includes("Add 'teh' to the dictionary") && titles.some((t) => t.startsWith('Disable the rule')), titles.join(', '));
+      const replace = actions.find((a) => a.title === "Replace with 'the'");
+      assert.ok(replace?.edit, titles.join(', '));
+      await vscode.workspace.applyEdit(replace.edit);
+      assert.ok(doc.lineAt(3).text.startsWith('Well. This is the text'), doc.lineAt(3).text);
+      assert.strictEqual(vscode.languages.getDiagnostics(doc.uri).filter((d) => d.source === 'Overtex grammar').length, 0, 'the fix clears the finding');
+    } finally {
+      await cfg().update('url', undefined, vscode.ConfigurationTarget.Global);
+      server.closeAllConnections();
+      server.close();
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+  });
+
   await step('getting started walkthrough is registered', async () => {
     await vscode.commands.executeCommand('overtex.gettingStarted');
   });
