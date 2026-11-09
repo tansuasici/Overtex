@@ -282,7 +282,10 @@ export async function run(): Promise<void> {
 
     state = await key('Escape');
     assert.strictEqual(state.presenting, false, 'Esc ends it');
-    assert.strictEqual(Math.floor(state.position + 0.01), 1, `the preview is left at that page (${JSON.stringify(state.layout)})`);
+    // A short window cannot scroll page 2 to the top; then the preview is as far down as it goes.
+    const { scrollTop, height, scrollHeight } = state.layout;
+    const atBottom = state.position > 0.5 && scrollTop >= scrollHeight - height - 1;
+    assert.ok(Math.floor(state.position + 0.01) === 1 || atBottom, `the preview is left at that page (${state.position}, ${JSON.stringify(state.layout)})`);
   });
 
   // Last: these show a notification and open an editor, which would get in the way of the viewer steps above.
