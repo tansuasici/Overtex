@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The README and the Getting Started walkthrough mention the separate Overleaf Connect extension as an optional way to work on Overleaf projects. Overtex still does not need Overleaf and never connects to it.
+
 ## 0.3.0 (2026-11-09)
 
 - **Papers panel**: an Overtex view in the activity bar lists what the workspace's `.bib` files hold, grouped into Cited and Not cited and sorted by year, author or title. Each paper can be cited at the cursor, opened as a PDF (from its `file` field, else `papers/<key>.pdf` beside the `.bib`), shown in the bibliography or opened on the web. arXiv papers can be downloaded to `papers/` on request. Add Paper takes a DOI, an arXiv ID or BibTeX from the clipboard. Add Citation, Check Bibliography and the PDF download are the only features that use the internet, and only when run.

@@ -126,6 +126,10 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 
 If LaTeX Workshop is installed and both extensions build on save, every save would run TeX twice. Overtex detects this and offers to turn off either LaTeX Workshop's auto-build or its own build on save.
 
+## Overleaf (optional)
+
+Overtex works on local files and does not need Overleaf. To work on an Overleaf project from VS Code, add the separate [Overleaf Connect](https://marketplace.visualstudio.com/items?itemName=tansuasici.overleaf-connect) extension, which uses Overleaf's Git integration. Overleaf Connect syncs the project and waits while a build runs, and Overtex builds and previews it. Overtex itself never connects to Overleaf.
+
 ## Workspace Trust
 
 latexmk can run code from a project's `.latexmkrc`, so in an [untrusted workspace](https://code.visualstudio.com/docs/editor/workspace-trust) Overtex does not build, clean, compare versions or start TexLab, and ignores workspace values of `overtex.latex.tool`, `overtex.latex.latexmkPath`, `overtex.tectonic.path`, `overtex.docker.path`, `overtex.docker.image` (an image is code that runs on your machine), `overtex.latex.extraArgs`, `overtex.synctex.path`, `overtex.latexdiff.path`, `overtex.texlab.path` and `overtex.zotero.url`. Opening an existing PDF still works. Trust the folder to enable building.

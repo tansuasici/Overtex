@@ -575,6 +575,17 @@
             "completionEvents": [
               "onLink:https://github.com/latex-lsp/texlab#installation"
             ]
+          },
+          {
+            "id": "overleaf",
+            "title": "Work with Overleaf (optional)",
+            "description": "Overtex does not need Overleaf. To sync an Overleaf project, add the separate Overleaf Connect extension.\n[Get Overleaf Connect](https://marketplace.visualstudio.com/items?itemName=tansuasici.overleaf-connect)",
+            "media": {
+              "markdown": "media/walkthrough/overleaf.md"
+            },
+            "completionEvents": [
+              "onLink:https://marketplace.visualstudio.com/items?itemName=tansuasici.overleaf-connect"
+            ]
           }
         ]
       }
