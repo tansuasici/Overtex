@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { LogEntry, parseLog, parseTectonicLog } from './logParser';
+import { withEngineHint } from './engineHint';
 import { DEFAULT_LOOP_LIMITS, DEFAULT_STALL_TIMEOUT_SECONDS, LoopLimits, LoopWatch, loopMessage, silenceMessage } from './stall';
 
 export type Engine = 'pdflatex' | 'xelatex' | 'lualatex';
@@ -367,6 +368,7 @@ export class Builder {
           try {
             const log = fs.readFileSync(out.log, 'utf-8');
             entries = settings.tool === 'tectonic' ? parseTectonicLog(log, cwd) : parseLog(log, cwd);
+            entries = withEngineHint(entries, log, settings.tool, settings.engine);
             logRead = true;
           } catch {
             // No log: the tool failed before TeX ran.
