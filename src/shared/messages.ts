@@ -94,6 +94,8 @@ export type E2eFromViewerMessage =
       slide: number;
       visible: number;
       fits: boolean;
+      /** The Exit bar is showing without being hovered. */
+      exitShown: boolean;
       position: number;
       /** The viewer's scroll box, for a failure message. */
       layout: { scrollTop: number; height: number; scrollHeight: number; zoom: string };

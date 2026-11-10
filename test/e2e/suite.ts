@@ -266,6 +266,7 @@ export async function run(): Promise<void> {
     assert.strictEqual(state.presenting, true, 'the slideshow starts');
     assert.strictEqual(state.visible, 1, 'one page is shown');
     assert.ok(state.fits, 'the page fits the preview');
+    assert.strictEqual(state.exitShown, true, 'the Exit bar shows on entering');
     assert.strictEqual((await key('Home')).slide, 0);
     assert.strictEqual((await key('ArrowRight')).slide, 1);
     assert.strictEqual((await key('ArrowLeft')).slide, 0);
@@ -282,6 +283,7 @@ export async function run(): Promise<void> {
 
     state = await key('Escape');
     assert.strictEqual(state.presenting, false, 'Esc ends it');
+    assert.strictEqual(state.exitShown, false, 'the Exit bar goes with it');
     // A short window cannot scroll page 2 to the top; then the preview is as far down as it goes.
     const { scrollTop, height, scrollHeight } = state.layout;
     const atBottom = state.position > 0.5 && scrollTop >= scrollHeight - height - 1;

@@ -647,9 +647,21 @@ body.presenting .present-bar {
   transition: opacity 0.2s;
 }
 
+/* Shown for a moment on entering and whenever the mouse moves, so the way out can be found. */
+body.presenting.present-bar-shown .present-bar,
 body.presenting .present-bar:hover,
 body.presenting .present-bar:focus-within {
   opacity: 1;
+}
+
+.present-hint {
+  color: #aaa;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.presenting .present-bar {
+    transition: none;
+  }
 }
 
 .present-bar button {

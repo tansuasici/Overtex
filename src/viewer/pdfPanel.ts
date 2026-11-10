@@ -446,7 +446,7 @@ export class PdfPanel implements vscode.Disposable {
     <span class="hint">${isMac ? '⌘' : 'Ctrl'}+click to jump to source</span>
   </div>
   <div id="viewer" tabindex="0"><div id="pages"></div><p id="empty">Build the project to see the PDF.</p></div>
-  <div id="present-bar" class="present-bar"><span id="present-info"></span><button id="present-exit" title="Stop presenting (Esc)">Exit</button></div>
+  <div id="present-bar" class="present-bar"><span id="present-info"></span><span class="present-hint">Esc to exit</span><button id="present-exit" title="Stop presenting (Esc)">Exit</button></div>
   <aside id="notes-list" class="notes-list" aria-label="Notes" hidden>
     <div class="notes-list-head">
       <div class="notes-list-title">

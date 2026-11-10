@@ -394,6 +394,27 @@ function setPresenting(on: boolean): void {
 function syncPresentUi(): void {
   document.body.classList.toggle('presenting', presenting);
   presentButton.setAttribute('aria-pressed', String(presenting));
+  if (presenting) {
+    showPresentBar(PRESENT_BAR_ON_ENTER_MS);
+  } else {
+    hidePresentBar();
+  }
+}
+
+const PRESENT_BAR_ON_ENTER_MS = 3000;
+const PRESENT_BAR_ON_MOVE_MS = 2000;
+let presentBarTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Shows the Exit bar for `ms`, then lets it fade; hovering or focusing it keeps it up. */
+function showPresentBar(ms: number): void {
+  document.body.classList.add('present-bar-shown');
+  clearTimeout(presentBarTimer);
+  presentBarTimer = setTimeout(() => document.body.classList.remove('present-bar-shown'), ms);
+}
+
+function hidePresentBar(): void {
+  clearTimeout(presentBarTimer);
+  document.body.classList.remove('present-bar-shown');
 }
 
 const SLIDE_KEYS: Record<string, (current: number) => number> = {
@@ -436,7 +457,8 @@ function reportSlide(): void {
   const box = shown[0]?.el.getBoundingClientRect();
   const fits = box !== undefined && box.left >= area.left - 1 && box.right <= area.right + 1 && box.top >= area.top - 1 && box.bottom <= area.bottom + 1;
   const layout = { scrollTop: Math.round(viewer.scrollTop), height: viewer.clientHeight, scrollHeight: viewer.scrollHeight, zoom: String(zoom) };
-  vscode.postMessage({ type: 'e2e:slide', presenting, slide, visible: shown.length, fits, position: scrollPosition(), layout });
+  const exitShown = document.body.classList.contains('present-bar-shown');
+  vscode.postMessage({ type: 'e2e:slide', presenting, slide, visible: shown.length, fits, exitShown, position: scrollPosition(), layout });
 }
 
 // ---- SyncTeX ----
@@ -1038,6 +1060,11 @@ zoomSelect.addEventListener('change', () => {
 presentButton.addEventListener('click', () => setPresenting(true));
 document.getElementById('present-exit')!.addEventListener('click', () => setPresenting(false));
 window.addEventListener('keydown', onSlideKey);
+window.addEventListener('mousemove', () => {
+  if (presenting) {
+    showPresentBar(PRESENT_BAR_ON_MOVE_MS);
+  }
+});
 viewer.addEventListener('click', (event) => {
   if (presenting && !event[modifierKey]) {
     showSlide(slide + 1);
