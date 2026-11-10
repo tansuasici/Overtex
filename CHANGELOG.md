@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-11-10)
 
 - **Notes on the text**: leave notes for co-authors on the text of `.tex` files with the gutter's **+**, a selection and **Add Note**, or **Comments: Add Comment**. Notes are threads with replies, resolve/reopen and delete, signed with `git config user.name` and an ISO date, and saved in `.overtex/notes.json` at the workspace folder's root so they are shared through any git host. A note keeps the text it is on and a little context, and follows that text through edits, pulls and checkouts (the nearest occurrence when the text repeats, or the edited sentence between the same context). Notes whose text is gone are listed as Orphaned in the new Notes view, where they can be attached to a selection or deleted. The notes file is written only by those actions, never by editing, and is left untouched when it cannot be read.
 - **To-dos view**: `\todo{…}` and `\fixme{…}` commands get a gutter mark and are listed by file in a new To-dos view in the Overtex sidebar, with multi-line notes and `[options]` read; those in comments and inactive blocks are left out.
