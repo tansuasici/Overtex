@@ -118,6 +118,18 @@ describe('locateAnchor', () => {
 });
 
 describe('quoteSpan', () => {
+  it('drops the white space and line break at the ends of a selection', () => {
+    const text = 'One.\n  Two words.\nThree.';
+    const from = text.indexOf('  Two');
+    const to = text.indexOf('Three');
+    const span = quoteSpan(text, from, to);
+    expect(text.slice(span.start, span.end)).toBe('Two words.');
+  });
+
+  it('keeps a selection that is only white space', () => {
+    expect(quoteSpan('a\n\nb', 1, 3)).toEqual({ start: 1, end: 3 });
+  });
+
   it('keeps a selection as it is', () => {
     expect(quoteSpan(TEXT, 3, 9)).toEqual({ start: 3, end: 9 });
   });

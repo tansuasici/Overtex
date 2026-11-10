@@ -57,12 +57,22 @@ export function makeAnchor(text: string, start: number, end: number): Anchor {
 }
 
 /**
- * The text a note made on `[start, end)` should quote. An empty selection (a click on the gutter's +)
- * quotes the line without its indentation. A blank line quotes nothing and is found by its context.
+ * The text a note made on `[start, end)` should quote. A selection loses the white space and line
+ * breaks at its ends, so a selection that runs to the start of the next line stays on its own line.
+ * An empty selection (a click on the gutter's +) quotes the line without its indentation. A blank
+ * line quotes nothing and is found by its context.
  */
 export function quoteSpan(text: string, start: number, end: number): Span {
   if (end > start) {
-    return { start, end };
+    let s = start;
+    let e = end;
+    while (s < e && /\s/.test(text[s])) {
+      s++;
+    }
+    while (e > s && /\s/.test(text[e - 1])) {
+      e--;
+    }
+    return e > s ? { start: s, end: e } : { start, end };
   }
   const lineStart = text.lastIndexOf('\n', start - 1) + 1;
   const next = text.indexOf('\n', start);

@@ -468,11 +468,10 @@ export class SourceNotes implements vscode.Disposable {
     }
     const text = normalizeNewlines(editor.document.getText());
     const s = editor.selection;
-    const start = offsetAt(text, s.start.line, s.start.character);
-    const end = offsetAt(text, s.end.line, s.end.character);
+    const span = quoteSpan(text, offsetAt(text, s.start.line, s.start.character), offsetAt(text, s.end.line, s.end.character));
     const file = relativeFile(folder, editor.document.uri);
     await this.update(folder, (threads) =>
-      threads.map((t) => (t.id === ref.id ? { ...t, file, anchor: makeAnchor(text, start, end) } : t))
+      threads.map((t) => (t.id === ref.id ? { ...t, file, anchor: makeAnchor(text, span.start, span.end) } : t))
     );
   }
 
@@ -654,7 +653,8 @@ export function registerSourceNotes(context: vscode.ExtensionContext): SourceNot
     vscode.window.createTreeView('overtex.sourceNotes', { treeDataProvider: new NotesProvider(notes) }),
     command('create', (reply: vscode.CommentReply) => notes.create(reply)),
     command('reply', (reply: vscode.CommentReply) => notes.reply(reply)),
-    command('cancel', (thread: vscode.CommentThread) => thread.dispose()),
+    // Buttons in comments/commentThread/context pass a CommentReply, not the thread.
+    command('cancel', (reply: vscode.CommentReply) => reply.thread.dispose()),
     command('resolve', (target: unknown) => notes.resolve(target, true)),
     command('reopen', (target: unknown) => notes.resolve(target, false)),
     command('deleteThread', (target: unknown) => notes.deleteThread(target)),
