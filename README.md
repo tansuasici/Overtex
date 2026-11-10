@@ -53,7 +53,7 @@ Overleaf Connect is not part of the profile. Install it into the profile yoursel
 
 ## Features
 
-- **Build** with latexmk using pdfLaTeX, XeLaTeX or LuaLaTeX. BibTeX/Biber passes run automatically. Builds run on save, and a build requested while another is running is queued, not started in parallel.
+- **Build** with latexmk using pdfLaTeX, XeLaTeX or LuaLaTeX. BibTeX/Biber passes run automatically. Builds run on save, and a build requested while another is running is queued, not started in parallel. A build that prints nothing for five minutes, or keeps printing the same lines, is stopped, and Overtex says why.
 - **Tectonic or Docker** instead of a TeX distribution: set `overtex.latex.tool` to build with [Tectonic](https://tectonic-typesetting.github.io/) or with latexmk inside a Docker image. See [Build tools](#build-tools).
 - **Problems panel**: TeX errors and warnings are mapped to the right file and line, including files pulled in with `\input`.
 - **PDF preview** beside the editor. It reloads after each build and keeps your place. Drag its tab to any split, or use the window button in its tab bar (**Move PDF Preview to New Window**) to put it on another screen. It stays where you put it, and comes back with the same PDF and page after a window reload. **Dark pages** (the toolbar's ◐ button, **Toggle Dark PDF Preview**, or `overtex.viewer.colorScheme`) show light text on a dark gray page; colors keep their hue, but figures and photos are inverted too. Set it to `auto` to follow the VS Code theme.
@@ -140,6 +140,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | `overtex.texlab.enabled` | `true` | Run the TexLab language server. |
 | `overtex.texlab.chktex` | `false` | Show ChkTeX style warnings while typing (through TexLab). |
 | `overtex.build.onSave` | `true` | Build when a `.tex` or `.bib` file is saved. |
+| `overtex.build.stallTimeout` | `300` | Seconds without output before a build is stopped as stuck. A build that keeps printing the same lines is stopped too. `0` turns both off. With Docker, the time an image pull takes does not count. |
 | `overtex.viewer.autoOpen` | `true` | Open the preview after a successful build. |
 | `overtex.viewer.colorScheme` | `light` | `light`, `dark` (inverted pages) or `auto` (dark with a dark theme). |
 | `overtex.history.maxSnapshots` | `50` | Unnamed snapshots kept per document; `0` turns history off. Named snapshots are always kept. |
