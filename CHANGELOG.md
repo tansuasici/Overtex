@@ -3,6 +3,7 @@
 ## Unreleased
 
 - A build that prints nothing for `overtex.build.stallTimeout` seconds (default 300), or keeps printing the same lines, is stopped, and the error says why instead of the build hanging until you cancel it.
+- When a XeLaTeX, LuaLaTeX or Tectonic build fails on a pdfTeX-only command such as `\pdfoutput=1`, the error says so and suggests building with pdfLaTeX.
 - `⌘`/`Ctrl`+click in the PDF now puts the cursor on the word you clicked, not at the start of its line. When a word appears more than once nearby, the text around it in the PDF picks the right one.
 
 ## 0.7.0 (2026-11-11)
