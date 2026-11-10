@@ -1,4 +1,5 @@
 // Message protocol between the extension host and the PDF viewer webview.
+import type { ClickedWord } from './clickedWord';
 import type { ColorScheme } from './colorScheme';
 import type { Note } from './notes';
 
@@ -28,7 +29,8 @@ export type ToViewerMessage =
 
 export type FromViewerMessage =
   | { type: 'ready' }
-  | { type: 'inverseSearch'; page: number; x: number; y: number }
+  /** `word` is the word clicked, when the page has text there. */
+  | { type: 'inverseSearch'; page: number; x: number; y: number; word?: ClickedWord }
   | { type: 'error'; message: string }
   /** The toolbar's dark mode button; the extension updates `overtex.viewer.colorScheme`. */
   | { type: 'toggleColorScheme' }

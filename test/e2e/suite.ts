@@ -91,6 +91,11 @@ export async function run(): Promise<void> {
     await waitFor(`the cursor at ${path.basename(file)}:${line + 1}`, () => cursorAt(file, line)).catch((err: Error) => {
       throw new Error(`${err.message} (cursor is at ${where()}; clicked ${JSON.stringify(target)})`);
     });
+    // The click lands mid-line, on a word: the cursor goes to that word's start, not the line's.
+    const editor = vscode.window.activeTextEditor!;
+    const column = editor.selection.active.character;
+    const text = editor.document.lineAt(line).text;
+    assert.ok(column > 0 && /\p{L}/u.test(text[column]) && !/\p{L}/u.test(text[column - 1]), `cursor at the start of a word, not column ${column} of "${text}"`);
   }
 
   console.log('Overtex end-to-end');

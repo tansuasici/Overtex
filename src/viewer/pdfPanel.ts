@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { toStandaloneArrayBuffer } from '../shared/bytes';
+import { isClickedWord } from '../shared/clickedWord';
+import type { ClickedWord } from '../shared/clickedWord';
 import { isE2eMessage } from '../shared/messages';
 import { isNote, parseNotes, serializeNotes, withDone } from '../shared/notes';
 import { toggledScheme } from '../shared/colorScheme';
@@ -44,7 +46,7 @@ export class PdfPanel implements vscode.Disposable {
 
   constructor(
     extensionUri: vscode.Uri,
-    private readonly onInverseSearch: (pdfFile: string, page: number, x: number, y: number) => void,
+    private readonly onInverseSearch: (pdfFile: string, page: number, x: number, y: number, word?: ClickedWord) => void,
     private readonly log: (text: string) => void,
     private readonly colorScheme: () => ColorScheme,
     private readonly store: vscode.Memento,
@@ -356,7 +358,7 @@ export class PdfPanel implements vscode.Disposable {
         break;
       case 'inverseSearch':
         if (this.pdfFile) {
-          this.onInverseSearch(this.pdfFile, msg.page, msg.x, msg.y);
+          this.onInverseSearch(this.pdfFile, msg.page, msg.x, msg.y, isClickedWord(msg.word) ? msg.word : undefined);
         }
         break;
       case 'error':

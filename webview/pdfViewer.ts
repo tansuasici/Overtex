@@ -4,6 +4,8 @@ import type { FromViewerMessage, PageRect, ToViewerMessage } from '../src/shared
 import { inReadingOrder, isDone, noteSummary } from '../src/shared/notes';
 import type { Note } from '../src/shared/notes';
 import { toBytes } from '../src/shared/bytes';
+import { wordAt } from '../src/shared/clickedWord';
+import type { ClickedWord } from '../src/shared/clickedWord';
 import { startBlobWorker } from '../src/shared/blobWorker';
 import { isDarkScheme, isDarkThemeKind, parseColorScheme } from '../src/shared/colorScheme';
 import './pdfViewer.css';
@@ -1013,13 +1015,61 @@ pagesEl.addEventListener('click', (event) => {
     return;
   }
   const rect = pageEl.getBoundingClientRect();
-  vscode.postMessage({
-    type: 'inverseSearch',
-    page: Number(pageEl.dataset.index) + 1,
-    x: (event.clientX - rect.left) / scale,
-    y: (event.clientY - rect.top) / scale,
-  });
+  const index = Number(pageEl.dataset.index);
+  const x = (event.clientX - rect.left) / scale;
+  const y = (event.clientY - rect.top) / scale;
+  void clickedWord(pages[index], x, y)
+    .catch(() => undefined)
+    .then((word) => vscode.postMessage({ type: 'inverseSearch', page: index + 1, x, y, word }));
 });
+
+/**
+ * The word at a point on the page, in PDF points from the top-left corner, read from the page's
+ * text with the rest of its line around it, so the editor can put the cursor on that word.
+ */
+async function clickedWord(view: PageView | undefined, x: number, y: number): Promise<ClickedWord | undefined> {
+  if (!view) {
+    return undefined;
+  }
+  const [px, py] = view.page.getViewport({ scale: 1 }).convertToPdfPoint(x, y);
+  const items = (await view.page.getTextContent()).items.flatMap((item) =>
+    'str' in item && item.str ? [{ str: item.str, x: item.transform[4], y: item.transform[5], width: item.width, height: item.height || Math.abs(item.transform[3]) }] : [],
+  );
+  // The text run under the point: on its line (from a little below the baseline to the top), nearest across.
+  let hit: (typeof items)[number] | undefined;
+  let gap = Infinity;
+  for (const item of items) {
+    if (py < item.y - item.height * 0.3 || py > item.y + item.height) {
+      continue;
+    }
+    const d = px < item.x ? item.x - px : Math.max(0, px - (item.x + item.width));
+    if (d < gap) {
+      gap = d;
+      hit = item;
+    }
+  }
+  if (!hit || gap > 2) {
+    return undefined;
+  }
+  // The whole line, left to right, with a space wherever the runs do not touch.
+  const line = items.filter((item) => Math.abs(item.y - hit!.y) < hit!.height * 0.3).sort((a, b) => a.x - b.x);
+  let text = '';
+  let offset = 0;
+  let end = -Infinity;
+  for (const item of line) {
+    if (text && item.x - end > hit.height * 0.1) {
+      text += ' ';
+    }
+    if (item === hit) {
+      offset = text.length;
+    }
+    text += item.str;
+    end = item.x + item.width;
+  }
+  const along = hit.width > 0 ? (px - hit.x) / hit.width : 0;
+  const char = Math.min(hit.str.length - 1, Math.max(0, Math.floor(along * hit.str.length)));
+  return wordAt(text, offset + char);
+}
 
 // ---- Wiring ----
 

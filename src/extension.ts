@@ -19,6 +19,8 @@ import { TEXLAB_EXTENSION_ID } from './latex/texlabConfig';
 import { BuildStatus } from './statusBar';
 import { toWorkspacePath } from './synctex/paths';
 import { SyncTex } from './synctex/synctex';
+import { findWord } from './shared/clickedWord';
+import type { ClickedWord } from './shared/clickedWord';
 import { PdfPanel } from './viewer/pdfPanel';
 import { notesFilePath } from './shared/notes';
 import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setupCheck';
@@ -58,7 +60,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const e2eEvents = process.env.OVERTEX_E2E ? new vscode.EventEmitter<E2eFromViewerMessage>() : undefined;
   const pdfPanel = new PdfPanel(
     context.extensionUri,
-    (pdfFile, page, x, y) => void inverseSearch(pdfFile, page, x, y),
+    (pdfFile, page, x, y, word) => void inverseSearch(pdfFile, page, x, y, word),
     log,
     settings.viewerColorScheme,
     context.workspaceState,
@@ -259,7 +261,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     }
   }
 
-  async function inverseSearch(pdfFile: string, page: number, x: number, y: number): Promise<void> {
+  async function inverseSearch(pdfFile: string, page: number, x: number, y: number, word?: ClickedWord): Promise<void> {
     try {
       const source = await synctex.inverse(pdfFile, page, x, y);
       if (!source) {
@@ -267,7 +269,9 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
       }
       const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
       const doc = await vscode.workspace.openTextDocument(toWorkspacePath(source.file, folders, fs.realpathSync.native));
-      const position = new vscode.Position(source.line - 1, source.column);
+      // SyncTeX knows the line, not the word: find the clicked word on or just before that line.
+      const found = word && findWord(doc.getText().split(/\r?\n/), source.line - 1, word);
+      const position = found ? new vscode.Position(found.line, found.column) : new vscode.Position(source.line - 1, source.column);
       const viewColumn =
         vscode.window.visibleTextEditors.find((e) => e.document.uri.fsPath === doc.uri.fsPath)?.viewColumn ??
         vscode.window.visibleTextEditors.find((e) => TEX_LANGUAGES.has(e.document.languageId))?.viewColumn ??
