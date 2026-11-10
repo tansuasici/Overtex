@@ -187,3 +187,7 @@ https://github.com/mozilla/pdf.js, licensed under the Apache License 2.0:
 ## MathJax (@mathjax/src 4.1.3, @mathjax/mathjax-tex-font 4.1.3)
 
 https://github.com/mathjax/MathJax-src and https://github.com/mathjax/MathJax-fonts, Copyright (c) The MathJax Consortium, licensed under the Apache License 2.0 (the same license text as above). Used for the math hover preview.
+
+## Harper (harper.js 3.0.0)
+
+https://github.com/Automattic/harper, Copyright 2024 Automattic Inc., licensed under the Apache License 2.0 (the same license text as above). Its English grammar checker, compiled to WebAssembly, runs Check Spelling and Grammar inside Overtex.

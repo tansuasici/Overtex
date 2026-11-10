@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Check Spelling and Grammar** now works with nothing to install: it checks English with [Harper](https://github.com/Automattic/harper), which runs inside Overtex, so the text never leaves your computer. Math, comments, citation and reference keys, code and commands are left out as before, and findings land on the right word in the source, with quick fixes. American, British, Australian, Canadian and Indian spelling follow the document's language. The new `overtex.grammar.engine` setting picks `harper` (the default), `languagetool` for other languages through a LanguageTool server as before, or `off`. The dictionary and disabled rules are shared. The extension grows by about 8 MB for Harper's checker.
 - **Export PDF with Notes**: a new command saves `main-notes.pdf`, a copy of the built PDF with your open PDF notes as standard sticky notes that Acrobat, Preview, Zotero and other readers show and can reply to. The PDF is not rebuilt (only built when there is none yet), so the notes land where you pinned them; its bytes are kept and the notes are appended after them. Done notes are left out, as are notes on pages the PDF no longer has, and the message says how many. Encrypted PDFs are not supported.
 
 ## 0.6.0 (2026-11-10)

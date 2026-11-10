@@ -27,8 +27,11 @@ export class LanguageToolUnavailableError extends Error {
 }
 
 export class UnsupportedLanguageError extends Error {
-  constructor(readonly language: string) {
-    super(`LanguageTool does not support ${language}`);
+  constructor(
+    readonly language: string,
+    readonly engine = 'LanguageTool'
+  ) {
+    super(`${engine} does not support ${language}`);
     this.name = 'UnsupportedLanguageError';
   }
 }

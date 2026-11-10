@@ -889,6 +889,21 @@
           "default": "light",
           "markdownDescription": "How the PDF preview draws pages. Only the preview changes; the PDF file is untouched. **Toggle Dark PDF Preview** and the preview's toolbar button switch between light and dark."
         },
+        "overtex.grammar.engine": {
+          "type": "string",
+          "enum": [
+            "harper",
+            "languagetool",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Harper, built into Overtex: English only, nothing to install, and the text never leaves the machine.",
+            "A LanguageTool server at overtex.grammar.url: many languages, but the server must be installed or reachable.",
+            "No spelling or grammar check."
+          ],
+          "default": "harper",
+          "markdownDescription": "What Check Spelling and Grammar uses. `harper` checks English inside Overtex with nothing to install; `languagetool` sends the text to the server at `#overtex.grammar.url#` and checks other languages too; `off` turns the check off. The dictionary is shared by both."
+        },
         "overtex.grammar.url": {
           "type": "string",
           "default": "http://localhost:8081",
@@ -897,7 +912,7 @@
         "overtex.grammar.language": {
           "type": "string",
           "default": "auto",
-          "markdownDescription": "LanguageTool language code for checks, such as `en-US`, `en-GB` or `de-DE`. `auto` takes it from babel, polyglossia or the class options, in the file or in the main file, and checks American English when the document names none. LanguageTool has no Turkish."
+          "markdownDescription": "Language code for checks, such as `en-US`, `en-GB` or `de-DE`. `auto` takes it from babel, polyglossia or the class options, in the file or in the main file, and checks American English when the document names none. Harper checks English only (American, British, Australian, Canadian and Indian spelling); LanguageTool checks many languages, though not Turkish."
         },
         "overtex.grammar.checkOnSave": {
           "type": "boolean",
@@ -918,7 +933,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "LanguageTool rule IDs to leave out, such as `EN_QUOTES`. The quick fix on a finding adds its rule here."
+          "markdownDescription": "Rules to leave out: Harper rule names such as `LongSentences`, or LanguageTool rule IDs such as `EN_QUOTES`. Each checker ignores the other's names. The quick fix on a finding adds its rule here."
         },
         "overtex.wordCount.enabled": {
           "type": "boolean",
@@ -1076,6 +1091,7 @@
   "dependencies": {
     "@mathjax/mathjax-tex-font": "4.1.3",
     "@mathjax/src": "4.1.3",
+    "harper.js": "3.0.0",
     "pdfjs-dist": "^6.5.438",
     "vscode-languageclient": "^9.0.1"
   },

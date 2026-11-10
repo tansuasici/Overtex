@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import {
@@ -8,6 +9,7 @@ import {
   LanguageToolUnavailableError,
   UnsupportedLanguageError,
 } from './latex/grammar';
+import { checkLatexWithHarper, HarperLinter } from './latex/harper';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 const SOURCE = 'Overtex grammar';
@@ -24,10 +26,17 @@ function cfg(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('overtex.grammar');
 }
 
+type Engine = 'harper' | 'languagetool' | 'off';
+
+function engine(): Engine {
+  const value = cfg().get<string>('engine', 'harper');
+  return value === 'languagetool' || value === 'off' ? value : 'harper';
+}
+
 /**
- * Overtex: Check Spelling and Grammar. Sends the active file's prose to a LanguageTool server,
- * a local one unless the user points `overtex.grammar.url` elsewhere, and lists what it finds in
- * the Problems panel with quick fixes.
+ * Overtex: Check Spelling and Grammar. Checks the active file's prose with Harper inside the
+ * extension, or with a LanguageTool server (a local one unless the user points
+ * `overtex.grammar.url` elsewhere), and lists what it finds in the Problems panel with quick fixes.
  */
 export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvider {
   static readonly providedCodeActionKinds = [vscode.CodeActionKind.QuickFix];
@@ -38,9 +47,18 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
   private running?: AbortController;
   /** Checks on save say once that the server is missing, not on every save. */
   private warnedUnavailable = false;
+  private harper?: Promise<HarperLinter>;
+  /** Harper checks one document at a time: each sets the dialect, rules and words it reads with. */
+  private harperQueue: Promise<unknown> = Promise.resolve();
 
-  /** `mainFile` finds the root document, whose preamble names the language of a chapter file. */
-  constructor(private readonly mainFile: () => string | null = () => null) {
+  /**
+   * `mainFile` finds the root document, whose preamble names the language of a chapter file;
+   * Harper's bundle and binary are under `extensionPath`.
+   */
+  constructor(
+    private readonly mainFile: () => string | null = () => null,
+    private readonly extensionPath?: string
+  ) {
     this.disposables.push(
       this.collection,
       vscode.languages.registerCodeActionsProvider([...TEX_LANGUAGES].map((language) => ({ language })), this, {
@@ -51,7 +69,7 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
       vscode.workspace.onDidChangeTextDocument((e) => this.shift(e)),
       vscode.workspace.onDidCloseTextDocument((doc) => this.forget(doc.uri)),
       vscode.workspace.onDidSaveTextDocument((doc) => {
-        if (TEX_LANGUAGES.has(doc.languageId) && cfg().get<boolean>('checkOnSave', false)) {
+        if (TEX_LANGUAGES.has(doc.languageId) && cfg().get<boolean>('checkOnSave', false) && engine() !== 'off') {
           void this.check(doc, true);
         }
       })
@@ -60,6 +78,7 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
 
   dispose(): void {
     this.running?.abort();
+    void this.harper?.then((linter) => linter.dispose?.()).catch(() => undefined);
     vscode.Disposable.from(...this.disposables).dispose();
   }
 
@@ -68,6 +87,13 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
     const doc = vscode.window.activeTextEditor?.document;
     if (!doc || !TEX_LANGUAGES.has(doc.languageId)) {
       void vscode.window.showInformationMessage('Overtex: open a LaTeX file to check its spelling and grammar.');
+      return undefined;
+    }
+    if (engine() === 'off') {
+      const settingsAction = 'Open Settings';
+      void vscode.window
+        .showInformationMessage('Overtex: the spelling and grammar check is turned off (overtex.grammar.engine).', settingsAction)
+        .then((choice) => choice === settingsAction && vscode.commands.executeCommand('workbench.action.openSettings', 'overtex.grammar.engine'));
       return undefined;
     }
     return vscode.window.withProgress(
@@ -82,16 +108,21 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
     this.running = ctl;
     const url = cfg().get<string>('url') || DEFAULT_LANGUAGETOOL_URL;
     const version = doc.version;
+    const options = {
+      language: cfg().get<string>('language', 'auto'),
+      root: this.rootText(doc),
+      disabledRules: cfg().get<string[]>('disabledRules', []),
+      dictionary: cfg().get<string[]>('dictionary', []),
+    };
     let problems: GrammarProblem[];
     try {
-      problems = await checkLatex(doc.getText(), {
-        url,
-        language: cfg().get<string>('language', 'auto'),
-        root: this.rootText(doc),
-        disabledRules: cfg().get<string[]>('disabledRules', []),
-        dictionary: cfg().get<string[]>('dictionary', []),
-        signal: ctl.signal,
-      });
+      problems =
+        engine() === 'languagetool'
+          ? await checkLatex(doc.getText(), { ...options, url, signal: ctl.signal })
+          : await this.withHarper((linter) => checkLatexWithHarper(doc.getText(), linter, options));
+      if (ctl.signal.aborted) {
+        return undefined;
+      }
     } catch (err) {
       if (ctl.signal.aborted) {
         return undefined;
@@ -115,6 +146,25 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
     return problems;
   }
 
+  private withHarper<T>(task: (linter: HarperLinter) => Promise<T>): Promise<T> {
+    const result = this.harperQueue.then(async () => task(await this.harperLinter()));
+    this.harperQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  /** Harper, loaded on the first check: its bundle and binary stay unparsed until then. */
+  private harperLinter(): Promise<HarperLinter> {
+    if (!this.harper) {
+      const out = path.join(this.extensionPath ?? path.join(__dirname, '..'), 'out');
+      const { createHarperLinter } = require(path.join(out, 'harperLinter.js')) as typeof import('./harperLoader');
+      const linter = createHarperLinter(path.join(out, 'harper_wasm_slim_bg.wasm'));
+      this.harper = linter.setup().then(() => linter);
+      // A binary that fails to load is tried again on the next check.
+      this.harper.catch(() => (this.harper = undefined));
+    }
+    return this.harper;
+  }
+
   /** The root document's text when `doc` is a file it includes; open editors win over the disk. */
   private rootText(doc: vscode.TextDocument): string | undefined {
     const main = this.mainFile();
@@ -135,7 +185,8 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
   private report(err: unknown, url: string, quiet: boolean): void {
     if (err instanceof UnsupportedLanguageError) {
       if (!quiet) {
-        void vscode.window.showInformationMessage(`Overtex: LanguageTool cannot check ${err.language}, so this document is not checked.`);
+        const hint = err.engine === 'Harper' ? ' Set overtex.grammar.engine to languagetool to check it with a LanguageTool server.' : '';
+        void vscode.window.showInformationMessage(`Overtex: ${err.engine} cannot check ${err.language}, so this document is not checked.${hint}`);
       }
       return;
     }
@@ -220,7 +271,7 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
       }
       const { problem } = entry;
       problem.replacements.forEach((value, i) => {
-        const action = new vscode.CodeAction(`Replace with '${value}'`, vscode.CodeActionKind.QuickFix);
+        const action = new vscode.CodeAction(value === '' ? 'Remove' : `Replace with '${value}'`, vscode.CodeActionKind.QuickFix);
         action.edit = new vscode.WorkspaceEdit();
         action.edit.replace(doc.uri, d.range, value);
         action.diagnostics = [d];

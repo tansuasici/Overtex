@@ -85,7 +85,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const version = (context.extension.packageJSON as { version?: string }).version ?? '';
   const userAgent = `Overtex/${version} (https://github.com/tansuasici/Overtex)`;
   const bibCheck = new BibliographyCheck(mainFile, userAgent);
-  const grammar = new GrammarCheck(mainFile);
+  const grammar = new GrammarCheck(mainFile, context.extensionPath);
   context.subscriptions.push(grammar);
   const papers = registerLibrary(context, { index: bibIndex, mainFile, userAgent, showPdf: (pdf) => pdfPanel.show(pdf) });
   const labels = registerLabels(context, {

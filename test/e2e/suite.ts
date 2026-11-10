@@ -539,6 +539,7 @@ export async function run(): Promise<void> {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const cfg = () => vscode.workspace.getConfiguration('overtex.grammar');
     try {
+      await cfg().update('engine', 'languagetool', vscode.ConfigurationTarget.Global);
       await cfg().update('url', `http://127.0.0.1:${(server.address() as AddressInfo).port}`, vscode.ConfigurationTarget.Global);
       const source = '\\documentclass{article}\n\\usepackage[british]{babel}\n\\begin{document}\nThis is teh text, $x = 1$ % not checked\n\\end{document}\n';
       const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: source });
@@ -570,8 +571,35 @@ export async function run(): Promise<void> {
       assert.strictEqual(vscode.languages.getDiagnostics(doc.uri).filter((d) => d.source === 'Overtex grammar').length, 0, 'the fix clears the finding');
     } finally {
       await cfg().update('url', undefined, vscode.ConfigurationTarget.Global);
+      await cfg().update('engine', undefined, vscode.ConfigurationTarget.Global);
       server.closeAllConnections();
       server.close();
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+  });
+
+  await step('Harper checks English without a server and skips markup', async () => {
+    const source =
+      '\\documentclass{article}\n\\begin{document}\nThis is a speling mistake, see \\cite{knuth84} and $\\alpha_i = 1$.\n' +
+      '% teh comment\nHe go to the store.\n\\end{document}\n';
+    const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: source });
+    await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+    try {
+      const problems = await vscode.commands.executeCommand<unknown[]>('overtex.checkGrammar');
+      assert.ok(problems && problems.length >= 2, `problems: ${problems?.length}`);
+      const diags = vscode.languages.getDiagnostics(doc.uri).filter((d) => d.source === 'Overtex grammar');
+      const words = diags.map((d) => doc.getText(d.range));
+      assert.ok(words.includes('speling'), words.join(', '));
+      assert.ok(words.includes('go'), words.join(', '));
+      assert.ok(!words.some((w) => /knuth|alpha|teh|\\|\$/.test(w)), `nothing in markup: ${words.join(', ')}`);
+
+      const speling = diags.find((d) => doc.getText(d.range) === 'speling')!;
+      const actions = await vscode.commands.executeCommand<vscode.CodeAction[]>('vscode.executeCodeActionProvider', doc.uri, speling.range);
+      const replace = actions.find((a) => a.title === "Replace with 'spelling'");
+      assert.ok(replace?.edit, actions.map((a) => a.title).join(', '));
+      await vscode.workspace.applyEdit(replace.edit);
+      assert.ok(doc.lineAt(2).text.startsWith('This is a spelling mistake'), doc.lineAt(2).text);
+    } finally {
       await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
     }
   });
