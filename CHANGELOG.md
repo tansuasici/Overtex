@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 (2026-11-11)
 
 - A build that prints nothing for `overtex.build.stallTimeout` seconds (default 300), or keeps printing the same lines, is stopped, and the error says why instead of the build hanging until you cancel it.
 - When a XeLaTeX, LuaLaTeX or Tectonic build fails on a pdfTeX-only command such as `\pdfoutput=1`, the error says so and suggests building with pdfLaTeX.
