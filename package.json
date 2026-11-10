@@ -892,17 +892,7 @@
         "overtex.grammar.language": {
           "type": "string",
           "default": "auto",
-          "markdownDescription": "LanguageTool language code for checks, such as `en-US`, `en-GB` or `de-DE`. `auto` takes it from babel, polyglossia or the class options, in the file or in the main file, and checks American English when the document names none. LanguageTool has no Turkish, so `tr` (and a Turkish document under `auto`) is checked for spelling only, by Hunspell."
-        },
-        "overtex.grammar.hunspellPath": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "The Hunspell program that checks the spelling of Turkish documents, which LanguageTool cannot check. Empty runs `hunspell` from the PATH (`brew install hunspell`). It runs on this machine; the text is not sent anywhere."
-        },
-        "overtex.grammar.hunspellDictionary": {
-          "type": "string",
-          "default": "tr_TR",
-          "markdownDescription": "The Hunspell dictionary for Turkish: a name Hunspell finds (`tr_TR.aff` and `tr_TR.dic` in `~/Library/Spelling` on macOS, or `/usr/share/hunspell` on Linux) or the path to those files without the extension."
+          "markdownDescription": "LanguageTool language code for checks, such as `en-US`, `en-GB` or `de-DE`. `auto` takes it from babel, polyglossia or the class options, in the file or in the main file, and checks American English when the document names none. LanguageTool has no Turkish."
         },
         "overtex.grammar.checkOnSave": {
           "type": "boolean",

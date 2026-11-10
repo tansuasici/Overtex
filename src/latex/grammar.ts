@@ -3,7 +3,6 @@
 // offsets LanguageTool answers with are offsets into the source. No vscode import, so it is
 // unit-testable.
 import { commentStart } from './arxiv';
-import { checkSpellingHunspell, RunHunspell } from './hunspell';
 
 export const DEFAULT_LANGUAGETOOL_URL = 'http://localhost:8081';
 
@@ -27,9 +26,11 @@ export class LanguageToolUnavailableError extends Error {
   }
 }
 
-/** LanguageTool lacks Turkish, so a Turkish document's spelling goes to Hunspell instead. */
-export function isTurkish(language: string): boolean {
-  return /^tr\b/i.test(language);
+export class UnsupportedLanguageError extends Error {
+  constructor(readonly language: string) {
+    super(`LanguageTool does not support ${language}`);
+    this.name = 'UnsupportedLanguageError';
+  }
 }
 
 // --- LaTeX to annotated text -------------------------------------------------------------------
@@ -531,7 +532,7 @@ function withoutComments(src: string): string {
 
 /**
  * The document's main language as a LanguageTool code, from polyglossia, babel or the class
- * options, or undefined when it names none. Turkish comes back as `tr`, which LanguageTool lacks and Hunspell checks.
+ * options, or undefined when it names none. Turkish comes back as `tr`, which LanguageTool lacks.
  */
 export function detectLanguage(src: string): string | undefined {
   const code = withoutComments(src);
@@ -605,12 +606,10 @@ export interface GrammarOptions {
   dictionary?: string[];
   fetchFn?: typeof fetch;
   signal?: AbortSignal;
-  /** The Hunspell program and dictionary that check Turkish. */
-  hunspell?: { path?: string; dictionary?: string; run?: RunHunspell };
 }
 
 /**
- * The language a check of `src` uses. `auto`
+ * The language a check of `src` uses, with Turkish refused because LanguageTool lacks it. `auto`
  * reads the file, then the root document; a document that names no language is typeset in
  * English, and is checked as American English rather than left to LanguageTool's guess, which
  * misreads short passages.
@@ -618,6 +617,9 @@ export interface GrammarOptions {
 export function resolveLanguage(src: string, setting: string, root?: string): string {
   const language =
     !setting || setting === 'auto' ? detectLanguage(src) ?? (root !== undefined ? detectLanguage(root) : undefined) ?? 'en-US' : setting;
+  if (/^tr\b/i.test(language)) {
+    throw new UnsupportedLanguageError('Turkish');
+  }
   return language;
 }
 
@@ -625,15 +627,6 @@ export function resolveLanguage(src: string, setting: string, root?: string): st
 export async function checkLatex(src: string, options: GrammarOptions): Promise<GrammarProblem[]> {
   const fetchFn = options.fetchFn ?? fetch;
   const language = resolveLanguage(src, options.language, options.root);
-  if (isTurkish(language)) {
-    return checkSpellingHunspell(annotateLatex(src), {
-      path: options.hunspell?.path,
-      dictionary: options.hunspell?.dictionary || 'tr_TR',
-      ignore: new Set(options.dictionary ?? []),
-      run: options.hunspell?.run,
-      signal: options.signal,
-    });
-  }
   await probeLanguageTool(options.url, fetchFn);
   const disabled = [...new Set([...ALWAYS_DISABLED, ...(options.disabledRules ?? [])])];
   const dictionary = new Set(options.dictionary ?? []);
