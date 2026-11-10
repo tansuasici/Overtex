@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { LogEntry, parseLog, parseTectonicLog } from './logParser';
+import { DEFAULT_LOOP_LIMITS, DEFAULT_STALL_TIMEOUT_SECONDS, LoopLimits, LoopWatch, loopMessage, silenceMessage } from './stall';
 
 export type Engine = 'pdflatex' | 'xelatex' | 'lualatex';
 
@@ -21,6 +22,8 @@ export interface BuildSettings {
   extraArgs: string[];
   /** The workspace folder holding a path; Docker mounts it so that \input{../x} still resolves. */
   workspaceRoot?: (file: string) => string | undefined;
+  /** Seconds without output before a build is stopped as stuck; 0 turns stall and loop detection off. */
+  stallTimeout?: number;
 }
 
 export interface ToolCommand {
@@ -206,7 +209,8 @@ export class Builder {
 
   constructor(
     private readonly settings: () => BuildSettings,
-    private readonly onOutput: (text: string) => void = () => {}
+    private readonly onOutput: (text: string) => void = () => {},
+    private readonly loopLimits: LoopLimits = DEFAULT_LOOP_LIMITS
   ) {}
 
   get isBuilding(): boolean {
@@ -307,16 +311,55 @@ export class Builder {
       });
       this.running = proc;
 
+      // Stop a build that prints nothing for a long time or keeps printing the same lines.
+      const timeout = settings.stallTimeout ?? DEFAULT_STALL_TIMEOUT_SECONDS;
+      const watching = timeout > 0;
+      const loops = new LoopWatch(this.loopLimits);
+      let stalled: string | undefined;
+      let silence: NodeJS.Timeout | undefined;
+      const stop = (reason: string) => {
+        if (stalled === undefined && !this.cancelled && proc.pid) {
+          stalled = reason;
+          clearTimeout(silence);
+          killTree(proc.pid);
+        }
+      };
+      // Docker may pull a large image first, with long quiet gaps; only time the build itself.
+      let timing = settings.tool !== 'docker';
+      const heard = (text: string, fromStdout: boolean) => {
+        if (!watching || stalled !== undefined) {
+          return;
+        }
+        timing ||= fromStdout || /Latexmk/.test(text);
+        clearTimeout(silence);
+        if (timing) {
+          silence = setTimeout(() => stop(silenceMessage(timeout)), timeout * 1000);
+        }
+        const repeated = loops.feed(text, Date.now());
+        if (repeated !== undefined) {
+          stop(loopMessage(repeated));
+        }
+      };
+      if (watching && timing) {
+        silence = setTimeout(() => stop(silenceMessage(timeout)), timeout * 1000);
+      }
+
       let stderr = '';
-      proc.stdout?.on('data', (d: Buffer) => this.onOutput(d.toString()));
+      proc.stdout?.on('data', (d: Buffer) => {
+        const text = d.toString();
+        this.onOutput(text);
+        heard(text, true);
+      });
       proc.stderr?.on('data', (d: Buffer) => {
         const text = d.toString();
         stderr = (stderr + text).slice(-4096);
         this.onOutput(text);
+        heard(text, false);
       });
 
       const finish = (exitCode: number | null, spawnError?: Error) => {
         this.running = null;
+        clearTimeout(silence);
         let entries: LogEntry[] = [];
         let logRead = false;
         // When Docker itself failed, the log on disk is from an earlier build.
@@ -331,11 +374,15 @@ export class Builder {
         }
         if (spawnError) {
           entries = [{ severity: 'error', message: spawnErrorMessage(settings, command, spawnError), file: mainFile, line: 0 }];
-        } else if (!logRead && exitCode !== 0 && !this.cancelled) {
+        } else if (!logRead && exitCode !== 0 && !this.cancelled && stalled === undefined) {
           const message = failureMessage(settings, exitCode, stderr);
           entries = message ? [{ severity: 'error', message, file: mainFile, line: 0 }] : [];
         }
-        const success = exitCode === 0 && !entries.some((e) => e.severity === 'error');
+        if (stalled !== undefined) {
+          // First, so the error notification names the reason rather than whatever the partial log holds.
+          entries = [{ severity: 'error', message: stalled, file: mainFile, line: 0 }, ...entries];
+        }
+        const success = stalled === undefined && exitCode === 0 && !entries.some((e) => e.severity === 'error');
         const result: BuildResult = {
           mainFile,
           success,
@@ -346,7 +393,11 @@ export class Builder {
           entries,
           durationMs: Date.now() - startedAt,
         };
-        this.onOutput(`\n${this.cancelled ? 'Build cancelled' : success ? 'Build succeeded' : 'Build failed'} in ${result.durationMs} ms\n`);
+        if (stalled !== undefined) {
+          this.onOutput(`\n${stalled}\n`);
+        }
+        const outcome = this.cancelled ? 'Build cancelled' : stalled !== undefined ? 'Build stopped' : success ? 'Build succeeded' : 'Build failed';
+        this.onOutput(`\n${outcome} in ${result.durationMs} ms\n`);
         resolve(result);
       };
 

@@ -869,6 +869,12 @@
           "default": true,
           "description": "Build when a .tex or .bib file is saved."
         },
+        "overtex.build.stallTimeout": {
+          "type": "number",
+          "default": 300,
+          "minimum": 0,
+          "description": "Stop a build that prints nothing for this many seconds, or keeps printing the same lines, and say why. 0 turns this off."
+        },
         "overtex.viewer.autoOpen": {
           "type": "boolean",
           "default": true,

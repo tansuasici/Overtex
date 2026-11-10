@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A build that prints nothing for `overtex.build.stallTimeout` seconds (default 300), or keeps printing the same lines, is stopped, and the error says why instead of the build hanging until you cancel it.
+
 ## 0.7.0 (2026-11-11)
 
 - **Check Spelling and Grammar** now works with nothing to install: it checks English with [Harper](https://github.com/Automattic/harper), which runs inside Overtex, so the text never leaves your computer. Math, comments, citation and reference keys, code and commands are left out as before, and findings land on the right word in the source, with quick fixes. American, British, Australian, Canadian and Indian spelling follow the document's language. The new `overtex.grammar.engine` setting picks `harper` (the default), `languagetool` for other languages through a LanguageTool server as before, or `off`. The dictionary and disabled rules are shared. The extension grows by about 8 MB for Harper's checker.

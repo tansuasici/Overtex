@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { BuildSettings, BuildTool, Engine } from './latex/builder';
+import { DEFAULT_STALL_TIMEOUT_SECONDS } from './latex/stall';
 import { parseColorScheme } from './shared/colorScheme';
 
 function section(): vscode.WorkspaceConfiguration {
@@ -18,6 +19,7 @@ export function buildSettings(): BuildSettings {
     outDir: cfg.get<string>('latex.outDir', ''),
     extraArgs: cfg.get<string[]>('latex.extraArgs', []),
     workspaceRoot: (file) => vscode.workspace.getWorkspaceFolder(vscode.Uri.file(file))?.uri.fsPath,
+    stallTimeout: Math.max(0, cfg.get<number>('build.stallTimeout', DEFAULT_STALL_TIMEOUT_SECONDS)),
   };
 }
 
