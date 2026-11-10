@@ -9,8 +9,8 @@ import {
   detectLanguage,
   LanguageToolUnavailableError,
   resolveLanguage,
-  UnsupportedLanguageError,
 } from '../src/latex/grammar';
+import { HunspellDictionaryError, HunspellUnavailableError, parseHunspellOutput, proseWords, RunHunspell } from '../src/latex/hunspell';
 
 const joined = (a: Annotation[]): string => a.map((p) => ('text' in p ? p.text : p.markup)).join('');
 /** What LanguageTool reads: text as it is, markup as what it is interpreted as. */
@@ -110,7 +110,7 @@ describe('detectLanguage', () => {
     expect(resolveLanguage(chapter, 'auto', '\\documentclass{book}')).toBe('en-US');
     expect(resolveLanguage(chapter, 'auto')).toBe('en-US');
     expect(resolveLanguage(chapter, 'en-GB', '\\usepackage[ngerman]{babel}')).toBe('en-GB');
-    expect(() => resolveLanguage(chapter, 'auto', '\\usepackage[turkish]{babel}')).toThrow(UnsupportedLanguageError);
+    expect(resolveLanguage(chapter, 'auto', '\\usepackage[turkish]{babel}')).toBe('tr');
   });
 });
 
@@ -176,10 +176,62 @@ describe('checkLatex', () => {
     await expect(checkLatex(src, { url: 'http://lt.test', language: 'auto', fetchFn: failing })).rejects.toBeInstanceOf(LanguageToolUnavailableError);
   });
 
-  it('refuses Turkish before asking the server', async () => {
+  it('checks Turkish with Hunspell, not the server', async () => {
     const calls: { url: string }[] = [];
-    const turkish = '\\documentclass{article}\n\\usepackage[turkish]{babel}\n\\begin{document}\nMerhaba.\n\\end{document}\n';
-    await expect(checkLatex(turkish, { url: 'http://lt.test', language: 'auto', fetchFn: fakeFetch([], calls) })).rejects.toBeInstanceOf(UnsupportedLanguageError);
+    const turkish = '\\documentclass{article}\n\\usepackage[turkish]{babel}\n\\begin{document}\nMerhaba dünyya, \\emph{Ankara\'da} dünyya.\n\\end{document}\n';
+    const runs: { path: string; args: string[]; input: string }[] = [];
+    const run: RunHunspell = async (path, args, input) => {
+      runs.push({ path, args, input });
+      return { code: 0, stdout: '@(#) International Ispell Version 3.2.06 (but really Hunspell 1.7.2)\n*\n\n& dünyya 2 0: dünya, dünyaya\n\n*\n\n', stderr: '' };
+    };
+    const problems = await checkLatex(turkish, { url: 'http://lt.test', language: 'auto', fetchFn: fakeFetch([], calls), hunspell: { run } });
     expect(calls).toHaveLength(0);
+    expect(runs).toEqual([{ path: 'hunspell', args: ['-a', '-i', 'UTF-8', '-d', 'tr_TR'], input: '^Merhaba\n^dünyya\n^Ankara\n' }]);
+    const first = turkish.indexOf('dünyya');
+    expect(problems.map((p) => [p.offset, p.length, p.replacements, p.misspelling])).toEqual([
+      [first, 6, ['dünya', 'dünyaya'], true],
+      [turkish.indexOf('dünyya', first + 1), 6, ['dünya', 'dünyaya'], true],
+    ]);
+  });
+
+  it('leaves dictionary words out of the Hunspell check', async () => {
+    const turkish = '\\usepackage[turkish]{babel}\n\\begin{document}\nOverleaf ile\n\\end{document}\n';
+    const runs: string[] = [];
+    const run: RunHunspell = async (_path, _args, input) => {
+      runs.push(input);
+      return { code: 0, stdout: '@(#) Hunspell\n*\n\n', stderr: '' };
+    };
+    expect(await checkLatex(turkish, { url: 'http://lt.test', language: 'auto', dictionary: ['Overleaf'], hunspell: { run } })).toEqual([]);
+    expect(runs).toEqual(['^ile\n']);
+  });
+
+  it('says when Hunspell or its dictionary is missing', async () => {
+    const turkish = '\\usepackage[turkish]{babel}\n\\begin{document}\nMerhaba\n\\end{document}\n';
+    const missing: RunHunspell = async () => {
+      throw Object.assign(new Error('spawn hunspell ENOENT'), { code: 'ENOENT' });
+    };
+    await expect(checkLatex(turkish, { url: 'x', language: 'auto', hunspell: { run: missing } })).rejects.toBeInstanceOf(HunspellUnavailableError);
+    const noDict: RunHunspell = async () => ({ code: 1, stdout: '', stderr: 'Can\'t open affix or dic files for dictionary named "tr_TR".\n' });
+    await expect(checkLatex(turkish, { url: 'x', language: 'tr', hunspell: { run: noDict } })).rejects.toBeInstanceOf(HunspellDictionaryError);
+  });
+});
+
+describe('hunspell', () => {
+  it('takes the prose words with their offsets, skipping suffixes, single letters and acronyms', () => {
+    const words = proseWords([{ text: 'Bu bir ' }, { markup: '\\cite{x}' }, { text: " Ankara'da NASA ve İstanbul’a a." }]);
+    expect(words.map((w) => w.word)).toEqual(['Bu', 'bir', 'Ankara', 've', 'İstanbul']);
+    expect(words[2].offset).toBe('Bu bir \\cite{x} '.length);
+  });
+
+  it('reads pipe-mode answers, one block per word', () => {
+    const out = '@(#) Hunspell\n*\n\n+ kitap\n\n& kitab 1 0: kitap\n\n# xqz 0\n\n-\n\n';
+    expect(parseHunspellOutput(out, 5)).toEqual([
+      { ok: true, suggestions: [] },
+      { ok: true, suggestions: [] },
+      { ok: false, suggestions: ['kitap'] },
+      { ok: false, suggestions: [] },
+      { ok: true, suggestions: [] },
+    ]);
+    expect(() => parseHunspellOutput('@(#) Hunspell\n*\n\n', 2)).toThrow();
   });
 });

@@ -6,8 +6,8 @@ import {
   DEFAULT_LANGUAGETOOL_URL,
   GrammarProblem,
   LanguageToolUnavailableError,
-  UnsupportedLanguageError,
 } from './latex/grammar';
+import { HunspellDictionaryError, HunspellUnavailableError } from './latex/hunspell';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 const SOURCE = 'Overtex grammar';
@@ -26,8 +26,9 @@ function cfg(): vscode.WorkspaceConfiguration {
 
 /**
  * Overtex: Check Spelling and Grammar. Sends the active file's prose to a LanguageTool server,
- * a local one unless the user points `overtex.grammar.url` elsewhere, and lists what it finds in
- * the Problems panel with quick fixes.
+ * a local one unless the user points `overtex.grammar.url` elsewhere, or, for Turkish, which
+ * LanguageTool lacks, checks its spelling with a local Hunspell. It lists what it finds in the
+ * Problems panel with quick fixes.
  */
 export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvider {
   static readonly providedCodeActionKinds = [vscode.CodeActionKind.QuickFix];
@@ -90,6 +91,7 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
         root: this.rootText(doc),
         disabledRules: cfg().get<string[]>('disabledRules', []),
         dictionary: cfg().get<string[]>('dictionary', []),
+        hunspell: { path: cfg().get<string>('hunspellPath') || undefined, dictionary: cfg().get<string>('hunspellDictionary') || undefined },
         signal: ctl.signal,
       });
     } catch (err) {
@@ -133,10 +135,19 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
   }
 
   private report(err: unknown, url: string, quiet: boolean): void {
-    if (err instanceof UnsupportedLanguageError) {
-      if (!quiet) {
-        void vscode.window.showInformationMessage(`Overtex: LanguageTool cannot check ${err.language}, so this document is not checked.`);
+    if (err instanceof HunspellUnavailableError || err instanceof HunspellDictionaryError) {
+      if (quiet && this.warnedUnavailable) {
+        return;
       }
+      this.warnedUnavailable = true;
+      const problem =
+        err instanceof HunspellUnavailableError
+          ? `Turkish is checked by Hunspell, which could not be started as \`${err.path}\`. Install it, for example with \`brew install hunspell\`, or set overtex.grammar.hunspellPath.`
+          : `Hunspell has no ${err.dictionary} dictionary. Put ${err.dictionary}.aff and ${err.dictionary}.dic in a folder Hunspell searches (~/Library/Spelling on macOS), or set overtex.grammar.hunspellDictionary to their path without the extension.`;
+      const settingsAction = 'Open Settings';
+      void vscode.window
+        .showWarningMessage(`Overtex: ${problem}`, settingsAction)
+        .then((choice) => choice === settingsAction && vscode.commands.executeCommand('workbench.action.openSettings', 'overtex.grammar'));
       return;
     }
     if (err instanceof LanguageToolUnavailableError) {
