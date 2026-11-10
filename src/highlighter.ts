@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
 
-import { findHighlights, TextRange } from './latex/highlights';
+import { findHighlights, findTodoCommands, TextRange } from './latex/highlights';
 
 const LANGUAGES = new Set(['latex', 'tex']);
 
 /**
  * Editor highlights for LaTeX: TODO notes stand out (and show in the scroll bar), and text TeX
- * skips, \iffalse … \fi and comment environments, is dimmed.
+ * skips, \iffalse … \fi and comment environments, is dimmed. \todo{…} commands also get a mark in the
+ * gutter, like the notes the To-dos view lists.
  */
 export class Highlighter implements vscode.Disposable {
   private readonly todo = vscode.window.createTextEditorDecorationType({
@@ -15,10 +16,15 @@ export class Highlighter implements vscode.Disposable {
     overviewRulerLane: vscode.OverviewRulerLane.Right,
   });
   private readonly inactive = vscode.window.createTextEditorDecorationType({ opacity: '0.5' });
+  private readonly todoGutter: vscode.TextEditorDecorationType;
   private readonly subscriptions: vscode.Disposable[];
   private timer: NodeJS.Timeout | undefined;
 
-  constructor() {
+  constructor(extensionUri: vscode.Uri) {
+    this.todoGutter = vscode.window.createTextEditorDecorationType({
+      gutterIconPath: vscode.Uri.joinPath(extensionUri, 'media', 'todo.svg'),
+      gutterIconSize: '80%',
+    });
     this.subscriptions = [
       vscode.window.onDidChangeVisibleTextEditors(() => this.updateAll()),
       vscode.workspace.onDidChangeTextDocument((e) => this.schedule(e.document)),
@@ -32,6 +38,7 @@ export class Highlighter implements vscode.Disposable {
     this.subscriptions.forEach((d) => d.dispose());
     this.todo.dispose();
     this.inactive.dispose();
+    this.todoGutter.dispose();
   }
 
   private schedule(doc: vscode.TextDocument): void {
@@ -61,6 +68,9 @@ export class Highlighter implements vscode.Disposable {
     const h = enabled ? findHighlights(doc.getText()) : { todos: [], inactive: [] };
     editor.setDecorations(this.todo, h.todos.map(toRange));
     editor.setDecorations(this.inactive, h.inactive.map(toRange));
+    // One mark on the line each command starts on.
+    const gutter = enabled ? findTodoCommands(doc.getText()).map((t) => new vscode.Range(t.range.startLine, 0, t.range.startLine, 0)) : [];
+    editor.setDecorations(this.todoGutter, gutter);
   }
 }
 

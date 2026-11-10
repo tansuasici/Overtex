@@ -85,6 +85,16 @@
           "id": "overtex.history",
           "name": "History",
           "when": "overtex.active"
+        },
+        {
+          "id": "overtex.sourceNotes",
+          "name": "Notes",
+          "when": "overtex.active"
+        },
+        {
+          "id": "overtex.todos",
+          "name": "To-dos",
+          "when": "overtex.active"
         }
       ]
     },
@@ -100,6 +110,14 @@
       {
         "view": "overtex.history",
         "contents": "No snapshots yet. Overtex keeps a snapshot of the sources and the PDF after each successful build.\n[Save Snapshot](command:overtex.history.snapshot)"
+      },
+      {
+        "view": "overtex.sourceNotes",
+        "contents": "No notes yet. Click the + beside a line of a .tex file, or select text and run Add Note, to leave a note for your co-authors. Notes are saved in .overtex/notes.json, so commit that file to share them.\n[Add Note](command:overtex.notes.add)"
+      },
+      {
+        "view": "overtex.todos",
+        "contents": "No \\todo or \\fixme notes in the .tex files of this workspace."
       }
     ],
     "commands": [
@@ -334,6 +352,68 @@
         "title": "Delete Snapshot",
         "category": "Overtex",
         "icon": "$(trash)"
+      },
+      {
+        "command": "overtex.notes.add",
+        "title": "Add Note",
+        "category": "Overtex",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "overtex.notes.create",
+        "title": "Add Note",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.notes.reply",
+        "title": "Reply",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.notes.cancel",
+        "title": "Cancel",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.notes.resolve",
+        "title": "Resolve",
+        "category": "Overtex",
+        "icon": "$(check)"
+      },
+      {
+        "command": "overtex.notes.reopen",
+        "title": "Reopen",
+        "category": "Overtex",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "overtex.notes.deleteThread",
+        "title": "Delete Note",
+        "category": "Overtex",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "overtex.notes.deleteComment",
+        "title": "Delete Comment",
+        "category": "Overtex",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "overtex.notes.attachToSelection",
+        "title": "Attach to Selection",
+        "category": "Overtex",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "overtex.notes.open",
+        "title": "Open Note",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.todos.refresh",
+        "title": "Refresh",
+        "category": "Overtex",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -389,6 +469,16 @@
           "command": "overtex.history.refresh",
           "when": "view == overtex.history",
           "group": "navigation@2"
+        },
+        {
+          "command": "overtex.notes.add",
+          "when": "view == overtex.sourceNotes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overtex.todos.refresh",
+          "when": "view == overtex.todos",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -491,6 +581,26 @@
           "command": "overtex.history.restoreFile",
           "when": "view == overtex.history && viewItem == snapshotFile",
           "group": "1_use@2"
+        },
+        {
+          "command": "overtex.notes.resolve",
+          "when": "view == overtex.sourceNotes && viewItem == note.open",
+          "group": "inline@1"
+        },
+        {
+          "command": "overtex.notes.reopen",
+          "when": "view == overtex.sourceNotes && viewItem == note.resolved",
+          "group": "inline@1"
+        },
+        {
+          "command": "overtex.notes.attachToSelection",
+          "when": "view == overtex.sourceNotes && viewItem =~ /^note\\./",
+          "group": "inline@2"
+        },
+        {
+          "command": "overtex.notes.deleteThread",
+          "when": "view == overtex.sourceNotes && viewItem =~ /^note\\./",
+          "group": "inline@3"
         }
       ],
       "commandPalette": [
@@ -545,6 +655,91 @@
         {
           "command": "overtex.history.restoreFile",
           "when": "false"
+        },
+        {
+          "command": "overtex.notes.create",
+          "when": "false"
+        },
+        {
+          "command": "overtex.notes.reply",
+          "when": "false"
+        },
+        {
+          "command": "overtex.notes.cancel",
+          "when": "false"
+        },
+        {
+          "command": "overtex.notes.resolve",
+          "when": "false"
+        },
+        {
+          "command": "overtex.notes.reopen",
+          "when": "false"
+        },
+        {
+          "command": "overtex.notes.deleteThread",
+          "when": "false"
+        },
+        {
+          "command": "overtex.notes.deleteComment",
+          "when": "false"
+        },
+        {
+          "command": "overtex.notes.attachToSelection",
+          "when": "false"
+        },
+        {
+          "command": "overtex.notes.open",
+          "when": "false"
+        },
+        {
+          "command": "overtex.todos.refresh",
+          "when": "false"
+        },
+        {
+          "command": "overtex.notes.add",
+          "when": "editorLangId == latex || editorLangId == tex"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "overtex.notes.create",
+          "group": "inline@1",
+          "when": "commentController == overtex.notes && commentThreadIsEmpty"
+        },
+        {
+          "command": "overtex.notes.cancel",
+          "group": "inline@2",
+          "when": "commentController == overtex.notes && commentThreadIsEmpty"
+        },
+        {
+          "command": "overtex.notes.reply",
+          "group": "inline@1",
+          "when": "commentController == overtex.notes && !commentThreadIsEmpty"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "overtex.notes.resolve",
+          "group": "inline@1",
+          "when": "commentController == overtex.notes && commentThread == overtex.note.open"
+        },
+        {
+          "command": "overtex.notes.reopen",
+          "group": "inline@1",
+          "when": "commentController == overtex.notes && commentThread == overtex.note.resolved"
+        },
+        {
+          "command": "overtex.notes.deleteThread",
+          "group": "inline@2",
+          "when": "commentController == overtex.notes && commentThread =~ /^overtex\\.note\\./"
+        }
+      ],
+      "comments/comment/title": [
+        {
+          "command": "overtex.notes.deleteComment",
+          "group": "inline@1",
+          "when": "commentController == overtex.notes && comment == overtex.noteComment"
         }
       ]
     },

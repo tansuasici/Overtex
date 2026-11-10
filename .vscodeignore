@@ -7,5 +7,6 @@
 !THIRD_PARTY_NOTICES.md
 !media/icon.png
 !media/library.svg
+!media/todo.svg
 !media/walkthrough/**
 out/**/*.map
