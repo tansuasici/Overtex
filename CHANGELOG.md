@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Export PDF with Notes**: a new command saves `main-notes.pdf`, a copy of the built PDF with your open PDF notes as standard sticky notes that Acrobat, Preview, Zotero and other readers show and can reply to. The PDF is not rebuilt (only built when there is none yet), so the notes land where you pinned them; its bytes are kept and the notes are appended after them. Done notes are left out, as are notes on pages the PDF no longer has, and the message says how many. Encrypted PDFs are not supported.
+
 ## 0.6.0 (2026-11-10)
 
 - **Notes on the text**: leave notes for co-authors on the text of `.tex` files with the gutter's **+**, a selection and **Add Note**, or **Comments: Add Comment**. Notes are threads with replies, resolve/reopen and delete, signed with `git config user.name` and an ISO date, and saved in `.overtex/notes.json` at the workspace folder's root so they are shared through any git host. A note keeps the text it is on and a little context, and follows that text through edits, pulls and checkouts (the nearest occurrence when the text repeats, or the edited sentence between the same context). Notes whose text is gone are listed as Orphaned in the new Notes view, where they can be attached to a selection or deleted. The notes file is written only by those actions, never by editing, and is left untouched when it cannot be read.

@@ -226,6 +226,11 @@
         "category": "Overtex"
       },
       {
+        "command": "overtex.exportPdfWithNotes",
+        "title": "Export PDF with Notes",
+        "category": "Overtex"
+      },
+      {
         "command": "overtex.countWords",
         "title": "Count Words",
         "category": "Overtex"

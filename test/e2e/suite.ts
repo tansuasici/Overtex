@@ -439,6 +439,29 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('PDF with notes copies the built PDF with the open notes as sticky notes', async () => {
+    const file = path.join(root, 'main.overtex-notes.json');
+    const note = (id: string, page: number, done?: string) => ({ id, page, x: 100, y: 120, text: `Note ${id}`, createdAt: '2026-11-10T00:00:00.000Z', ...(done ? { doneAt: done } : {}) });
+    fs.writeFileSync(file, `${JSON.stringify({ version: 1, notes: [note('one', 1), note('two', 2), note('done', 1, '2026-11-10T01:00:00.000Z'), note('gone', 99)] })}\n`);
+    let out: string | undefined;
+    try {
+      const result = await vscode.commands.executeCommand<import('../../src/pdfWithNotes').PdfWithNotesResult>('overtex.exportPdfWithNotes');
+      assert.ok(result, 'exported');
+      out = result.pdf;
+      assert.strictEqual(path.basename(out), 'main-notes.pdf');
+      assert.deepStrictEqual([result.placed, result.skipped], [2, 1], 'the open notes placed, the done one left out, the one past the last page skipped');
+      const built = fs.readFileSync(path.join(path.dirname(out), 'main.pdf'));
+      const copy = fs.readFileSync(out);
+      assert.ok(copy.length > built.length && copy.subarray(0, built.length).equals(built), 'the copy is main.pdf plus an update');
+      assert.strictEqual((copy.toString('latin1').match(/\/Subtype \/Text/g) ?? []).length, 2);
+    } finally {
+      fs.rmSync(file, { force: true });
+      if (out) {
+        fs.rmSync(out, { force: true });
+      }
+    }
+  });
+
   await step('cite from Zotero adds the pick to the .bib and cites it', async () => {
     // A stand-in for Better BibTeX: what a real one sends has not been checked against this.
     const picks = ['@article{einsteinCanQuantum1935,\n  title = {Can Quantum-Mechanical Description of Physical Reality Be Considered Complete?},\n  year = {1935},\n  doi = {10.1103/PhysRev.47.777},\n  file = {/Users/someone/Zotero/storage/ABC/epr.pdf}\n}\n'];

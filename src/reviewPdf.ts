@@ -33,7 +33,7 @@ interface OptionPick extends vscode.QuickPickItem {
 }
 
 /** The open notes, or undefined when the notes file exists but cannot be read. */
-function readOpenNotes(main: string): Note[] | undefined {
+export function readOpenNotes(main: string): Note[] | undefined {
   let content: string;
   try {
     content = fs.readFileSync(notesFilePath(main), 'utf-8');

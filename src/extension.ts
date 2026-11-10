@@ -28,6 +28,7 @@ import { citeFromZotero } from './citeFromZotero';
 import { CompareArgs, compareVersionsCommand } from './compareVersions';
 import { ReviewArgs, exportReviewPdfCommand } from './reviewPdf';
 import { exportArxiv } from './exportArxiv';
+import { exportPdfWithNotesCommand } from './pdfWithNotes';
 import { SubmissionCheck } from './checkSubmission';
 import { BibliographyCheck } from './checkBib';
 import { GrammarCheck } from './grammarCheck';
@@ -339,6 +340,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
           )
         : undefined
     ),
+    vscode.commands.registerCommand('overtex.exportPdfWithNotes', () => exportPdfWithNotesCommand({ mainFile, pdfFor, build })),
     vscode.commands.registerCommand('overtex.viewer.toggleDarkMode', () => pdfPanel.toggleColorScheme()),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('overtex.viewer.colorScheme')) {
