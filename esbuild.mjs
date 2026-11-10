@@ -1,6 +1,7 @@
 import * as esbuild from 'esbuild';
 import { cpSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { harperBinaryModule, patchHarperBinaryRead } from './scripts/harperFileUrl.mjs';
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
@@ -21,21 +22,14 @@ function copyHarperBinary() {
   cpSync('node_modules/harper.js/dist/harper_wasm_slim_bg.wasm', 'out/harper_wasm_slim_bg.wasm');
 }
 
-// harper.js reads a file:// binary from `new URL(binary).pathname`, which keeps %20 and the like
-// and on Windows starts with /C:/, so an install path with a space, a non-ASCII letter or a drive
-// letter fails. fs takes the URL itself and decodes it properly.
 /** @type {esbuild.Plugin} */
 const harperFileUrl = {
   name: 'harper-file-url',
   setup(build) {
-    build.onLoad({ filter: /harper\.js[\\/]dist[\\/]BinaryModule-[^\\/]*\.js$/ }, (args) => {
-      const code = readFileSync(args.path, 'utf8');
-      const broken = 'fs.readFile(new URL(binary).pathname,';
-      if (!code.includes(broken)) {
-        throw new Error('harper.js no longer reads its binary as expected; check harperFileUrl in esbuild.mjs');
-      }
-      return { contents: code.replace(broken, 'fs.readFile(new URL(binary),'), loader: 'js' };
-    });
+    build.onLoad({ filter: harperBinaryModule }, (args) => ({
+      contents: patchHarperBinaryRead(readFileSync(args.path, 'utf8')),
+      loader: 'js',
+    }));
   },
 };
 
