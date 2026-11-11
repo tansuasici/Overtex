@@ -945,7 +945,40 @@ export async function run(): Promise<void> {
       assert.match(git(work, 'status', '--porcelain'), /^UU main\.tex$/m, 'main.tex is left with both versions marked');
       assert.strictEqual(git(own, 'rev-parse', 'main'), ownBefore, 'nothing was pushed during the conflict');
       assert.strictEqual(git(work, 'log', '-1', '--format=%s', 'HEAD'), 'Update', 'an empty message becomes "Update"');
-      git(work, 'merge', '--abort');
+
+      // Pick a version and save, without any git command: Share finishes the merge and sends it.
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: '' });
+      assert.strictEqual(git(own, 'rev-parse', 'main'), ownBefore, 'still nothing sent while the markers are there');
+      fs.writeFileSync(path.join(work, 'main.tex'), 'line one, both\nline two\nline three\nco-author line\n');
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: '' });
+      assert.strictEqual(git(own, 'show', 'main:main.tex'), 'line one, both\nline two\nline three\nco-author line');
+      assert.ok(git(own, 'log', '--format=%s', 'main').includes('Co-author again'), 'the co-author version is in the shared history');
+      assert.strictEqual(git(work, 'status', '--porcelain'), '', 'nothing left half-done');
+
+      // Keeping your own version exactly also finishes the merge.
+      git(co, 'pull', '--no-rebase', '-q', own, 'main');
+      fs.writeFileSync(path.join(co, 'main.tex'), 'line one, both\nline two, theirs\nline three\nco-author line\n');
+      git(co, 'commit', '-qam', 'Co-author line two');
+      git(co, 'push', '-q', 'origin', 'HEAD:main');
+      const mine = 'line one, both\nline two, mine\nline three\nco-author line\n';
+      fs.writeFileSync(path.join(work, 'main.tex'), mine);
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: 'Mine' });
+      assert.match(git(work, 'status', '--porcelain'), /^UU main\.tex$/m);
+      fs.writeFileSync(path.join(work, 'main.tex'), mine);
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: '' });
+      assert.strictEqual(git(own, 'show', 'main:main.tex') + '\n', mine);
+      assert.ok(git(own, 'log', '--format=%s', 'main').includes('Co-author line two'));
+
+      // Get Changes combines a co-author version without sending anything.
+      git(co, 'pull', '--no-rebase', '-q', own, 'main');
+      fs.writeFileSync(path.join(co, 'notes.txt'), 'from the co-author\n');
+      git(co, 'add', 'notes.txt');
+      git(co, 'commit', '-qm', 'Co-author file');
+      git(co, 'push', '-q', 'origin', 'HEAD:main');
+      const ownNow = git(own, 'rev-parse', 'main');
+      await vscode.commands.executeCommand('overtex.getChanges', { uri: vscode.Uri.file(work) });
+      assert.ok(fs.existsSync(path.join(work, 'notes.txt')), 'the co-author file arrived');
+      assert.strictEqual(git(own, 'rev-parse', 'main'), ownNow, 'Get Changes sends nothing');
     } finally {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       fs.rmSync(box, { recursive: true, force: true });

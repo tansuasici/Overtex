@@ -161,6 +161,11 @@ export function describeGitError(err: unknown): string {
     case 'NoUserNameConfigured':
     case 'NoUserEmailConfigured':
       return 'Git needs your name and email to label your changes.';
+  }
+  if (needsIdentity(err)) {
+    return 'Git needs your name and email to label your changes.';
+  }
+  switch (code) {
     case 'Conflict':
     case 'UnmergedChanges':
       return 'You and a co-author changed the same lines. Choose which version to keep, then share again.';
@@ -181,5 +186,6 @@ export function describeGitError(err: unknown): string {
 
 export function needsIdentity(err: unknown): boolean {
   const code = (err as { gitErrorCode?: string } | undefined)?.gitErrorCode;
-  return code === 'NoUserNameConfigured' || code === 'NoUserEmailConfigured';
+  const stderr = (err as { stderr?: string } | undefined)?.stderr ?? '';
+  return code === 'NoUserNameConfigured' || code === 'NoUserEmailConfigured' || /tell me who you are/i.test(stderr);
 }

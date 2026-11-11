@@ -135,6 +135,7 @@ describe('describeGitError', () => {
 
   it('knows when Git is missing your name or email', () => {
     expect(needsIdentity({ gitErrorCode: 'NoUserEmailConfigured' })).toBe(true);
+    expect(needsIdentity({ stderr: '*** Please tell me who you are.' })).toBe(true);
     expect(needsIdentity(new Error('x'))).toBe(false);
   });
 });

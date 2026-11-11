@@ -110,7 +110,10 @@ class GitSync implements vscode.Disposable {
 
   /** The repository for the given file, else the active file, else the first workspace folder. */
   private repoFor(api: API, uri?: vscode.Uri): Repository | undefined {
-    const candidates = [uri, vscode.window.activeTextEditor?.document.uri, vscode.workspace.workspaceFolders?.[0]?.uri];
+    if (uri) {
+      return api.getRepository(uri) ?? undefined;
+    }
+    const candidates = [vscode.window.activeTextEditor?.document.uri, vscode.workspace.workspaceFolders?.[0]?.uri];
     for (const candidate of candidates) {
       const repo = candidate && candidate.scheme === 'file' ? api.getRepository(candidate) : null;
       if (repo) {
@@ -198,10 +201,11 @@ class GitSync implements vscode.Disposable {
     try {
       const repo = await this.ensureRepo(api, args.uri);
       await repo.status();
-      if (repo.state.mergeChanges.length || repo.state.rebaseCommit) {
-        await showConflicts(repo, 'Finish combining the changes first: choose which version to keep in each marked file, then share again.');
+      if (repo.state.rebaseCommit) {
+        void vscode.window.showWarningMessage('Overtex: a Git rebase is in progress. Finish or abort it in Source Control first.');
         throw new Stop();
       }
+      await this.concludeMerge(repo);
       const branch = repo.state.HEAD?.name;
       if (!branch) {
         void vscode.window.showWarningMessage('Overtex: you are looking at an older version, not a branch. Switch back to your branch (Git: Checkout to…) and try again.');
@@ -273,8 +277,9 @@ class GitSync implements vscode.Disposable {
         await this.git(repo, ['merge', '--no-edit', ref]);
       } catch (err) {
         await repo.status();
-        if (repo.state.mergeChanges.length) {
-          await showConflicts(repo, `You and a co-author (${remote.name}) changed the same lines. Choose which version to keep in each marked file, then run Share Changes again.`);
+        const unmerged = await this.unmerged(repo);
+        if (unmerged.length) {
+          await showConflicts(unmerged, `You and a co-author (${remote.name}) changed the same lines. Choose which version to keep in each marked file, save, then run Share Changes again.`);
           throw new Stop();
         }
         throw err;
@@ -282,6 +287,39 @@ class GitSync implements vscode.Disposable {
     }
     await repo.status();
     return warnings;
+  }
+
+  /**
+   * A merge stopped by a conflict stays in progress until it is committed. Once no file has conflict
+   * markers left (the person picked a version and saved, or kept their own exactly), commit it so that
+   * the share can go on; otherwise point at the files still to fix.
+   */
+  private async concludeMerge(repo: Repository): Promise<void> {
+    const inProgress = await this.git(repo, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']).then(
+      () => true,
+      () => false
+    );
+    if (!inProgress) {
+      return;
+    }
+    const unmerged = await this.unmerged(repo);
+    const marked = unmerged.filter((uri) => hasConflictMarkers(uri.fsPath));
+    if (marked.length) {
+      await showConflicts(marked, 'Finish combining the changes first: choose which version to keep in each marked file, save, then share again.');
+      throw new Stop();
+    }
+    await this.git(repo, ['add', '-A']);
+    await this.withIdentity(repo, () => this.git(repo, ['commit', '--no-edit']).then(() => undefined));
+    await repo.status();
+  }
+
+  /** Files git still lists as unmerged. */
+  private async unmerged(repo: Repository): Promise<vscode.Uri[]> {
+    const out = await this.git(repo, ['diff', '--name-only', '--diff-filter=U', '-z']);
+    return out
+      .split('\0')
+      .filter(Boolean)
+      .map((rel) => vscode.Uri.file(path.join(repo.rootUri.fsPath, rel)));
   }
 
   /** Runs git for a local operation (no network, so no credentials needed). */
@@ -390,10 +428,17 @@ function askMessage(): Thenable<string | undefined> {
   });
 }
 
-async function showConflicts(repo: Repository, message: string): Promise<void> {
-  const first = repo.state.mergeChanges[0];
-  if (first) {
-    await vscode.commands.executeCommand('vscode.open', first.uri);
+function hasConflictMarkers(file: string): boolean {
+  try {
+    return /^<{7}(?: |$)[\s\S]*^>{7}(?: |$)/m.test(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return false; // Deleted on one side: nothing to mark.
+  }
+}
+
+async function showConflicts(files: vscode.Uri[], message: string): Promise<void> {
+  if (files[0]) {
+    await vscode.commands.executeCommand('vscode.open', files[0]);
   }
   void vscode.commands.executeCommand('workbench.view.scm');
   void vscode.window.showWarningMessage(`Overtex: ${message}`);
