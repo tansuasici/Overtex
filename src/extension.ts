@@ -40,6 +40,7 @@ import { MathRenderer, registerMathPreview } from './mathPreview';
 import { registerRefHover } from './refHover';
 import { registerHistory } from './history';
 import { registerSourceNotes } from './sourceNotes';
+import { registerGitSync } from './gitSync';
 import { registerTodos } from './todos';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
@@ -128,6 +129,14 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     })
   );
   registerSourceNotes(context);
+  registerGitSync(context, {
+    builtPdf: () => {
+      const main = mainFile();
+      return main ? pdfFor(main) : undefined;
+    },
+    requireTrust,
+    log,
+  });
   registerTodos(context);
   void texlab.start();
 
