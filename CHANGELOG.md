@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Reference hover**: hovering over the key in `\ref`, `\eqref`, `\cref` and the like shows the number and page from the last build's `.aux` files, following `\include`d chapters, with the section's title for section labels and the equation rendered with MathJax for equation labels. Keys no `\label` defines, keys added since the last build, and keys defined more than once are pointed out. Turn it off with `overtex.refHover.enabled`. With Tectonic, which keeps no `.aux`, only the equation is shown.
+
 ## 0.8.1 (2026-11-11)
 
 - Check Bibliography warns about retracted papers, expressions of concern, corrections and newer versions, using the Crossref and Retraction Watch notices doi.org already returns. A retraction shows as an error in the Problems panel, with the notice's DOI, date and a link to it.

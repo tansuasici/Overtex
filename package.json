@@ -973,6 +973,11 @@
           "default": true,
           "markdownDescription": "Show math rendered with MathJax when hovering over `$…$`, `\\[…\\]`, `equation`, `align` and other math. Macros from `\\newcommand`, `\\DeclareMathOperator` and `\\def` in the file and the main file are used."
         },
+        "overtex.refHover.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When hovering over a key in `\\ref`, `\\eqref`, `\\cref` and the like, show the number and page it got in the last build (read from the `.aux` files) and, for an equation, the equation rendered."
+        },
         "overtex.mathPreview.scale": {
           "type": "number",
           "default": 1,

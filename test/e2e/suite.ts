@@ -625,6 +625,36 @@ export async function run(): Promise<void> {
     assert.ok(svg.startsWith('<svg') && svg.endsWith('</svg>'), 'nothing outside the <svg> element');
   });
 
+  await step('reference hover shows the number from the .aux and the equation', async () => {
+    const tex = path.join(root, 'refhover-e2e.tex');
+    const aux = path.join(root, 'main.aux');
+    const original = fs.readFileSync(aux, 'utf8');
+    try {
+      fs.writeFileSync(tex, '% !TEX root = main.tex\n\\begin{equation}a^2+b^2\\label{eq:e2e}\\end{equation}\nBy \\eqref{eq:e2e} and \\ref{fig:none}.\n');
+      fs.writeFileSync(aux, `${original}\\newlabel{eq:e2e}{{7}{3}}\n\\newlabel{eq:e2e@cref}{{[equation][7][]7}{[1][3][]3}}\n`);
+      await vscode.commands.executeCommand('overtex.labels.refresh');
+      const doc = await vscode.languages.setTextDocumentLanguage(await vscode.workspace.openTextDocument(tex), 'latex');
+      const hoverText = async (character: number) => {
+        const hovers = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', doc.uri, new vscode.Position(2, character));
+        // appendText escapes spaces as &nbsp; and punctuation with backslashes.
+        return hovers
+          .flatMap((h) => h.contents.map((c) => (typeof c === 'string' ? c : c.value)))
+          .join('\n')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\\([^\w\s])/g, '$1');
+      };
+      const onEq = await hoverText(12);
+      assert.ok(onEq.includes('Equation (7), page 3'), onEq);
+      assert.ok(/data:image\/svg\+xml;base64,/.test(onEq), 'the equation is rendered');
+      const onUndefined = await hoverText(28);
+      assert.ok(onUndefined.includes('fig:none') && onUndefined.includes('in the workspace'), onUndefined);
+    } finally {
+      fs.writeFileSync(aux, original);
+      fs.rmSync(tex, { force: true });
+      await vscode.commands.executeCommand('overtex.labels.refresh');
+    }
+  });
+
   await step('Papers panel groups the .bib by citation and cites a paper', async () => {
     const bib = path.join(root, 'refs.bib');
     const tex = path.join(root, 'papers-e2e.tex');

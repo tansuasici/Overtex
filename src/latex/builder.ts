@@ -70,6 +70,7 @@ export function outputPaths(mainFile: string, outDir: string) {
     pdf: path.join(dir, `${base}.pdf`),
     log: path.join(dir, `${base}.log`),
     fls: path.join(dir, `${base}.fls`),
+    aux: path.join(dir, `${base}.aux`),
   };
 }
 
