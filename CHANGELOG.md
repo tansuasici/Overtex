@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Check Bibliography warns about retracted papers, expressions of concern, corrections and newer versions, using the Crossref and Retraction Watch notices doi.org already returns. A retraction shows as an error in the Problems panel, with the notice's DOI, date and a link to it.
+
 ## 0.8.0 (2026-11-11)
 
 - A build that prints nothing for `overtex.build.stallTimeout` seconds (default 300), or keeps printing the same lines, is stopped, and the error says why instead of the build hanging until you cancel it.

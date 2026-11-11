@@ -85,9 +85,16 @@ export class BibliographyCheck implements vscode.Disposable {
         const d = new vscode.Diagnostic(
           new vscode.Range(f.line, 0, f.line, Number.MAX_SAFE_INTEGER),
           f.message,
-          f.severity === 'warning' ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Information
+          f.severity === 'error'
+            ? vscode.DiagnosticSeverity.Error
+            : f.severity === 'warning'
+              ? vscode.DiagnosticSeverity.Warning
+              : vscode.DiagnosticSeverity.Information
         );
         d.source = 'Overtex bibliography';
+        if (f.link) {
+          d.code = { value: 'notice', target: vscode.Uri.parse(f.link) };
+        }
         return d;
       })
     );
