@@ -10,73 +10,84 @@ type Render = (tex: string, display: boolean, preamble: string[]) => RenderResul
 /** Pixels per ex at scale 1, about what the editor font gives. */
 const EX_PX = 8;
 
-/**
- * Hovering over math shows it rendered by MathJax, with the macros defined in the file and in the
- * main file. MathJax is a separate bundle, loaded on the first math hover.
- */
-export function registerMathPreview(extensionPath: string, mainFile: () => string | null): vscode.Disposable {
-  let render: Render | undefined;
-  const spanCache = new WeakMap<vscode.TextDocument, { version: number; spans: MathSpan[] }>();
-  const mainCache = new Map<string, { mtime: number; macros: string[] }>();
+/** Renders the math in documents for hovers, with the macros of the document and the main file. */
+export class MathRenderer {
+  private render: Render | undefined;
+  private readonly spanCache = new WeakMap<vscode.TextDocument, { version: number; spans: MathSpan[] }>();
+  private readonly mainCache = new Map<string, { mtime: number; macros: string[] }>();
 
-  function spansOf(doc: vscode.TextDocument): MathSpan[] {
-    const hit = spanCache.get(doc);
+  constructor(
+    private readonly extensionPath: string,
+    private readonly mainFile: () => string | null
+  ) {}
+
+  spansOf(doc: vscode.TextDocument): MathSpan[] {
+    const hit = this.spanCache.get(doc);
     if (hit?.version === doc.version) {
       return hit.spans;
     }
     const spans = findMathSpans(doc.getText());
-    spanCache.set(doc, { version: doc.version, spans });
+    this.spanCache.set(doc, { version: doc.version, spans });
     return spans;
   }
 
-  function mainMacros(file: string): string[] {
+  /** The span rendered as hover Markdown; MathJax is loaded on first use. */
+  markdown(doc: vscode.TextDocument, span: MathSpan): vscode.MarkdownString {
+    this.render ??= (require(path.join(this.extensionPath, 'out', 'mathRender.js')) as { renderMath: Render }).renderMath;
+    const result = this.render(span.tex, span.display, this.macrosFor(doc));
+    const md = new vscode.MarkdownString();
+    if ('error' in result) {
+      md.appendMarkdown(`*${escapeMarkdown(result.error)}*`);
+    } else {
+      const scale = vscode.workspace.getConfiguration('overtex', doc.uri).get<number>('mathPreview.scale', 1);
+      md.appendMarkdown(`![math](data:image/svg+xml;base64,${Buffer.from(prepareSvg(result.svg, scale, textColor())).toString('base64')})`);
+    }
+    return md;
+  }
+
+  private mainMacros(file: string): string[] {
     try {
       const mtime = fs.statSync(file).mtimeMs;
-      const hit = mainCache.get(file);
+      const hit = this.mainCache.get(file);
       if (hit?.mtime === mtime) {
         return hit.macros;
       }
       const macros = collectMacros(fs.readFileSync(file, 'utf8'));
-      mainCache.set(file, { mtime, macros });
+      this.mainCache.set(file, { mtime, macros });
       return macros;
     } catch {
       return [];
     }
   }
 
-  function macrosFor(doc: vscode.TextDocument): string[] {
+  private macrosFor(doc: vscode.TextDocument): string[] {
     const own = collectMacros(doc.getText());
-    const main = mainFile();
+    const main = this.mainFile();
     if (!main || doc.uri.scheme !== 'file' || path.resolve(main) === path.resolve(doc.uri.fsPath)) {
       return own;
     }
     const open = vscode.workspace.textDocuments.find((d) => d.uri.scheme === 'file' && path.resolve(d.uri.fsPath) === path.resolve(main));
-    return [...(open ? collectMacros(open.getText()) : mainMacros(main)), ...own];
+    return [...(open ? collectMacros(open.getText()) : this.mainMacros(main)), ...own];
   }
+}
 
+/**
+ * Hovering over math shows it rendered by MathJax, with the macros defined in the file and in the
+ * main file. MathJax is a separate bundle, loaded on the first math hover.
+ */
+export function registerMathPreview(renderer: MathRenderer): vscode.Disposable {
   return vscode.languages.registerHoverProvider(
     [{ language: 'latex' }, { language: 'tex' }],
     {
       provideHover(doc, position) {
-        const config = vscode.workspace.getConfiguration('overtex', doc.uri);
-        if (!config.get<boolean>('mathPreview.enabled', true)) {
+        if (!vscode.workspace.getConfiguration('overtex', doc.uri).get<boolean>('mathPreview.enabled', true)) {
           return undefined;
         }
-        const span = mathAt(spansOf(doc), doc.offsetAt(position));
+        const span = mathAt(renderer.spansOf(doc), doc.offsetAt(position));
         if (!span) {
           return undefined;
         }
-        render ??= (require(path.join(extensionPath, 'out', 'mathRender.js')) as { renderMath: Render }).renderMath;
-        const result = render(span.tex, span.display, macrosFor(doc));
-        const range = new vscode.Range(doc.positionAt(span.start), doc.positionAt(span.end));
-        const md = new vscode.MarkdownString();
-        if ('error' in result) {
-          md.appendMarkdown(`*${escapeMarkdown(result.error)}*`);
-        } else {
-          const scale = config.get<number>('mathPreview.scale', 1);
-          md.appendMarkdown(`![math](data:image/svg+xml;base64,${Buffer.from(prepareSvg(result.svg, scale, textColor())).toString('base64')})`);
-        }
-        return new vscode.Hover(md, range);
+        return new vscode.Hover(renderer.markdown(doc, span), new vscode.Range(doc.positionAt(span.start), doc.positionAt(span.end)));
       },
     }
   );

@@ -36,7 +36,8 @@ import { BibliographyCheck } from './checkBib';
 import { GrammarCheck } from './grammarCheck';
 import { WordCounter } from './wordCount';
 import { Highlighter } from './highlighter';
-import { registerMathPreview } from './mathPreview';
+import { MathRenderer, registerMathPreview } from './mathPreview';
+import { registerRefHover } from './refHover';
 import { registerHistory } from './history';
 import { registerSourceNotes } from './sourceNotes';
 import { registerTodos } from './todos';
@@ -113,7 +114,19 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     log,
   });
   context.subscriptions.push(onDidEndBuild.event((result) => result.success && !result.cancelled && history.record(result.mainFile, result.pdfFile, 'build')));
-  context.subscriptions.push(new Highlighter(context.extensionUri), registerMathPreview(context.extensionPath, mainFile));
+  const mathRenderer = new MathRenderer(context.extensionPath, mainFile);
+  context.subscriptions.push(
+    new Highlighter(context.extensionUri),
+    registerMathPreview(mathRenderer),
+    registerRefHover({
+      entry: (key) => labels.entry(key),
+      auxFile: () => {
+        const main = mainFile();
+        return main ? outputPaths(main, buildSettings().outDir).aux : undefined;
+      },
+      renderer: mathRenderer,
+    })
+  );
   registerSourceNotes(context);
   registerTodos(context);
   void texlab.start();

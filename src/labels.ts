@@ -136,6 +136,8 @@ export interface LabelsOptions {
 
 export interface Labels {
   groups(): Promise<{ group: string; keys: string[] }[]>;
+  /** What the workspace's sources say about a key. */
+  entry(key: string): Promise<LabelEntry | undefined>;
 }
 
 /** The Labels panel: what the workspace's .tex files define and reference, and renaming across them. */
@@ -276,6 +278,7 @@ export function registerLabels(context: vscode.ExtensionContext, options: Labels
   );
 
   return {
+    entry: async (key) => (await entries()).find((e) => e.key === key),
     groups: async () =>
       (await provider.groups()).map((g) => ({ group: g.group, keys: g.labels.map((l) => l.entry.key) })),
   };

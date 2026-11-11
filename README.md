@@ -65,6 +65,7 @@ Overleaf Connect is not part of the profile. Install it into the profile yoursel
 - **Live checking and completion** with [TexLab](https://github.com/latex-lsp/texlab), when it is installed: errors such as unbalanced braces, mismatched environments and undefined references appear as you type, before any build, and completion covers commands, environments, `\ref` labels and `\cite` keys. Hover and go to definition come with it.
 - **Highlights**: `TODO`, `FIXME` and `XXX` comments and `\todo{…}` notes stand out in the editor and the scroll bar, and text TeX skips (`\iffalse … \fi`, `comment` environments) is dimmed. Change the color with `overtex.todoBackground` in `workbench.colorCustomizations`.
 - **Math preview**: hover over math (`$…$`, `\(…\)`, `\[…\]`, `$$…$$`, `equation`, `align`, `gather` and the like) to see it rendered with [MathJax](https://www.mathjax.org/). Macros you define with `\newcommand`, `\DeclareMathOperator` or `\def` in the file or the main file are used; a mistake shows MathJax's error instead. Packages MathJax does not have are not loaded, so their commands show as undefined.
+- **Reference hover**: hover over the key in `\ref`, `\eqref`, `\cref` and the like to see the number and page LaTeX gave it in the last build, read from the `.aux` files ("Equation (3), page 5", "Section 2.1 Results, page 4"), and an equation rendered. A key no `\label` defines, or one added since the last build, says so.
 - **Citation completion** inside `\cite{…}` from the workspace's `.bib` files, searchable by key, title and author, when TexLab is not available.
 - **Add Citation from DOI or arXiv**: paste a DOI (`10.1103/PhysRev.47.777`) or an arXiv ID (`arXiv:1706.03762`, or the abs URL) and Overtex fetches the BibTeX from doi.org, adds it to your `.bib` with a readable key, and inserts the `\cite` at the cursor.
 - **Cite from Zotero**: with Zotero and its [Better BibTeX](https://retorque.re/zotero-better-bibtex/) add-on running, opens Zotero's picker, adds what you pick to your `.bib` under the citation keys Zotero shows, and inserts the `\cite` at the cursor. Papers already in the `.bib` are reused, and local attachment paths are left out. It talks only to Zotero on your computer.
@@ -103,6 +104,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 - Export for arXiv and Check Submission are not available: they need the list of files TeX read, which Tectonic does not record.
 - A build stops at the first error, so you see one error at a time and the PDF is not updated until it is fixed.
 - `.latexmkrc` is not read. `overtex.latex.extraArgs` go to `tectonic -X compile`.
+- Tectonic keeps no `.aux` file, so the reference hover shows equations but not numbers or pages.
 - Clean removes the `.log`, `.blg` and `.synctex.gz` files.
 
 **`docker`** runs latexmk in `overtex.docker.image` (default `texlive/texlive:latest`). Docker pulls the image on the first build; the default image takes about 9 GB of disk. Any image that provides latexmk works.
@@ -146,6 +148,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 | `overtex.history.maxSnapshots` | `50` | Unnamed snapshots kept per document; `0` turns history off. Named snapshots are always kept. |
 | `overtex.history.keepPdf` | `true` | Keep each snapshot's PDF, so it can be opened later. |
 | `overtex.highlights.enabled` | `true` | Highlight TODO notes and dim `\iffalse` and `comment` blocks. |
+| `overtex.refHover.enabled` | `true` | Show a reference's number, page and equation when hovering over its key. |
 | `overtex.mathPreview.enabled` | `true` | Show rendered math when hovering over it. |
 | `overtex.mathPreview.scale` | `1` | Size of the math preview. |
 | `overtex.grammar.engine` | `harper` | `harper` checks English inside Overtex; `languagetool` uses the server below and checks other languages; `off` turns the check off. |
