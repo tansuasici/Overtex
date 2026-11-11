@@ -8,6 +8,7 @@ import {
   missingFields,
   parseArxivFeed,
   parseCsl,
+  describeUpdates,
   sameTitle,
   summarizeBibCheck,
 } from '../src/latex/bibCheck';
@@ -20,6 +21,38 @@ const EPR_CSL = {
   'container-title': 'Physical Review',
   volume: '47',
   page: '777-780',
+};
+
+// The shape doi.org returns for a retracted article (Wakefield et al., The Lancet, 1998), trimmed.
+const RETRACTED_CSL = {
+  DOI: '10.1016/s0140-6736(97)11096-0',
+  title: 'RETRACTED: Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children',
+  issued: { 'date-parts': [[1998, 2]] },
+  'container-title': 'The Lancet',
+  'updated-by': [
+    {
+      DOI: '10.1016/s0140-6736(04)15715-2',
+      type: 'correction',
+      label: 'Correction',
+      source: 'publisher',
+      updated: { 'date-parts': [[2004, 3, 6]], 'date-time': '2004-03-06T00:00:00Z' },
+    },
+    {
+      DOI: '10.1016/s0140-6736(10)60175-4',
+      type: 'retraction',
+      label: 'Retraction',
+      source: 'publisher',
+      updated: { 'date-parts': [[2010, 2, 6]], 'date-time': '2010-02-06T00:00:00Z' },
+    },
+    {
+      DOI: '10.1016/S0140-6736(10)60175-4',
+      type: 'retraction',
+      label: 'Retraction',
+      source: 'retraction-watch',
+      updated: { 'date-parts': [[2010, 2, 6]], 'date-time': '2010-02-06T00:00:00Z' },
+      'record-id': 1,
+    },
+  ],
 };
 
 const FEED = `<?xml version='1.0' encoding='UTF-8'?>
@@ -86,7 +119,15 @@ describe('parsers', () => {
       volume: '47',
       page: '777-780',
       container: 'Physical Review',
+      updates: [],
     });
+  });
+
+  it('reads Crossref notices from updated-by, without duplicates', () => {
+    expect(parseCsl(RETRACTED_CSL).updates).toEqual([
+      { type: 'correction', doi: '10.1016/s0140-6736(04)15715-2', date: '2004-03-06' },
+      { type: 'retraction', doi: '10.1016/s0140-6736(10)60175-4', date: '2010-02-06' },
+    ]);
   });
 
   it('reads the arXiv Atom feed, keyed by ID without version', () => {
@@ -217,5 +258,57 @@ describe('checkBibliography', () => {
     );
     const report = await checkBibliography(bib('@misc{a, doi = {10.1234/x}}'), { fetchFn: fetchFn as unknown as typeof fetch, timeoutMs: 20 });
     expect(report.findings.map((f) => f.kind)).toEqual(['unverified']);
+  });
+
+  it('reports retractions as errors with the notice DOI, date and a link', async () => {
+    const fetchFn = vi.fn(async (url: string) =>
+      url === 'https://doi.org/10.1016/s0140-6736(97)11096-0' ? response(200, RETRACTED_CSL) : response(404, 'not found')
+    );
+    const report = await checkBibliography(
+      bib(`@article{wakefield, author = {Wakefield, A. J.}, journal = {The Lancet}, year = 1998,
+  title = {Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children},
+  doi = {10.1016/S0140-6736(97)11096-0}}`),
+      { fetchFn: fetchFn as unknown as typeof fetch }
+    );
+    const updates = report.findings.filter((f) => f.kind === 'update');
+    expect(updates).toEqual([
+      {
+        kind: 'update',
+        severity: 'error',
+        key: 'wakefield',
+        line: 0,
+        message:
+          'wakefield: DOI 10.1016/s0140-6736(97)11096-0 has been retracted (2010-02-06); see DOI 10.1016/s0140-6736(10)60175-4. It also has: correction.',
+        link: 'https://doi.org/10.1016/s0140-6736(10)60175-4',
+      },
+    ]);
+    expect(report.findings[0].kind).toBe('update');
+    expect(summarizeBibCheck(report)).toMatch(/1 problem\b/);
+  });
+});
+
+describe('describeUpdates', () => {
+  it('ranks expressions of concern above corrections and leaves out unknown types', () => {
+    const d = describeUpdates('k', '10.1/x', [
+      { type: 'correction', doi: '10.1/c', date: '2020-01-02' },
+      { type: 'expression_of_concern', doi: '10.1/e', date: '2019-05-01' },
+      { type: 'something_new', doi: '10.1/s' },
+    ]);
+    expect(d).toEqual({
+      severity: 'warning',
+      message: 'k: DOI 10.1/x has an expression of concern (2019-05-01); see DOI 10.1/e. It also has: correction.',
+      link: 'https://doi.org/10.1/e',
+    });
+    expect(describeUpdates('k', '10.1/x', [{ type: 'erratum', doi: '10.1/r' }])?.severity).toBe('info');
+    expect(describeUpdates('k', '10.1/x', [{ type: 'something_new', doi: '10.1/s' }])).toBeUndefined();
+  });
+
+  it('drops a retraction that was later reinstated', () => {
+    expect(
+      describeUpdates('k', '10.1/x', [
+        { type: 'retraction', doi: '10.1/r', date: '2015-01-01' },
+        { type: 'reinstatement', doi: '10.1/i', date: '2016-01-01' },
+      ])
+    ).toBeUndefined();
   });
 });

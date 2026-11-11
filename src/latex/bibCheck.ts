@@ -4,12 +4,14 @@ import type { BibEntry } from './bibParser';
 import { fold, normalizeDoi, parseIdentifier } from './citationImport';
 
 export interface BibFinding {
-  kind: 'missing' | 'doi' | 'mismatch' | 'preprint' | 'unverified';
-  severity: 'warning' | 'info';
+  kind: 'missing' | 'doi' | 'mismatch' | 'preprint' | 'update' | 'unverified';
+  severity: 'error' | 'warning' | 'info';
   key: string;
   /** 0-based line of the entry. */
   line: number;
   message: string;
+  /** A page to open for the finding, such as a retraction notice. */
+  link?: string;
 }
 
 export interface BibCheckReport {
@@ -138,12 +140,23 @@ function quote(title: string): string {
 class Unreachable extends Error {}
 class Cancelled extends Error {}
 
+/** A notice Crossref links to a work: a retraction, a correction and the like. */
+export interface WorkUpdate {
+  /** Crossref's update type, such as `retraction`, `expression_of_concern` or `correction`. */
+  type: string;
+  doi: string;
+  /** `2010-02-06`, when known. */
+  date?: string;
+}
+
 interface Work {
   title: string;
   year?: number;
   volume?: string;
   page?: string;
   container?: string;
+  /** Crossref's `updated-by`: notices about this work, from the publisher or Retraction Watch. */
+  updates: WorkUpdate[];
 }
 
 function str(v: unknown): string {
@@ -172,7 +185,78 @@ export function parseCsl(json: unknown): Work {
     volume: str(o.volume) || undefined,
     page: str(o.page) || undefined,
     container: str(o['container-title']) || undefined,
+    updates: parseUpdates(o['updated-by']),
   };
+}
+
+function parseUpdates(v: unknown): WorkUpdate[] {
+  if (!Array.isArray(v)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const updates: WorkUpdate[] = [];
+  for (const u of v as Record<string, unknown>[]) {
+    const type = typeof u?.type === 'string' ? u.type.toLowerCase().replace(/[\s-]+/g, '_') : '';
+    const doi = typeof u?.DOI === 'string' ? u.DOI : '';
+    if (!type || !doi) {
+      continue;
+    }
+    // The publisher and Retraction Watch often both report the same notice.
+    const id = `${type} ${doi.toLowerCase()}`;
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    const parts = (u.updated as { 'date-parts'?: unknown[][] } | undefined)?.['date-parts']?.[0];
+    const date = Array.isArray(parts) && parts.length && Number(parts[0]) > 0 ? parts.map((n) => String(n).padStart(2, '0')).join('-') : undefined;
+    updates.push({ type, doi, date });
+  }
+  return updates;
+}
+
+const UPDATE_KINDS: Record<string, { severity: BibFinding['severity']; says: string }> = {
+  retraction: { severity: 'error', says: 'has been retracted' },
+  removal: { severity: 'error', says: 'has been removed' },
+  withdrawal: { severity: 'error', says: 'has been withdrawn' },
+  partial_retraction: { severity: 'warning', says: 'has been partly retracted' },
+  expression_of_concern: { severity: 'warning', says: 'has an expression of concern' },
+  new_version: { severity: 'info', says: 'has a newer version' },
+  new_edition: { severity: 'info', says: 'has a newer edition' },
+  correction: { severity: 'info', says: 'has a correction' },
+  corrigendum: { severity: 'info', says: 'has a corrigendum' },
+  erratum: { severity: 'info', says: 'has an erratum' },
+  addendum: { severity: 'info', says: 'has an addendum' },
+  clarification: { severity: 'info', says: 'has a clarification' },
+};
+
+const RANK: Record<BibFinding['severity'], number> = { error: 0, warning: 1, info: 2 };
+const WITHDRAWN = new Set(['retraction', 'removal', 'withdrawal', 'partial_retraction']);
+
+/**
+ * The finding for a work's notices: the most serious one leads, with its DOI and date and a link to it,
+ * and the others are named after it. A retraction followed by a reinstatement no longer counts.
+ */
+export function describeUpdates(key: string, doi: string, updates: WorkUpdate[]): { severity: BibFinding['severity']; message: string; link: string } | undefined {
+  const reinstated = updates
+    .filter((u) => u.type === 'reinstatement' && u.date)
+    .map((u) => u.date!)
+    .sort()
+    .pop();
+  const known = updates
+    .filter((u) => UPDATE_KINDS[u.type])
+    .filter((u) => !(reinstated && WITHDRAWN.has(u.type) && (!u.date || u.date <= reinstated)))
+    .sort((a, b) => RANK[UPDATE_KINDS[a.type].severity] - RANK[UPDATE_KINDS[b.type].severity] || (b.date ?? '').localeCompare(a.date ?? ''));
+  if (!known.length) {
+    return undefined;
+  }
+  const [lead, ...rest] = known;
+  const kind = UPDATE_KINDS[lead.type];
+  let message = `${key}: DOI ${doi} ${kind.says}${lead.date ? ` (${lead.date})` : ''}; see DOI ${lead.doi}.`;
+  const others = [...new Set(rest.map((u) => u.type.replace(/_/g, ' ')))];
+  if (others.length) {
+    message += ` It also has: ${others.join(', ')}.`;
+  }
+  return { severity: kind.severity, message, link: `https://doi.org/${lead.doi}` };
 }
 
 export interface ArxivRecord {
@@ -366,6 +450,10 @@ export async function checkBibliography(entries: BibEntry[], options: BibCheckOp
       } else if (entry.title && work.title && !sameTitle(entry.title, work.title)) {
         add(entry, 'mismatch', 'warning', `${entry.key}: DOI ${doi} is ${quote(work.title)}${work.year ? ` (${work.year})` : ''}, not this entry's title.`);
       } else {
+        const update = describeUpdates(entry.key, doi, work.updates);
+        if (update) {
+          findings.push({ kind: 'update', severity: update.severity, key: entry.key, line: entry.line, message: update.message, link: update.link });
+        }
         const year = /\d{4}/.exec(entry.year)?.[0];
         if (year && work.year && Math.abs(Number(year) - work.year) > 1) {
           add(entry, 'mismatch', 'info', `${entry.key}: year is ${year}, but DOI ${doi} was published in ${work.year}.`);
@@ -418,13 +506,13 @@ export async function checkBibliography(entries: BibEntry[], options: BibCheckOp
     progress();
   }
 
-  findings.sort((a, b) => a.line - b.line);
+  findings.sort((a, b) => a.line - b.line || RANK[a.severity] - RANK[b.severity]);
   return { entries: entries.length, checked: total, unreachable, findings };
 }
 
 /** `12 entries, 7 looked up online: 2 warnings` and the like, for the notification. */
 export function summarizeBibCheck(report: BibCheckReport): string {
-  const warnings = report.findings.filter((f) => f.severity === 'warning').length;
+  const warnings = report.findings.filter((f) => f.severity !== 'info').length;
   const notes = report.findings.filter((f) => f.severity === 'info' && f.kind !== 'unverified').length;
   const parts = [`${report.entries} ${report.entries === 1 ? 'entry' : 'entries'}`];
   if (report.checked) {
