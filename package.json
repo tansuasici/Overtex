@@ -431,6 +431,12 @@
         "title": "Get Changes",
         "category": "Overtex",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "overtex.inviteCoauthor",
+        "title": "Invite Co-author",
+        "category": "Overtex",
+        "icon": "$(person-add)"
       }
     ],
     "menus": {

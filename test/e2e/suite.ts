@@ -985,6 +985,113 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('invites a co-author: makes a private GitHub copy, sends the project, then invites', async () => {
+    const box = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-invite-')));
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' }).trim();
+    const bare = path.join(box, 'remote.git');
+    const second = path.join(box, 'second.git');
+    const calls: { method: string; url: string; auth?: string; body: string }[] = [];
+    // A stand-in for api.github.com: the "created" repository is a local bare repository.
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        calls.push({ method: req.method ?? '', url: req.url ?? '', auth: req.headers.authorization, body });
+        const send = (status: number, data?: unknown) => {
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(data === undefined ? undefined : JSON.stringify(data));
+        };
+        if (req.method === 'GET' && req.url === '/user') {
+          send(200, { login: 'ada' });
+        } else if (req.method === 'POST' && req.url === '/user/repos') {
+          const name = JSON.parse(body).name;
+          const clone = name === 'broken' ? path.join(box, 'missing.git') : name === 'second' ? second : bare;
+          send(201, { name, owner: { login: 'ada' }, html_url: `https://github.com/ada/${name}`, clone_url: clone });
+        } else if (req.method === 'PUT' && req.url === '/repos/ada/Tez-Calismasi/collaborators/bob') {
+          send(201, {});
+        } else if (req.method === 'PUT' && req.url === '/repos/ada/Tez-Calismasi/collaborators/cy') {
+          send(204);
+        } else {
+          send(404, { message: 'Not Found' });
+        }
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    process.env.OVERTEX_E2E_GITHUB_API = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      git(box, 'init', '--bare', bare);
+      const work = path.join(box, 'Tez Çalışması');
+      git(box, 'init', work);
+      git(work, 'config', 'user.name', 'You');
+      git(work, 'config', 'user.email', 'you@example.invalid');
+      fs.writeFileSync(path.join(work, 'main.tex'), 'hello\n');
+      git(work, 'add', '.');
+      git(work, 'commit', '-qm', 'Start');
+      fs.writeFileSync(path.join(work, 'refs.bib'), '@misc{a, title={A}}\n');
+
+      await vscode.commands.executeCommand('overtex.inviteCoauthor', {
+        uri: vscode.Uri.file(work),
+        repoName: 'Tez-Calismasi',
+        username: '@bob',
+        message: 'Put on GitHub',
+      });
+      const create = calls.find((c) => c.method === 'POST');
+      assert.ok(create, 'a repository was created');
+      assert.deepStrictEqual(
+        { name: JSON.parse(create.body).name, private: JSON.parse(create.body).private },
+        { name: 'Tez-Calismasi', private: true }
+      );
+      assert.strictEqual(git(work, 'remote', 'get-url', 'origin'), bare, 'the new copy is the origin');
+      assert.deepStrictEqual(git(bare, 'ls-tree', '--name-only', 'main').split('\n').sort(), ['main.tex', 'refs.bib'], 'the project was sent, new files too');
+      assert.strictEqual(git(bare, 'log', '-1', '--format=%s', 'main'), 'Put on GitHub');
+      assert.strictEqual(git(work, 'rev-parse', '--abbrev-ref', '@{upstream}'), 'origin/main', 'Share Changes goes to the new copy');
+      const put = calls.find((c) => c.method === 'PUT');
+      assert.strictEqual(put?.url, '/repos/ada/Tez-Calismasi/collaborators/bob', 'the @ was dropped');
+      assert.deepStrictEqual(JSON.parse(put.body), { permission: 'push' });
+      assert.ok(calls.every((c) => c.auth === 'Bearer e2e'), 'every call is signed in');
+
+      // With a GitHub copy already there, inviting only invites.
+      git(work, 'remote', 'set-url', 'origin', 'https://github.com/ada/Tez-Calismasi.git');
+      calls.length = 0;
+      await vscode.commands.executeCommand('overtex.inviteCoauthor', { uri: vscode.Uri.file(work), username: 'cy' });
+      assert.deepStrictEqual(
+        calls.map((c) => `${c.method} ${c.url}`),
+        ['GET /user', 'PUT /repos/ada/Tez-Calismasi/collaborators/cy']
+      );
+
+      // Your own username is not sent as an invitation.
+      calls.length = 0;
+      await vscode.commands.executeCommand('overtex.inviteCoauthor', { uri: vscode.Uri.file(work), username: 'Ada' });
+      assert.ok(!calls.some((c) => c.method === 'PUT'), 'no invitation to yourself');
+
+      // Your copy is on GitLab and a co-author's on GitHub: their repository is left alone, yours is made.
+      git(box, 'init', '--bare', second);
+      git(work, 'remote', 'set-url', 'origin', 'https://gitlab.com/ada/tez.git');
+      git(work, 'remote', 'add', 'coauthor', 'https://github.com/zed/tez.git');
+      git(work, 'config', 'branch.main.remote', 'origin');
+      calls.length = 0;
+      await vscode.commands.executeCommand('overtex.inviteCoauthor', { uri: vscode.Uri.file(work), username: 'zed', repoName: 'second' });
+      assert.ok(!calls.some((c) => c.url.includes('/repos/zed/')), "nothing sent to the co-author's repository");
+      assert.ok(calls.some((c) => c.method === 'POST'), 'your own GitHub copy was made');
+      assert.strictEqual(git(work, 'remote', 'get-url', 'github'), second);
+      assert.strictEqual(git(second, 'rev-parse', 'main'), git(work, 'rev-parse', 'main'), 'the project was sent to it');
+
+      // When the project cannot be sent, the new remote is taken away again.
+      git(work, 'remote', 'remove', 'github');
+      git(work, 'config', 'branch.main.remote', 'origin');
+      calls.length = 0;
+      await vscode.commands.executeCommand('overtex.inviteCoauthor', { uri: vscode.Uri.file(work), username: 'bob', repoName: 'broken' });
+      assert.ok(!git(work, 'remote').split('\n').includes('github'), 'no remote left pointing at an empty repository');
+      assert.ok(!calls.some((c) => c.method === 'PUT'), 'nobody invited to an empty repository');
+    } finally {
+      delete process.env.OVERTEX_E2E_GITHUB_API;
+      server.close();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      fs.rmSync(box, { recursive: true, force: true });
+    }
+  });
+
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
   }
