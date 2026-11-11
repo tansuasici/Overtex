@@ -2,6 +2,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { parseAux } from './aux';
 import { LogEntry, parseLog, parseTectonicLog } from './logParser';
 import { withEngineHint } from './engineHint';
 import { DEFAULT_LOOP_LIMITS, DEFAULT_STALL_TIMEOUT_SECONDS, LoopLimits, LoopWatch, loopMessage, silenceMessage } from './stall';
@@ -91,8 +92,31 @@ export function latexmkArgs(mainFile: string, settings: BuildSettings): string[]
 
 /** `input` is relative to the folder Tectonic runs in. It always uses XeTeX, so the engine setting does not apply. */
 export function tectonicArgs(input: string, settings: BuildSettings): string[] {
-  return ['-X', 'compile', '--synctex', '--keep-logs', ...(settings.outDir ? ['--outdir', settings.outDir] : []), ...settings.extraArgs, input];
+  // --keep-intermediates keeps the .aux, which the reference hover reads numbers from.
+  return ['-X', 'compile', '--synctex', '--keep-logs', '--keep-intermediates', ...(settings.outDir ? ['--outdir', settings.outDir] : []), ...settings.extraArgs, input];
 }
+
+/** What a Tectonic build leaves next to the PDF besides it: \include'd chapters write their own .aux. */
+export function tectonicLeftovers(dir: string, base: string, mainAux: string): string[] {
+  const files = TECTONIC_INTERMEDIATES.map((ext) => path.join(dir, base + ext));
+  let text: string | undefined;
+  try {
+    text = fs.readFileSync(mainAux, 'latin1');
+  } catch {
+    // No build yet.
+  }
+  for (const input of text === undefined ? [] : parseAux(text).inputs) {
+    const file = path.resolve(dir, input);
+    const rel = path.relative(dir, file);
+    // Only .aux files inside the output folder, whatever the .aux says.
+    if (file.endsWith('.aux') && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)) {
+      files.push(file);
+    }
+  }
+  return files;
+}
+
+const TECTONIC_INTERMEDIATES = ['.log', '.blg', '.synctex.gz', '.aux', '.toc', '.lof', '.lot', '.out', '.bbl', '.bcf', '.run.xml', '.nav', '.snm', '.vrb', '.idx', '.ind', '.ilg'];
 
 /** The folder Docker mounts for a build running in `cwd`. */
 export function dockerRoot(cwd: string, settings: BuildSettings): string {
@@ -246,11 +270,11 @@ export class Builder {
   async clean(mainFile: string): Promise<void> {
     const s = this.settings();
     if (s.tool === 'tectonic') {
-      // Tectonic has no clean mode, and only what --keep-logs and --synctex ask for stays behind.
-      const { dir } = outputPaths(mainFile, s.outDir);
-      const base = path.basename(mainFile, path.extname(mainFile));
-      for (const ext of ['.log', '.blg', '.synctex.gz']) {
-        fs.rmSync(path.join(dir, base + ext), { force: true });
+      // Tectonic has no clean mode, and only what --keep-logs, --keep-intermediates and --synctex
+      // ask for stays behind.
+      const { dir, aux } = outputPaths(mainFile, s.outDir);
+      for (const file of tectonicLeftovers(dir, path.basename(mainFile, path.extname(mainFile)), aux)) {
+        fs.rmSync(file, { force: true });
       }
       return;
     }

@@ -104,8 +104,7 @@ Optional: [TexLab](https://github.com/latex-lsp/texlab#installation) for live ch
 - Export for arXiv and Check Submission are not available: they need the list of files TeX read, which Tectonic does not record.
 - A build stops at the first error, so you see one error at a time and the PDF is not updated until it is fixed.
 - `.latexmkrc` is not read. `overtex.latex.extraArgs` go to `tectonic -X compile`.
-- Tectonic keeps no `.aux` file, so the reference hover shows equations but not numbers or pages.
-- Clean removes the `.log`, `.blg` and `.synctex.gz` files.
+- Clean removes the `.log`, `.synctex.gz`, `.aux` and other files Tectonic kept, with the `.aux` of `\include`d chapters.
 
 **`docker`** runs latexmk in `overtex.docker.image` (default `texlive/texlive:latest`). Docker pulls the image on the first build; the default image takes about 9 GB of disk. Any image that provides latexmk works.
 
