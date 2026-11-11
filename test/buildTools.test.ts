@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { BuildSettings, Builder, DockerHost, buildCommand, dockerOutDirProblem, isToolMissingMessage, lastErrorLine, toolPathSetting } from '../src/latex/builder';
+import { BuildSettings, Builder, DockerHost, buildCommand, dockerOutDirProblem, isToolMissingMessage, lastErrorLine, tectonicLeftovers, toolPathSetting } from '../src/latex/builder';
 import { CompareError, compareVersions, diffCommand } from '../src/latex/latexdiff';
 
 const base: BuildSettings = {
@@ -28,11 +28,26 @@ describe('buildCommand', () => {
     expect(env.max_print_line).toBe('10000');
   });
 
-  it('runs tectonic with SyncTeX and a kept log, and no engine flag', () => {
+  it('runs tectonic with SyncTeX, a kept log and .aux, and no engine flag', () => {
     const { command, args, env } = buildCommand('/p/main.tex', { ...base, tool: 'tectonic', engine: 'lualatex', outDir: 'build', extraArgs: ['--print'] }, mac);
     expect(command).toBe('/opt/tectonic');
-    expect(args).toEqual(['-X', 'compile', '--synctex', '--keep-logs', '--outdir', 'build', '--print', 'main.tex']);
+    expect(args).toEqual(['-X', 'compile', '--synctex', '--keep-logs', '--keep-intermediates', '--outdir', 'build', '--print', 'main.tex']);
     expect(env.max_print_line).toBe('10000');
+  });
+
+  it('cleans what Tectonic left, with the chapters \\include wrote, and nothing outside the output folder', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-tectonic-'));
+    try {
+      const aux = path.join(dir, 'main.aux');
+      fs.writeFileSync(aux, '\\@input{ch/one.aux}\n\\@input{../escape.aux}\n\\@input{/etc/x.aux}\n\\@input{ch/notes.tex}\n');
+      const files = tectonicLeftovers(dir, 'main', aux).map((f) => path.relative(dir, f));
+      expect(files).toEqual(expect.arrayContaining(['main.aux', 'main.toc', 'main.log', 'main.synctex.gz', path.join('ch', 'one.aux')]));
+      expect(files).not.toContain('main.pdf');
+      expect(files.filter((f) => f.startsWith('..') || path.isAbsolute(f) || f.endsWith('.tex'))).toEqual([]);
+      expect(tectonicLeftovers(dir, 'main', path.join(dir, 'none.aux'))).toHaveLength(17);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('leaves --outdir out when there is no output directory', () => {
@@ -102,7 +117,7 @@ describe('diffCommand', () => {
   it('keeps going past TeX errors and finds project files from the folder below', () => {
     const { command, args } = diffCommand('/p/overtex-diff-1/main-diff.tex', 'overtex-diff-1', '/p', undefined, { ...base, tool: 'tectonic' });
     expect(command).toBe('/opt/tectonic');
-    expect(args).toEqual(['-X', 'compile', '--synctex', '--keep-logs', '--outdir', 'overtex-diff-1', '-Z', 'continue-on-errors', '-Z', 'search-path=/p', 'overtex-diff-1/main-diff.tex']);
+    expect(args).toEqual(['-X', 'compile', '--synctex', '--keep-logs', '--keep-intermediates', '--outdir', 'overtex-diff-1', '-Z', 'continue-on-errors', '-Z', 'search-path=/p', 'overtex-diff-1/main-diff.tex']);
   });
 
   it('runs latexmk -f in the container, mounting the snapshot it is given', () => {
