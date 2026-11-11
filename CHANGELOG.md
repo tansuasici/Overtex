@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.1 (2026-11-11)
 
 - Check Bibliography warns about retracted papers, expressions of concern, corrections and newer versions, using the Crossref and Retraction Watch notices doi.org already returns. A retraction shows as an error in the Problems panel, with the notice's DOI, date and a link to it.
 

@@ -2,7 +2,7 @@
   "name": "overtex",
   "displayName": "Overtex",
   "description": "A complete LaTeX writing environment inside VS Code: build, live PDF preview and SyncTeX.",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "publisher": "tansuasici",
   "license": "MIT",
   "icon": "media/icon.png",
