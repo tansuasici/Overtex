@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Share Changes** and **Get Changes**: share your work with co-authors from the command palette or the status bar, without git commands. Share saves all your edits as one version (with an optional description, "Update" by default), gets your co-authors' versions from every remote, and sends the result to your own remote only, so co-authors on GitHub and GitLab can each keep their own copy. A status bar item shows versions to get and send. Build files can be added to `.gitignore` in one click, and a conflict stops the share and opens the file with both versions marked.
+- **Invite Co-author**: invite someone to edit by their GitHub username. A project that is not on GitHub yet is first put in a new private repository under your account. Uses VS Code's GitHub sign-in.
 - **Reference hover**: hovering over the key in `\ref`, `\eqref`, `\cref` and the like shows the number and page from the last build's `.aux` files, following `\include`d chapters, with the section's title for section labels and the equation rendered with MathJax for equation labels. Keys no `\label` defines, keys added since the last build, and keys defined more than once are pointed out. Turn it off with `overtex.refHover.enabled`.
 - Tectonic builds now keep the `.aux` and other intermediate files (`--keep-intermediates`), so the reference hover shows numbers and pages with Tectonic too. Clean removes them, with the `.aux` files of `\include`d chapters.
 

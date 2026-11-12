@@ -16,12 +16,20 @@ import {
   syncStatus,
   withIgnoreLines,
 } from './shared/gitSync';
+import { GitHubClient, GitHubError, normalizeUsername, parseGitHubRemote, repoNameFor, validRepoName, type GitHubRepo } from './shared/github';
 
 export interface SyncArgs {
   /** A file or folder inside the repository; the active file's repository otherwise. */
   uri?: vscode.Uri;
   /** Skips the message box (tests, keybindings). */
   message?: string;
+}
+
+export interface InviteArgs extends SyncArgs {
+  /** Skips the username box. */
+  username?: string;
+  /** Skips the name box when a new GitHub repository has to be made. */
+  repoName?: string;
 }
 
 interface Deps {
@@ -39,13 +47,14 @@ export function registerGitSync(context: vscode.ExtensionContext, deps: Deps): v
   context.subscriptions.push(
     sync,
     vscode.commands.registerCommand('overtex.shareChanges', (args?: SyncArgs | vscode.Uri) => sync.share(asArgs(args))),
-    vscode.commands.registerCommand('overtex.getChanges', (args?: SyncArgs | vscode.Uri) => sync.get(asArgs(args)))
+    vscode.commands.registerCommand('overtex.getChanges', (args?: SyncArgs | vscode.Uri) => sync.get(asArgs(args))),
+    vscode.commands.registerCommand('overtex.inviteCoauthor', (args?: InviteArgs | vscode.Uri) => sync.invite(asArgs(args)))
   );
   void sync.start();
 }
 
-function asArgs(args?: SyncArgs | vscode.Uri): SyncArgs {
-  return args instanceof vscode.Uri ? { uri: args } : args ?? {};
+function asArgs<T extends SyncArgs>(args?: T | vscode.Uri): T {
+  return (args instanceof vscode.Uri ? { uri: args } : args ?? {}) as T;
 }
 
 class GitSync implements vscode.Disposable {
@@ -183,7 +192,118 @@ class GitSync implements vscode.Disposable {
     });
   }
 
-  private async run(title: string, args: SyncArgs, flow: (repo: Repository, branch: string) => Promise<void>): Promise<void> {
+  /**
+   * Invites a co-author by GitHub username. If the project has no GitHub copy yet, first makes a private
+   * repository under your account and sends the project there.
+   */
+  async invite(args: InviteArgs): Promise<void> {
+    await this.run(
+      'Inviting a co-author',
+      args,
+      async (repo, branch) => {
+        const gh = await githubClient();
+        const target = (await this.githubCopy(repo)) ?? (await this.publish(repo, branch, gh, args));
+        const typed =
+          args.username ??
+          (await vscode.window.showInputBox({
+            title: `Invite a co-author to ${target.owner}/${target.name}`,
+            prompt: 'Their GitHub username. GitHub emails them an invitation; once they accept, they can edit and share.',
+            placeHolder: 'octocat',
+            ignoreFocusOut: true,
+            validateInput: (v) => (!v.trim() || normalizeUsername(v) ? undefined : 'That is not a GitHub username.'),
+          }));
+        if (typed === undefined) {
+          throw new Stop();
+        }
+        const username = normalizeUsername(typed);
+        if (!username) {
+          throw new GitHubError(0, `"${typed}" is not a GitHub username.`);
+        }
+        if (username.toLowerCase() === (await gh.login()).toLowerCase()) {
+          throw new GitHubError(0, 'That is your own username. Type the username of the person you want to invite.');
+        }
+        const result = await gh.invite(target, username);
+        const link = `https://github.com/${target.owner}/${target.name}`;
+        const text =
+          result === 'already'
+            ? `Overtex: ${username} can already edit ${target.owner}/${target.name}.`
+            : `Overtex: invited ${username} to ${target.owner}/${target.name}. GitHub emails them; once they accept, they open the link in VS Code with Git: Clone.`;
+        void vscode.window.showInformationMessage(text, 'Copy Link').then((c) => c && vscode.env.clipboard.writeText(link));
+      },
+      { needsRemote: false }
+    );
+  }
+
+  /** The GitHub repository your changes go to, if the project already has one. */
+  private async githubCopy(repo: Repository): Promise<GitHubRepo | undefined> {
+    const remotes = repo.state.remotes;
+    const mine = pushRemote(
+      remotes.map((r) => r.name),
+      repo.state.HEAD?.upstream?.remote
+    );
+    // Only your own copy: a co-author's GitHub remote is theirs to invite people to.
+    const own = remotes.find((r) => r.name === mine);
+    return parseGitHubRemote(own?.pushUrl ?? own?.fetchUrl);
+  }
+
+  /** Makes a private GitHub repository for the project and sends the project there. */
+  private async publish(repo: Repository, branch: string, gh: GitHubClient, args: InviteArgs): Promise<GitHubRepo> {
+    let suggested = repoNameFor(path.basename(repo.rootUri.fsPath));
+    const current = pushRemote(
+      repo.state.remotes.map((r) => r.name),
+      repo.state.HEAD?.upstream?.remote
+    );
+    const moving = current ? ` From now on Share Changes sends to it; ${current} stays as a copy you get changes from.` : '';
+    for (;;) {
+      const name =
+        args.repoName ??
+        (await vscode.window.showInputBox({
+          title: 'Put this project on GitHub',
+          prompt: `Overtex makes a private repository under your GitHub account. Only people you invite can see it.${moving}`,
+          value: suggested,
+          ignoreFocusOut: true,
+          validateInput: (v) => (validRepoName(v.trim()) ? undefined : 'Use letters, numbers, dots, dashes and underscores.'),
+        }));
+      if (name === undefined) {
+        throw new Stop();
+      }
+      try {
+        const created = await gh.createPrivateRepo(name.trim());
+        const remote = repo.state.remotes.some((r) => r.name === 'origin') ? 'github' : 'origin';
+        await this.git(repo, ['remote', 'add', remote, created.cloneUrl]);
+        try {
+          await repo.status();
+          if (changeCount(repo) || !repo.state.HEAD?.commit) {
+            await this.offerIgnore(repo);
+            await this.withIdentity(repo, () => repo.commit(commitMessage(args.message ?? '') ?? 'Update', { all: true, postCommitCommand: null }));
+          }
+          await repo.push(remote, branch, true);
+        } catch (err) {
+          // Not sent: drop the remote, so the next Invite does not invite people to an empty repository.
+          await this.git(repo, ['remote', 'remove', remote]).catch(() => undefined);
+          void vscode.window.showWarningMessage(
+            `Overtex: the project was not sent to ${created.owner}/${created.name}, which is still empty on GitHub. Invite again and pick that name or delete it on GitHub.`
+          );
+          throw err;
+        }
+        return created;
+      } catch (err) {
+        if (err instanceof GitHubError && err.status === 422 && args.repoName === undefined) {
+          void vscode.window.showWarningMessage(`Overtex: ${err.message}`);
+          suggested = `${name.trim()}-2`;
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  private async run(
+    title: string,
+    args: SyncArgs,
+    flow: (repo: Repository, branch: string) => Promise<void>,
+    { needsRemote = true } = {}
+  ): Promise<void> {
     if (!this.deps.requireTrust(title)) {
       return;
     }
@@ -211,7 +331,7 @@ class GitSync implements vscode.Disposable {
         void vscode.window.showWarningMessage('Overtex: you are looking at an older version, not a branch. Switch back to your branch (Git: Checkout to…) and try again.');
         throw new Stop();
       }
-      if (!repo.state.remotes.length) {
+      if (needsRemote && !repo.state.remotes.length) {
         const choice = await vscode.window.showWarningMessage(
           'Overtex: this project has no online copy to share with yet. Add one (for example a GitHub or GitLab repository).',
           'Add Online Copy'
@@ -223,7 +343,10 @@ class GitSync implements vscode.Disposable {
       }
       await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Overtex: ${title}…` }, () => flow(repo, branch));
     } catch (err) {
-      if (!(err instanceof Stop)) {
+      if (err instanceof GitHubError) {
+        this.deps.log(`${title} failed: GitHub ${err.status}\n`);
+        void vscode.window.showErrorMessage(`Overtex: ${err.message}`);
+      } else if (!(err instanceof Stop)) {
         this.deps.log(`${title} failed: ${err instanceof Error ? err.message : String(err)}\n`);
         void vscode.window.showErrorMessage(`Overtex: ${describeGitError(err)}`);
       }
@@ -409,6 +532,28 @@ class GitSync implements vscode.Disposable {
     this.repoListener?.dispose();
     this.disposables.forEach((d) => d.dispose());
   }
+}
+
+/**
+ * A GitHub client signed in through VS Code's own GitHub account (Accounts menu); VS Code keeps the
+ * token. Under the end-to-end tests only, OVERTEX_E2E_GITHUB_API points it at a local fake server.
+ */
+async function githubClient(): Promise<GitHubClient> {
+  const fake = process.env.OVERTEX_E2E && process.env.OVERTEX_E2E_GITHUB_API;
+  if (fake) {
+    return new GitHubClient('e2e', fetch, fake);
+  }
+  let session: vscode.AuthenticationSession | undefined;
+  try {
+    session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
+  } catch {
+    session = undefined;
+  }
+  if (!session) {
+    void vscode.window.showWarningMessage('Overtex: inviting a co-author needs you to sign in to GitHub.');
+    throw new Stop();
+  }
+  return new GitHubClient(session.accessToken, fetch);
 }
 
 function allChanges(repo: Repository) {
