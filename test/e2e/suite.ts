@@ -1280,6 +1280,8 @@ export async function run(): Promise<void> {
           'GET /gl/projects/dee%2Fpaper': [200, { path_with_namespace: 'dee/paper', ssh_url_to_repo: sshUrl, http_url_to_repo: 'https://git.uni-example.edu/dee/paper.git' }],
           'POST /gl/projects/dee%2Fpaper/deploy_keys': [201, {}],
           'POST /repos/eve/paper/keys': [201, {}],
+          'POST /gl/projects': [201, { path_with_namespace: 'fred/paper', ssh_url_to_repo: 'ssh://git@git.uni-example.edu:2222/fred/paper.git', http_url_to_repo: 'https://git.uni-example.edu/fred/paper.git' }],
+          'POST /gl/projects/fred%2Fpaper/deploy_keys': [201, {}],
         };
         const [status, data] = answers[key] ?? [404, { message: 'Not Found' }];
         res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -1354,6 +1356,49 @@ export async function run(): Promise<void> {
       assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /gl/projects/dee%2Fpaper/deploy_keys']);
       assert.strictEqual(calls[0].token, 'e2e');
       assert.strictEqual(JSON.parse(calls[0].body).can_push, false);
+
+      // Fred has no online copy yet and makes one on the same server while entering Dee's next invite.
+      const invite2 = (await vscode.commands.executeCommand('overtex.createInviteCode', { uri: vscode.Uri.file(dee), yes: true })) as string;
+      const fredBare = path.join(box, 'fred.git');
+      git(box, 'init', '--bare', fredBare);
+      const fred = path.join(box, 'fred');
+      git(box, 'init', fred);
+      fs.writeFileSync(path.join(fred, 'notes.tex'), 'from fred\n');
+      git(fred, 'add', '.');
+      git(fred, 'commit', '-qm', 'Fred start');
+      mapTo(fred, fredBare, 'ssh://git@git.uni-example.edu:2222/fred/paper.git');
+      calls.length = 0;
+      const fredAnswer = (await vscode.commands.executeCommand('overtex.enterInviteCode', {
+        uri: vscode.Uri.file(fred),
+        code: invite2,
+        yes: true,
+        ssh: true,
+        server: 'https://git.uni-example.edu',
+        repoName: 'paper',
+      })) as string;
+      assert.match(fredAnswer ?? '', /^overtex-join:/);
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /gl/projects', 'POST /gl/projects/fred%2Fpaper/deploy_keys']);
+      assert.strictEqual(git(fred, 'config', '--get', 'remote.origin.url'), 'ssh://git@git.uni-example.edu:2222/fred/paper.git');
+      assert.strictEqual(git(fredBare, 'log', '-1', '--format=%s', 'main'), 'Fred start', "Fred's project went to the new copy");
+      const fredData = JSON.parse(Buffer.from(fredAnswer.slice('overtex-join:'.length), 'base64url').toString());
+      assert.deepStrictEqual(
+        { v: fredData.v, host: fredData.host, port: fredData.port, path: fredData.path, hk: fredData.hk },
+        { v: 2, host: 'git.uni-example.edu', port: 2222, path: 'fred/paper', hk: hostKey },
+        "the answer carries the server's port and host key"
+      );
+
+      // Dee enters Fred's answer: Fred's copy becomes a remote reached at port 2222 with the pinned key.
+      calls.length = 0;
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(dee), code: fredAnswer, yes: true }), 'coauthor-fred');
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /gl/projects/dee%2Fpaper/deploy_keys']);
+      const fredAlias = git(dee, 'config', '--get', 'remote.coauthor-fred.url');
+      assert.match(fredAlias, /^git@overtex-[0-9a-f]{16}:fred\/paper\.git$/);
+      const deeDir = path.join(dee, '.git', 'overtex');
+      const fredHost = fredAlias.slice(4, fredAlias.indexOf(':'));
+      const deeResolved = execFileSync('ssh', ['-F', path.join(deeDir, 'ssh_config'), '-G', fredHost], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      assert.match(deeResolved, /^port 2222$/m);
+      assert.match(deeResolved, new RegExp(`^hostkeyalias ${fredHost}$`, 'm'));
+      assert.ok(fs.readFileSync(path.join(deeDir, 'known_hosts'), 'utf8').includes(`[${fredHost}]:2222 ssh-ed25519 ${hostKey}\n`));
     } finally {
       delete process.env.OVERTEX_E2E_GITHUB_API;
       delete process.env.OVERTEX_E2E_GITLAB_API;

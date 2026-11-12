@@ -605,7 +605,10 @@ class GitSync implements vscode.Disposable {
       if (ok === 'Make a New Copy') {
         return undefined;
       }
-      const web = args.server ?? (await this.askServer(r.ssh ? `https://${r.host}` : `https://${where}`));
+      const web = args.server ? webOrigin(args.server) : await this.askServer(r.ssh ? `https://${r.host}` : `https://${where}`);
+      if (!web || (!r.ssh && (new URL(web).host !== where || !serverPath(web, r.path)))) {
+        throw new Refusal(`your copy's address ${r.host}${r.ssh ? '' : '/' + r.path} is not on ${web ?? 'that server'}.`);
+      }
       const project = await this.withGitLab(web, `To use your copy on ${r.host}`, (gl) => gl.getProject((r.ssh ? r.path : serverPath(web, r.path)) ?? r.path));
       rec = await this.recordServer(web, project.sshUrl, project.path);
     }
@@ -613,7 +616,7 @@ class GitSync implements vscode.Disposable {
     if (!repoPath) {
       return undefined;
     }
-    const hostKey = rec.hostKey ?? (await this.learnHostKey(rec, args));
+    const hostKey = rec.hostKey ?? (await this.learnHostKey(rec));
     return { repo: { host: rec.sshHost, ...(rec.sshPort ? { port: rec.sshPort } : {}), path: repoPath, hostKey }, server: { kind: 'gitlab', web: rec.web } };
   }
 
@@ -651,7 +654,7 @@ class GitSync implements vscode.Disposable {
    * talks to that server and no other. Taken from your own known_hosts when you already use the
    * server over ssh; otherwise asked from the server and shown to you to confirm.
    */
-  private async learnHostKey(rec: ServerRecord, args: CodeArgs): Promise<string> {
+  private async learnHostKey(rec: ServerRecord): Promise<string> {
     const name = rec.sshPort ? `[${rec.sshHost}]:${rec.sshPort}` : rec.sshHost;
     let hostKey = await knownHostKey(name);
     if (!hostKey) {
@@ -661,13 +664,12 @@ class GitSync implements vscode.Disposable {
           `Overtex could not get an ed25519 ssh key from ${name}. Your co-author's Git needs one to reach your copy safely; ask your server's admin whether it has one.`
         );
       }
-      const ok =
-        args.yes ||
-        (await vscode.window.showWarningMessage(
+      // Always asked, even with `yes`: a key read off the network is trusted only by you.
+      const ok = await vscode.window.showWarningMessage(
           `Your co-author's Git will reach ${rec.sshHost} over ssh. Its ssh key fingerprint is ${hostKeyFingerprint(scanned)}. Check that it is the one your server's help pages or admin give, then trust it.`,
           { modal: true },
           'Trust This Key'
-        ));
+        );
       if (!ok) {
         throw new Stop();
       }
@@ -874,7 +876,7 @@ class GitSync implements vscode.Disposable {
           throw err;
         }
         if (rec) {
-          made.hostKey = rec.hostKey ?? (await this.learnHostKey(rec, args));
+          made.hostKey = rec.hostKey ?? (await this.learnHostKey(rec));
         }
         return { repo: made, server: target };
       } catch (err) {
