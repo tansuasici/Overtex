@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { auxText, describeAuxLabel, parseAux, readAuxLabels } from '../src/latex/aux';
+import { auxText, describeAuxLabel, parseAux, readAuxLabels } from '../src/latex/auxFile';
 
 // What pdflatex with hyperref and cleveref wrote for a small document.
 const HYPERREF_AUX = String.raw`\relax
