@@ -14,7 +14,19 @@ export class GitLabError extends Error {
   }
 }
 
-type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{
+export interface CreatedProject {
+  /** namespace/name */
+  path: string;
+  sshUrl: string;
+  httpUrl: string;
+}
+
+/** A project name GitLab accepts as both name and path. */
+export function validProjectName(name: string): boolean {
+  return /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/.test(name) && !/\.(git|atom)$/i.test(name) && !/[._-]{2}/.test(name);
+}
+
+type Fetch =(url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{
   status: number;
   json(): Promise<unknown>;
 }>;
@@ -44,6 +56,38 @@ export class GitLabClient {
     }
     const data = res.status === 204 ? undefined : await res.json().catch(() => undefined);
     return { status: res.status, data };
+  }
+
+  /**
+   * Makes a private, empty project under your own GitLab account. A name you already use comes back as
+   * status 409 (GitLab itself answers 400 with "has already been taken").
+   */
+  async createPrivateProject(name: string): Promise<CreatedProject> {
+    const { status, data } = await this.call('POST', '/projects', {
+      name,
+      path: name,
+      visibility: 'private',
+      initialize_with_readme: false,
+      description: 'LaTeX project shared with Overtex',
+    });
+    if (status === 201 || status === 200) {
+      const fields = [data?.path_with_namespace, data?.ssh_url_to_repo, data?.http_url_to_repo];
+      if (fields.some((f) => typeof f !== 'string')) {
+        throw new GitLabError(status, 'GitLab made the project but did not say where it is. Look for it on gitlab.com.');
+      }
+      return { path: data.path_with_namespace, sshUrl: data.ssh_url_to_repo, httpUrl: data.http_url_to_repo };
+    }
+    if (status === 400 && /already been taken/i.test(JSON.stringify(data ?? ''))) {
+      throw new GitLabError(409, `You already have a project called "${name}" on GitLab. Pick another name.`);
+    }
+    if (status === 401) {
+      throw new GitLabError(401, 'GitLab did not accept the access token. Make a new one and try again.');
+    }
+    if (status === 403) {
+      throw new GitLabError(403, 'GitLab did not let this token make a project. It needs the "api" scope.');
+    }
+    const detail = typeof data?.message === 'string' ? data.message : typeof data?.error === 'string' ? data.error : `HTTP ${status}`;
+    throw new GitLabError(status, `GitLab refused the request: ${detail}.`);
   }
 
   /** Gives a public key read-only access to the project (a deploy key). */
