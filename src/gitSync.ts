@@ -3,6 +3,7 @@
 // extension so that its sign-in and credential handling apply.
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
+import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { API, GitExtension, Repository } from './types/git';
@@ -13,10 +14,31 @@ import {
   missingIgnoreLines,
   needsIdentity,
   pushRemote,
+  startingRef,
   syncStatus,
   withIgnoreLines,
 } from './shared/gitSync';
 import { GitHubClient, GitHubError, normalizeUsername, parseGitHubRemote, repoNameFor, validRepoName, type GitHubRepo } from './shared/github';
+import { GitLabClient, GitLabError } from './shared/gitlab';
+import {
+  KNOWN_HOSTS,
+  READ_ONLY_PUSH_URL,
+  coauthorRemoteName,
+  coauthorUrl,
+  encodeCode,
+  isOurSshCommand,
+  normalizePublicKey,
+  parseCode,
+  parseHostedRemote,
+  safeConfigPath,
+  sshCommand,
+  sshConfig,
+  validKeyId,
+  type AliasEntry,
+  type Code,
+  type Host,
+  type HostedRepo,
+} from './shared/inviteCode';
 
 export interface SyncArgs {
   /** A file or folder inside the repository; the active file's repository otherwise. */
@@ -32,6 +54,15 @@ export interface InviteArgs extends SyncArgs {
   repoName?: string;
 }
 
+export interface CodeArgs extends SyncArgs {
+  /** Skips the paste box. */
+  code?: string;
+  /** Skips the confirmations (tests). */
+  yes?: boolean;
+  /** Skips the name box when a new GitHub repository has to be made. */
+  repoName?: string;
+}
+
 interface Deps {
   /** The main document's PDF, absolute, if there is a main document. */
   builtPdf: () => string | undefined;
@@ -42,13 +73,20 @@ interface Deps {
 /** Thrown to end a flow after the person has already been told why. */
 class Stop extends Error {}
 
+/** Thrown to end a flow with a message for the person. */
+class Refusal extends Error {}
+
+const GITLAB_TOKEN = 'overtex.gitlabToken';
+
 export function registerGitSync(context: vscode.ExtensionContext, deps: Deps): void {
   const sync = new GitSync(context, deps);
   context.subscriptions.push(
     sync,
     vscode.commands.registerCommand('overtex.shareChanges', (args?: SyncArgs | vscode.Uri) => sync.share(asArgs(args))),
     vscode.commands.registerCommand('overtex.getChanges', (args?: SyncArgs | vscode.Uri) => sync.get(asArgs(args))),
-    vscode.commands.registerCommand('overtex.inviteCoauthor', (args?: InviteArgs | vscode.Uri) => sync.invite(asArgs(args)))
+    vscode.commands.registerCommand('overtex.inviteCoauthor', (args?: InviteArgs | vscode.Uri) => sync.invite(asArgs(args))),
+    vscode.commands.registerCommand('overtex.createInviteCode', (args?: CodeArgs | vscode.Uri) => sync.createInviteCode(asArgs(args))),
+    vscode.commands.registerCommand('overtex.enterInviteCode', (args?: CodeArgs | vscode.Uri) => sync.enterInviteCode(asArgs(args)))
   );
   void sync.start();
 }
@@ -178,7 +216,7 @@ class GitSync implements vscode.Disposable {
       }
       const warnings = await this.getAll(repo, branch);
       const remote = await this.chooseRemote(repo);
-      await repo.push(remote, branch, !repo.state.HEAD?.upstream);
+      await repo.push(remote, repo.state.HEAD?.name ?? branch, !repo.state.HEAD?.upstream);
       done(`changes shared to ${remote}`, warnings);
     });
   }
@@ -234,25 +272,250 @@ class GitSync implements vscode.Disposable {
     );
   }
 
+  /**
+   * Makes a code that asks a co-author to give your project read access to their copy, and that says
+   * where your copy is. Nothing is sent anywhere: you pass the code on yourself.
+   */
+  async createInviteCode(args: CodeArgs): Promise<string | undefined> {
+    let result: string | undefined;
+    await this.run(
+      'Creating an invite code',
+      args,
+      async (repo) => {
+        const own = ownCopy(repo);
+        if (!own) {
+          throw new Refusal(
+            'put your project on GitHub or GitLab first (Overtex: Invite Co-author makes a private GitHub copy), then make the code.'
+          );
+        }
+        const dir = await this.overtexDir(repo);
+        await this.checkSshCommand(repo);
+        const id = newKeyId();
+        const key = await newKey(dir, id, { role: 'invite' });
+        result = encodeCode({ kind: 'invite', repo: own, key, id });
+        await vscode.env.clipboard.writeText(result);
+        void vscode.window.showInformationMessage(
+          'Overtex: invite code copied. Send it to your co-author: they paste it with "Overtex: Enter Invite Code" and send you back an answer code, which you enter the same way.'
+        );
+      },
+      { needsRemote: false }
+    );
+    return result;
+  }
+
+  /**
+   * Enters a co-author's code. An invite: gives them read access to your copy, adds theirs as a copy you
+   * get changes from, and makes the answer code. An answer: the same for the invite you made.
+   */
+  async enterInviteCode(args: CodeArgs): Promise<string | undefined> {
+    let result: string | undefined;
+    await this.run(
+      'Entering an invite code',
+      args,
+      async (repo, branch) => {
+        const text =
+          args.code ??
+          (await vscode.window.showInputBox({
+            title: 'Enter Invite Code',
+            prompt: 'Paste the code your co-author sent you.',
+            placeHolder: 'overtex-invite:… or overtex-join:…',
+            ignoreFocusOut: true,
+            validateInput: (v) => {
+              if (!v.trim()) {
+                return undefined;
+              }
+              try {
+                parseCode(v);
+                return undefined;
+              } catch (err) {
+                return (err as Error).message;
+              }
+            },
+          }));
+        if (!text?.trim()) {
+          throw new Stop();
+        }
+        let code: Code;
+        try {
+          code = parseCode(text);
+        } catch (err) {
+          throw new Refusal((err as Error).message);
+        }
+        const dir = await this.overtexDir(repo);
+        await this.checkSshCommand(repo);
+        const theirs = `${code.repo.path} on ${hostName(code.repo.host)}`;
+        const connected = coauthorRemote(repo, dir, code.repo);
+        if (connected) {
+          throw new Refusal(`this project already gets changes from ${theirs} (as ${connected}).`);
+        }
+        if (code.kind === 'join') {
+          const meta = readMeta(dir, code.id);
+          if (meta?.role !== 'invite') {
+            throw new Refusal('this answer code is for an invite made in another project. Open that project and enter it there.');
+          }
+          if ((meta.host || meta.path) && (meta.host !== code.repo.host || meta.path?.toLowerCase() !== code.repo.path.toLowerCase())) {
+            throw new Refusal(
+              `this invite code was already answered for ${meta.path ?? 'another copy'}. Make a new invite code for each co-author.`
+            );
+          }
+        }
+
+        let own = ownCopy(repo);
+        if (!own) {
+          if (code.kind === 'join') {
+            throw new Refusal('the project has no online copy of its own any more. Put it on GitHub or GitLab and make a new invite code.');
+          }
+          const make =
+            args.yes ||
+            (await vscode.window.showInformationMessage(
+              `Your co-author's copy is ${theirs}. To share your changes back, your project needs its own online copy. Make a private one on GitHub?`,
+              { modal: true },
+              'Make GitHub Copy'
+            ));
+          if (!make) {
+            throw new Stop();
+          }
+          const created = await this.publish(repo, branch, await githubClient(), args);
+          own = { host: 'github.com', path: `${created.owner}/${created.name}` };
+        }
+        if (own.host === code.repo.host && own.path.toLowerCase() === code.repo.path.toLowerCase()) {
+          throw new Refusal('that code is for your own copy. Send it to your co-author instead.');
+        }
+
+        const ok =
+          args.yes ||
+          (await vscode.window.showInformationMessage(
+            `Give ${theirs} read access to your copy ${own.path}? Your co-author can then get your changes, but cannot change your copy.`,
+            { modal: true },
+            'Give Read Access'
+          ));
+        if (!ok) {
+          throw new Stop();
+        }
+        await this.addDeployKey(own, code.key, `Overtex co-author: ${code.repo.host}/${code.repo.path}`.slice(0, 100));
+
+        // The key this project reads the co-author's copy with: new for an invite, the invite's for an answer.
+        const readId = code.kind === 'invite' ? newKeyId() : code.id;
+        const readKey =
+          code.kind === 'invite'
+            ? await newKey(dir, readId, { role: 'join', host: code.repo.host, path: code.repo.path })
+            : (writeMeta(dir, readId, { role: 'invite', host: code.repo.host, path: code.repo.path }), undefined);
+        const name = coauthorRemoteName(code.repo, repo.state.remotes.map((r) => r.name));
+        await this.git(repo, ['remote', 'add', name, coauthorUrl(code.repo, readId)]);
+        await this.git(repo, ['remote', 'set-url', '--push', name, READ_ONLY_PUSH_URL]);
+        await this.writeSsh(repo, dir);
+        await repo.status();
+
+        if (code.kind === 'invite') {
+          result = encodeCode({ kind: 'join', repo: own, key: readKey!, id: code.id });
+          await vscode.env.clipboard.writeText(result);
+          void vscode.window.showInformationMessage(
+            `Overtex: ${theirs} can now get your changes. Answer code copied: send it back to your co-author. Once they enter it, Get Changes brings in theirs.`
+          );
+        } else {
+          result = name;
+          void vscode.window
+            .showInformationMessage(`Overtex: connected. You can now get changes from ${theirs}, and they from you.`, 'Get Changes')
+            .then((c) => c && vscode.commands.executeCommand('overtex.getChanges', { uri: repo.rootUri }));
+        }
+      },
+      { needsRemote: false }
+    );
+    return result;
+  }
+
+  /** Gives a co-author's public key read-only access to your own copy. */
+  private async addDeployKey(own: HostedRepo, key: string, title: string): Promise<void> {
+    if (own.host === 'github.com') {
+      const [owner, name] = own.path.split('/');
+      await (await githubClient()).addDeployKey({ owner, name }, title, key);
+      return;
+    }
+    const gl = await this.gitlabClient();
+    try {
+      await gl.addDeployKey(own.path, title, key);
+    } catch (err) {
+      if (err instanceof GitLabError && err.status === 401) {
+        await this.context.secrets.delete(GITLAB_TOKEN);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * A GitLab client with the access token kept in VS Code's secret storage (asked for once). Under the
+   * end-to-end tests only, OVERTEX_E2E_GITLAB_API points it at a local fake server.
+   */
+  private async gitlabClient(): Promise<GitLabClient> {
+    const fake = process.env.OVERTEX_E2E && process.env.OVERTEX_E2E_GITLAB_API;
+    if (fake) {
+      return new GitLabClient('e2e', fetch, fake);
+    }
+    let token = await this.context.secrets.get(GITLAB_TOKEN);
+    if (!token) {
+      token = (
+        await vscode.window.showInputBox({
+          title: 'GitLab access token',
+          prompt:
+            'To give your co-author read access, Overtex needs a GitLab personal access token with the "api" scope (GitLab: Preferences > Access tokens). VS Code keeps it in its secret storage.',
+          password: true,
+          ignoreFocusOut: true,
+        })
+      )?.trim();
+      if (!token) {
+        throw new Stop();
+      }
+      await this.context.secrets.store(GITLAB_TOKEN, token);
+    }
+    return new GitLabClient(token, fetch);
+  }
+
+  /** The folder with this project's co-author keys and ssh config, inside .git (never shared). */
+  private async overtexDir(repo: Repository): Promise<string> {
+    const gitDir = (await this.git(repo, ['rev-parse', '--absolute-git-dir'])).trim();
+    const dir = path.join(gitDir, 'overtex').replace(/\\/g, '/');
+    if (!safeConfigPath(dir)) {
+      throw new Refusal('the project folder has a character in its path that ssh cannot read (a quote, $, % or backslash). Move or rename it and try again.');
+    }
+    return dir;
+  }
+
+  /** Overtex sets core.sshCommand for the project; it never replaces one you set yourself. */
+  private async checkSshCommand(repo: Repository): Promise<void> {
+    const current = (await this.git(repo, ['config', '--local', '--get', 'core.sshCommand']).catch(() => '')).trim();
+    if (!isOurSshCommand(current)) {
+      throw new Refusal('this project has its own Git ssh command (core.sshCommand), so Overtex cannot add a co-author copy to it.');
+    }
+  }
+
+  /** Writes the project's ssh config and pinned host keys, and points Git at them. */
+  private async writeSsh(repo: Repository, dir: string): Promise<void> {
+    const entries: AliasEntry[] = [];
+    const keys = path.join(dir, 'keys');
+    for (const file of fs.existsSync(keys) ? fs.readdirSync(keys) : []) {
+      const id = file.replace(/\.json$/, '');
+      const meta = file.endsWith('.json') && validKeyId(id) ? readMeta(dir, id) : undefined;
+      if (meta?.host) {
+        entries.push({ id, host: meta.host });
+      }
+    }
+    fs.writeFileSync(path.join(dir, 'known_hosts'), KNOWN_HOSTS);
+    const config = `${dir}/ssh_config`;
+    fs.writeFileSync(config, sshConfig(dir, entries));
+    await this.git(repo, ['config', '--local', 'core.sshCommand', sshCommand(config)]);
+  }
+
   /** The GitHub repository your changes go to, if the project already has one. */
   private async githubCopy(repo: Repository): Promise<GitHubRepo | undefined> {
-    const remotes = repo.state.remotes;
-    const mine = pushRemote(
-      remotes.map((r) => r.name),
-      repo.state.HEAD?.upstream?.remote
-    );
     // Only your own copy: a co-author's GitHub remote is theirs to invite people to.
-    const own = remotes.find((r) => r.name === mine);
+    const own = ownRemote(repo);
     return parseGitHubRemote(own?.pushUrl ?? own?.fetchUrl);
   }
 
   /** Makes a private GitHub repository for the project and sends the project there. */
   private async publish(repo: Repository, branch: string, gh: GitHubClient, args: InviteArgs): Promise<GitHubRepo> {
     let suggested = repoNameFor(path.basename(repo.rootUri.fsPath));
-    const current = pushRemote(
-      repo.state.remotes.map((r) => r.name),
-      repo.state.HEAD?.upstream?.remote
-    );
+    const current = ownRemote(repo)?.name;
     const moving = current ? ` From now on Share Changes sends to it; ${current} stays as a copy you get changes from.` : '';
     for (;;) {
       const name =
@@ -273,11 +536,14 @@ class GitSync implements vscode.Disposable {
         await this.git(repo, ['remote', 'add', remote, created.cloneUrl]);
         try {
           await repo.status();
-          if (changeCount(repo) || !repo.state.HEAD?.commit) {
-            await this.offerIgnore(repo);
-            await this.withIdentity(repo, () => repo.commit(commitMessage(args.message ?? '') ?? 'Update', { all: true, postCommitCommand: null }));
+          // A new, empty project: nothing to send yet. Share Changes sends the first version.
+          if (repo.state.HEAD?.commit || changeCount(repo)) {
+            if (changeCount(repo) || !repo.state.HEAD?.commit) {
+              await this.offerIgnore(repo);
+              await this.withIdentity(repo, () => repo.commit(commitMessage(args.message ?? '') ?? 'Update', { all: true, postCommitCommand: null }));
+            }
+            await repo.push(remote, branch, true);
           }
-          await repo.push(remote, branch, true);
         } catch (err) {
           // Not sent: drop the remote, so the next Invite does not invite people to an empty repository.
           await this.git(repo, ['remote', 'remove', remote]).catch(() => undefined);
@@ -343,9 +609,11 @@ class GitSync implements vscode.Disposable {
       }
       await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Overtex: ${title}…` }, () => flow(repo, branch));
     } catch (err) {
-      if (err instanceof GitHubError) {
-        this.deps.log(`${title} failed: GitHub ${err.status}\n`);
+      if (err instanceof GitHubError || err instanceof GitLabError) {
+        this.deps.log(`${title} failed: ${err instanceof GitHubError ? 'GitHub' : 'GitLab'} ${err.status}\n`);
         void vscode.window.showErrorMessage(`Overtex: ${err.message}`);
+      } else if (err instanceof Refusal) {
+        void vscode.window.showWarningMessage(`Overtex: ${err.message}`);
       } else if (!(err instanceof Stop)) {
         this.deps.log(`${title} failed: ${err instanceof Error ? err.message : String(err)}\n`);
         void vscode.window.showErrorMessage(`Overtex: ${describeGitError(err)}`);
@@ -390,7 +658,20 @@ class GitSync implements vscode.Disposable {
         warnings.push(`could not get changes from ${remote.name}: ${describeGitError(err)}`);
       }
     }
-    const remoteBranches = new Set((await repo.getBranches({ remote: true })).map((r) => r.name));
+    const remoteBranches = new Set((await repo.getBranches({ remote: true })).map((r) => r.name).filter((n): n is string => !!n));
+    if (!repo.state.HEAD?.commit) {
+      // A new project with no versions yet: start from a copy that has some (yours first).
+      const order = [...ownRemotes(repo), ...repo.state.remotes.filter((r) => !ownRemotes(repo).includes(r))].map((r) => r.name);
+      const start = startingRef([...remoteBranches], order, branch);
+      if (start) {
+        if (start.branch !== branch) {
+          await this.git(repo, ['symbolic-ref', 'HEAD', `refs/heads/${start.branch}`]);
+          branch = start.branch;
+        }
+        await this.git(repo, ['merge', '--no-edit', start.ref]);
+        await repo.status();
+      }
+    }
     for (const remote of repo.state.remotes) {
       const ref = `${remote.name}/${branch}`;
       if (!remoteBranches.has(ref) || !repo.state.HEAD?.commit) {
@@ -459,7 +740,7 @@ class GitSync implements vscode.Disposable {
   }
 
   private async chooseRemote(repo: Repository): Promise<string> {
-    const names = repo.state.remotes.map((r) => r.name);
+    const names = ownRemotes(repo).map((r) => r.name);
     const remote = pushRemote(names, repo.state.HEAD?.upstream?.remote);
     if (remote) {
       return remote;
@@ -554,6 +835,89 @@ async function githubClient(): Promise<GitHubClient> {
     throw new Stop();
   }
   return new GitHubClient(session.accessToken, fetch);
+}
+
+/** Remotes Share Changes may send to: not a co-author's read-only copy. */
+function ownRemotes(repo: Repository) {
+  return repo.state.remotes.filter((r) => r.pushUrl !== READ_ONLY_PUSH_URL);
+}
+
+/** The remote your changes go to, if it is clear which one it is. */
+function ownRemote(repo: Repository) {
+  const name = pushRemote(
+    ownRemotes(repo).map((r) => r.name),
+    repo.state.HEAD?.upstream?.remote
+  );
+  return repo.state.remotes.find((r) => r.name === name);
+}
+
+/** Your own copy on GitHub or GitLab, if the project has one. */
+function ownCopy(repo: Repository): HostedRepo | undefined {
+  const own = ownRemote(repo);
+  return parseHostedRemote(own?.pushUrl ?? own?.fetchUrl);
+}
+
+/** The name of the remote that already gets changes from this co-author copy, if any. */
+function coauthorRemote(repo: Repository, dir: string, target: HostedRepo): string | undefined {
+  for (const r of repo.state.remotes) {
+    const m = /^git@overtex-([0-9a-f]{16}):(.+)\.git$/.exec(r.fetchUrl ?? '');
+    if (m && m[2].toLowerCase() === target.path.toLowerCase() && readMeta(dir, m[1])?.host === target.host) {
+      return r.name;
+    }
+  }
+  return undefined;
+}
+
+function hostName(host: Host): string {
+  return host === 'github.com' ? 'GitHub' : 'GitLab';
+}
+
+interface KeyMeta {
+  /** invite: made by Create Invite Code; join: made when entering someone's invite. */
+  role: 'invite' | 'join';
+  /** The co-author copy the key reads, once known. */
+  host?: Host;
+  path?: string;
+}
+
+function newKeyId(): string {
+  return randomBytes(8).toString('hex');
+}
+
+function readMeta(dir: string, id: string): KeyMeta | undefined {
+  if (!validKeyId(id)) {
+    return undefined;
+  }
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(dir, 'keys', `${id}.json`), 'utf8'));
+    const host = m?.host === 'github.com' || m?.host === 'gitlab.com' ? (m.host as Host) : undefined;
+    return m?.role === 'invite' || m?.role === 'join' ? { role: m.role, host, path: typeof m.path === 'string' ? m.path : undefined } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeMeta(dir: string, id: string, meta: KeyMeta): void {
+  fs.writeFileSync(path.join(dir, 'keys', `${id}.json`), JSON.stringify(meta) + '\n');
+}
+
+/** Makes a new ed25519 key for the project with ssh-keygen (it comes with Git) and returns its public half. */
+async function newKey(dir: string, id: string, meta: KeyMeta): Promise<string> {
+  const keys = path.join(dir, 'keys');
+  fs.mkdirSync(keys, { recursive: true, mode: 0o700 });
+  const file = path.join(keys, id);
+  await new Promise<void>((resolve, reject) => {
+    execFile('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'overtex', '-f', file], (err) =>
+      err ? reject(new Refusal('making a key needs ssh-keygen, which comes with Git. Install Git (or OpenSSH) and try again.')) : resolve()
+    );
+  });
+  fs.chmodSync(file, 0o600);
+  const key = normalizePublicKey(fs.readFileSync(`${file}.pub`, 'utf8'));
+  if (!key) {
+    throw new Refusal('ssh-keygen made a key Overtex cannot read. Try again.');
+  }
+  writeMeta(dir, id, meta);
+  return key;
 }
 
 function allChanges(repo: Repository) {
