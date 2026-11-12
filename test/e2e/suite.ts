@@ -1092,7 +1092,7 @@ export async function run(): Promise<void> {
     }
   });
 
-  await step('invite codes: GitHub and GitLab copies give each other read access, empty project starts from the co-author', async () => {
+  await step('invite codes: GitHub and GitLab copies give each other read access, empty project starts from the co-author, a new GitLab copy is made', async () => {
     const box = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-codes-')));
     const git = (cwd: string, ...args: string[]) =>
       execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' }).trim();
@@ -1103,9 +1103,15 @@ export async function run(): Promise<void> {
       req.on('data', (c) => (body += c));
       req.on('end', () => {
         calls.push({ method: req.method ?? '', url: req.url ?? '', auth: req.headers.authorization, token: req.headers['private-token'] as string | undefined, body });
-        const ok = (req.method === 'POST' && req.url === '/repos/ada/paper/keys') || (req.method === 'POST' && req.url === '/gl/projects/bo%2Fpaper/deploy_keys');
+        const ok =
+          req.method === 'POST' &&
+          ['/repos/ada/paper/keys', '/gl/projects/bo%2Fpaper/deploy_keys', '/gl/projects/cy%2Fpaper/deploy_keys', '/gl/projects'].includes(req.url ?? '');
+        const made =
+          req.url === '/gl/projects'
+            ? { path_with_namespace: 'cy/paper', ssh_url_to_repo: 'git@gitlab.com:cy/paper.git', http_url_to_repo: 'https://gitlab.com/cy/paper.git' }
+            : {};
         res.writeHead(ok ? 201 : 404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(ok ? {} : { message: 'Not Found' }));
+        res.end(JSON.stringify(ok ? made : { message: 'Not Found' }));
       });
     });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -1214,6 +1220,36 @@ export async function run(): Promise<void> {
       assert.strictEqual(calls.length, 0);
       assert.strictEqual(git(ada, 'remote').split('\n').length, 2, 'no remote for the second answer');
       assert.strictEqual(JSON.parse(fs.readFileSync(path.join(adaKeys, `${inviteData.id}.json`), 'utf8')).path, 'bo/paper');
+
+      // Cy has a project with no online copy and keeps projects on GitLab over ssh: entering the invite
+      // makes a private GitLab project, sends the project there, then gives Ada read access to it.
+      const cyBare = path.join(box, 'cy.git');
+      git(box, 'init', '--bare', cyBare);
+      const cy = path.join(box, 'cy');
+      git(box, 'init', cy);
+      fs.writeFileSync(path.join(cy, 'notes.tex'), 'from cy\n');
+      git(cy, 'add', '.');
+      git(cy, 'commit', '-qm', 'Cy start');
+      mapTo(cy, cyBare, 'git@gitlab.com:cy/paper.git');
+      calls.length = 0;
+      const cyAnswer = (await vscode.commands.executeCommand('overtex.enterInviteCode', {
+        uri: vscode.Uri.file(cy),
+        code: invite,
+        yes: true,
+        host: 'gitlab.com',
+        ssh: true,
+        repoName: 'paper',
+      })) as string;
+      assert.match(cyAnswer ?? '', /^overtex-join:/);
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /gl/projects', 'POST /gl/projects/cy%2Fpaper/deploy_keys']);
+      assert.deepStrictEqual(
+        { ...JSON.parse(calls[0].body), description: undefined },
+        { name: 'paper', path: 'paper', visibility: 'private', initialize_with_readme: false, description: undefined }
+      );
+      assert.strictEqual(git(cy, 'config', '--get', 'remote.origin.url'), 'git@gitlab.com:cy/paper.git', 'reached over ssh, no token in the URL');
+      assert.strictEqual(git(cyBare, 'log', '-1', '--format=%s', 'main'), 'Cy start', "Cy's project went to the new GitLab copy");
+      const cyData = JSON.parse(Buffer.from(cyAnswer.slice('overtex-join:'.length), 'base64url').toString());
+      assert.deepStrictEqual({ host: cyData.host, path: cyData.path }, { host: 'gitlab.com', path: 'cy/paper' });
     } finally {
       delete process.env.OVERTEX_E2E_GITHUB_API;
       delete process.env.OVERTEX_E2E_GITLAB_API;
