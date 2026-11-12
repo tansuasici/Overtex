@@ -1088,7 +1088,7 @@ export async function run(): Promise<void> {
       delete process.env.OVERTEX_E2E_GITHUB_API;
       server.close();
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      fs.rmSync(box, { recursive: true, force: true });
+      removeScratch(box);
     }
   });
 
