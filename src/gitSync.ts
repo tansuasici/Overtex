@@ -521,7 +521,7 @@ class GitSync implements vscode.Disposable {
    */
   private async makeOwnCopy(repo: Repository, branch: string, args: CodeArgs, lead: string): Promise<HostedRepo> {
     const guess: HostGuess = args.host
-      ? { host: args.host, ssh: args.ssh ?? false, why: '' }
+      ? { host: args.host, ssh: args.ssh, why: '' }
       : guessOwnHost(await this.hostEvidence(repo));
     let host = guess.host;
     if (!host) {
@@ -539,16 +539,22 @@ class GitSync implements vscode.Disposable {
       host = picked === 'GitLab' ? 'gitlab.com' : 'github.com';
     } else if (!args.yes) {
       const why = guess.why ? ` (${guess.why})` : '';
-      const make = await vscode.window.showInformationMessage(
+      const other: Host = host === 'github.com' ? 'gitlab.com' : 'github.com';
+      const make = `Make ${hostName(host)} Copy`;
+      const instead = `Use ${hostName(other)} Instead`;
+      const picked = await vscode.window.showInformationMessage(
         `${lead} Make a private one on ${hostName(host)}, where you keep your projects${why}?`,
         { modal: true },
-        `Make ${hostName(host)} Copy`
+        make,
+        instead
       );
-      if (!make) {
+      if (!picked) {
         throw new Stop();
       }
+      host = picked === instead ? other : host;
     }
-    return this.publish(repo, branch, host, host === guess.host && guess.ssh, args);
+    // The guess says how you reach that host only if it is the host you kept.
+    return this.publish(repo, branch, host, host === guess.host ? guess.ssh : undefined, args);
   }
 
   /** What this computer shows about where you keep projects. Reads no secret and makes no network call. */
@@ -580,7 +586,7 @@ class GitSync implements vscode.Disposable {
   }
 
   /** Makes a private repository (GitHub) or project (GitLab) for the project and sends the project there. */
-  private async publish(repo: Repository, branch: string, host: Host, ssh: boolean, args: InviteArgs): Promise<HostedRepo> {
+  private async publish(repo: Repository, branch: string, host: Host, ssh: boolean | undefined, args: InviteArgs): Promise<HostedRepo> {
     const site = hostName(host);
     const valid = host === 'github.com' ? validRepoName : validProjectName;
     let suggested = repoNameFor(path.basename(repo.rootUri.fsPath));
@@ -609,8 +615,9 @@ class GitSync implements vscode.Disposable {
         } else {
           const created = await this.withGitLab('To make your GitLab copy', (gl) => gl.createPrivateProject(name.trim()));
           made = { host, path: created.path };
-          // The way you reach GitLab from your other projects; the token is never put in the URL.
-          url = ssh ? created.sshUrl : created.httpUrl;
+          // The way you reach GitLab from your other projects. With nothing to go on, ssh if your own keys
+          // get in, else https. The token is never put in the URL.
+          url = (ssh ?? (await this.sshGetsIn(repo, created.sshUrl))) ? created.sshUrl : created.httpUrl;
           if (parseHostedRemote(url)?.path.toLowerCase() !== made.path.toLowerCase()) {
             throw new Refusal(`GitLab gave an address Overtex does not recognise for ${made.path}.`);
           }
@@ -808,6 +815,25 @@ class GitSync implements vscode.Disposable {
       .split('\0')
       .filter(Boolean)
       .map((rel) => vscode.Uri.file(path.join(repo.rootUri.fsPath, rel)));
+  }
+
+  /**
+   * Whether your own ssh keys get in to a copy, without asking anything: no passphrase, password or
+   * unknown host key prompt (BatchMode). Runs only `git ls-remote` on the copy just made.
+   */
+  private sshGetsIn(repo: Repository, url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      execFile(
+        this.api!.git.path,
+        ['ls-remote', url],
+        {
+          cwd: repo.rootUri.fsPath,
+          timeout: 30_000,
+          env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=15' },
+        },
+        (err) => resolve(!err)
+      );
+    });
   }
 
   /** Runs git for a local operation (no network, so no credentials needed). */
