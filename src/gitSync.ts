@@ -23,20 +23,29 @@ import { GitHubClient, GitHubError, normalizeUsername, parseGitHubRemote, repoNa
 import { GitLabClient, GitLabError, validProjectName } from './shared/gitlab';
 import { guessOwnHost, type HostEvidence, type HostGuess } from './ownHost';
 import {
-  KNOWN_HOSTS,
   READ_ONLY_PUSH_URL,
   coauthorRemoteName,
   coauthorUrl,
   encodeCode,
+  hostKeyFingerprint,
+  isBuiltinHost,
   isOurSshCommand,
+  knownHosts,
+  normalizeHostKey,
   normalizePublicKey,
   parseCode,
-  parseHostedRemote,
+  parseRemote,
   safeConfigPath,
+  sameCopy,
   sshCommand,
   sshConfig,
+  validHostname,
+  serverPath,
   validKeyId,
+  validPort,
+  webOrigin,
   type AliasEntry,
+  type BuiltinHost,
   type Code,
   type Host,
   type HostedRepo,
@@ -64,7 +73,9 @@ export interface CodeArgs extends SyncArgs {
   /** Skips the name box when a new online copy has to be made. */
   repoName?: string;
   /** Where to make a new online copy, instead of working it out (tests). */
-  host?: Host;
+  host?: BuiltinHost;
+  /** A GitLab server of your own (its https address), instead of asking for it (tests). */
+  server?: string;
   /** With host: reach a new GitLab copy over ssh rather than https (tests). */
   ssh?: boolean;
 }
@@ -83,6 +94,82 @@ class Stop extends Error {}
 class Refusal extends Error {}
 
 const GITLAB_TOKEN = 'overtex.gitlabToken';
+const GITLAB_WEB = 'https://gitlab.com';
+/** globalState: the GitLab servers of your own Overtex has used, as ServerRecord[]. */
+const SERVERS = 'overtex.gitServers';
+
+/** Where your own copy is kept: GitHub, or a GitLab server (gitlab.com or your own) by web address. */
+type Server = { kind: 'github' } | { kind: 'gitlab'; web: string };
+
+interface OwnCopy {
+  /** How a co-author's Git reaches it: what goes into your codes. */
+  repo: HostedRepo;
+  /** Where Overtex makes copies and gives read access. */
+  server: Server;
+}
+
+interface ServerRecord {
+  /** https origin (plus path, for a server under a sub-path), no trailing slash. */
+  web: string;
+  kind: 'gitlab';
+  /** The ssh address the server gives for its projects, which may differ from the web one. */
+  sshHost: string;
+  sshPort?: number;
+  /** Its ed25519 ssh host key, once known. */
+  hostKey?: string;
+}
+
+function isServerRecord(x: any): x is ServerRecord {
+  return (
+    !!x &&
+    x.kind === 'gitlab' &&
+    typeof x.web === 'string' &&
+    webOrigin(x.web) === x.web &&
+    validHostname(x.sshHost) &&
+    (x.sshPort === undefined || validPort(x.sshPort)) &&
+    (x.hostKey === undefined || normalizeHostKey(x.hostKey) === x.hostKey)
+  );
+}
+
+/** Each server's token under its own name; gitlab.com keeps the name it always had. */
+function tokenKey(web: string): string {
+  return web === GITLAB_WEB ? GITLAB_TOKEN : `overtex.token.${web}`;
+}
+
+
+/** An ed25519 key for `name` (host, or [host]:port) in your own known_hosts, if there is one. */
+function knownHostKey(name: string): Promise<string | undefined> {
+  const file = (process.env.OVERTEX_E2E && process.env.OVERTEX_E2E_KNOWN_HOSTS) || path.join(os.homedir(), '.ssh', 'known_hosts');
+  if (!fs.existsSync(file)) {
+    return Promise.resolve(undefined);
+  }
+  return new Promise((resolve) => {
+    execFile('ssh-keygen', ['-F', name, '-f', file], { timeout: 10000 }, (err, stdout) => {
+      resolve(err ? undefined : firstHostKey(stdout));
+    });
+  });
+}
+
+/** Asks the server itself for its ed25519 host key (what ssh does on a first connection). */
+function scanHostKey(host: string, port: number | undefined): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    execFile('ssh-keyscan', ['-T', '10', '-t', 'ed25519', ...(port ? ['-p', String(port)] : []), host], { timeout: 20000 }, (err, stdout) => {
+      resolve(err ? undefined : firstHostKey(stdout));
+    });
+  });
+}
+
+/** The first ed25519 key in known_hosts-style lines. */
+function firstHostKey(text: string): string | undefined {
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\S+ ssh-ed25519 (\S+)/.exec(line.trim());
+    const key = m && normalizeHostKey(m[1]);
+    if (key) {
+      return key;
+    }
+  }
+  return undefined;
+}
 
 export function registerGitSync(context: vscode.ExtensionContext, deps: Deps): void {
   const sync = new GitSync(context, deps);
@@ -246,7 +333,7 @@ class GitSync implements vscode.Disposable {
       args,
       async (repo, branch) => {
         const gh = await githubClient();
-        const target = (await this.githubCopy(repo)) ?? asGitHubRepo(await this.publish(repo, branch, 'github.com', false, args));
+        const target = (await this.githubCopy(repo)) ?? asGitHubRepo((await this.publish(repo, branch, { kind: 'github' }, false, args)).repo);
         const typed =
           args.username ??
           (await vscode.window.showInputBox({
@@ -289,12 +376,14 @@ class GitSync implements vscode.Disposable {
       'Creating an invite code',
       args,
       async (repo, branch) => {
-        const own = ownCopy(repo) ?? (await this.makeOwnCopy(repo, branch, args, 'An invite code says where your copy is, so your project needs its own online copy.'));
+        const own =
+          (await this.ownCopy(repo, args)) ??
+          (await this.makeOwnCopy(repo, branch, args, 'An invite code says where your copy is, so your project needs its own online copy.'));
         const dir = await this.overtexDir(repo);
         await this.checkSshCommand(repo);
         const id = newKeyId();
         const key = await newKey(dir, id, { role: 'invite' });
-        result = encodeCode({ kind: 'invite', repo: own, key, id });
+        result = encodeCode({ kind: 'invite', repo: own.repo, key, id });
         await vscode.env.clipboard.writeText(result);
         void vscode.window.showInformationMessage(
           'Overtex: invite code copied. Send it to your co-author: they paste it with "Overtex: Enter Invite Code" and send you back an answer code, which you enter the same way.'
@@ -355,14 +444,14 @@ class GitSync implements vscode.Disposable {
           if (meta?.role !== 'invite') {
             throw new Refusal('this answer code is for an invite made in another project. Open that project and enter it there.');
           }
-          if ((meta.host || meta.path) && (meta.host !== code.repo.host || meta.path?.toLowerCase() !== code.repo.path.toLowerCase())) {
+          if ((meta.host || meta.path) && !sameCopy(meta, code.repo)) {
             throw new Refusal(
               `this invite code was already answered for ${meta.path ?? 'another copy'}. Make a new invite code for each co-author.`
             );
           }
         }
 
-        let own = ownCopy(repo);
+        let own = await this.ownCopy(repo, args);
         if (!own) {
           if (code.kind === 'join') {
             throw new Refusal('the project has no online copy of its own any more. Put it on GitHub or GitLab and make a new invite code.');
@@ -374,14 +463,14 @@ class GitSync implements vscode.Disposable {
             `Your co-author's copy is ${theirs}. To share your changes back, your project needs its own online copy.`
           );
         }
-        if (own.host === code.repo.host && own.path.toLowerCase() === code.repo.path.toLowerCase()) {
+        if (sameCopy(own.repo, code.repo)) {
           throw new Refusal('that code is for your own copy. Send it to your co-author instead.');
         }
 
         const ok =
           args.yes ||
           (await vscode.window.showInformationMessage(
-            `Give ${theirs} read access to your copy ${own.path}? Your co-author can then get your changes, but cannot change your copy.`,
+            `Give ${theirs} read access to your copy ${own.repo.path}? Your co-author can then get your changes, but cannot change your copy.`,
             { modal: true },
             'Give Read Access'
           ));
@@ -392,10 +481,11 @@ class GitSync implements vscode.Disposable {
 
         // The key this project reads the co-author's copy with: new for an invite, the invite's for an answer.
         const readId = code.kind === 'invite' ? newKeyId() : code.id;
+        const where = { host: code.repo.host, port: code.repo.port, path: code.repo.path, hostKey: code.repo.hostKey };
         const readKey =
           code.kind === 'invite'
-            ? await newKey(dir, readId, { role: 'join', host: code.repo.host, path: code.repo.path })
-            : (writeMeta(dir, readId, { role: 'invite', host: code.repo.host, path: code.repo.path }), undefined);
+            ? await newKey(dir, readId, { role: 'join', ...where })
+            : (writeMeta(dir, readId, { role: 'invite', ...where }), undefined);
         const name = coauthorRemoteName(code.repo, repo.state.remotes.map((r) => r.name));
         await this.git(repo, ['remote', 'add', name, coauthorUrl(code.repo, readId)]);
         await this.git(repo, ['remote', 'set-url', '--push', name, READ_ONLY_PUSH_URL]);
@@ -403,7 +493,7 @@ class GitSync implements vscode.Disposable {
         await repo.status();
 
         if (code.kind === 'invite') {
-          result = encodeCode({ kind: 'join', repo: own, key: readKey!, id: code.id });
+          result = encodeCode({ kind: 'join', repo: own.repo, key: readKey!, id: code.id });
           await vscode.env.clipboard.writeText(result);
           void vscode.window.showInformationMessage(
             `Overtex: ${theirs} can now get your changes. Answer code copied: send it back to your co-author. Once they enter it, Get Changes brings in theirs.`
@@ -421,44 +511,48 @@ class GitSync implements vscode.Disposable {
   }
 
   /** Gives a co-author's public key read-only access to your own copy. */
-  private async addDeployKey(own: HostedRepo, key: string, title: string): Promise<void> {
-    if (own.host === 'github.com') {
-      const [owner, name] = own.path.split('/');
+  private async addDeployKey(own: OwnCopy, key: string, title: string): Promise<void> {
+    if (own.server.kind === 'github') {
+      const [owner, name] = own.repo.path.split('/');
       await (await githubClient()).addDeployKey({ owner, name }, title, key);
       return;
     }
-    await this.withGitLab('To give your co-author read access', (gl) => gl.addDeployKey(own.path, title, key));
+    await this.withGitLab(own.server.web, 'To give your co-author read access', (gl) => gl.addDeployKey(own.repo.path, title, key));
   }
 
-  /** Runs GitLab calls; a token GitLab rejects is forgotten, so the next try asks for a new one. */
-  private async withGitLab<T>(purpose: string, fn: (gl: GitLabClient) => Promise<T>): Promise<T> {
-    const gl = await this.gitlabClient(purpose);
+  /** Runs GitLab calls; a token the server rejects is forgotten, so the next try asks for a new one. */
+  private async withGitLab<T>(web: string, purpose: string, fn: (gl: GitLabClient) => Promise<T>): Promise<T> {
+    const gl = await this.gitlabClient(web, purpose);
     try {
       return await fn(gl);
     } catch (err) {
       if (err instanceof GitLabError && err.status === 401) {
-        await this.context.secrets.delete(GITLAB_TOKEN);
+        await this.context.secrets.delete(tokenKey(web));
       }
       throw err;
     }
   }
 
   /**
-   * A GitLab client with the access token kept in VS Code's secret storage (asked for once). Under the
-   * end-to-end tests only, OVERTEX_E2E_GITLAB_API points it at a local fake server.
+   * A client for the GitLab server at `web` (gitlab.com or your own), with that server's access token
+   * kept in VS Code's secret storage (asked for once). A token only ever goes to the server it was given
+   * for; `web` comes from your own remote or what you typed, never from a co-author's code. Under the
+   * end-to-end tests only, OVERTEX_E2E_GITLAB_API points every server at a local fake.
    */
-  private async gitlabClient(purpose: string): Promise<GitLabClient> {
+  private async gitlabClient(web: string, purpose: string): Promise<GitLabClient> {
     const fake = process.env.OVERTEX_E2E && process.env.OVERTEX_E2E_GITLAB_API;
     if (fake) {
       return new GitLabClient('e2e', fetch, fake);
     }
-    let token = await this.context.secrets.get(GITLAB_TOKEN);
+    const key = tokenKey(web);
+    const site = web === GITLAB_WEB ? 'GitLab' : new URL(web).host;
+    let token = await this.context.secrets.get(key);
     if (!token) {
       token = (
         await vscode.window.showInputBox({
-          title: 'GitLab access token',
+          title: `Access token for ${site}`,
           prompt:
-            `${purpose}, Overtex needs a GitLab personal access token with the "api" scope (GitLab: Preferences > Access tokens). VS Code keeps it in its secret storage.`,
+            `${purpose}, Overtex needs a personal access token for ${web} with the "api" scope (GitLab: Preferences > Access tokens). It is sent only to ${site}, and VS Code keeps it in its secret storage.`,
           password: true,
           ignoreFocusOut: true,
         })
@@ -466,9 +560,123 @@ class GitSync implements vscode.Disposable {
       if (!token) {
         throw new Stop();
       }
-      await this.context.secrets.store(GITLAB_TOKEN, token);
+      await this.context.secrets.store(key, token);
     }
-    return new GitLabClient(token, fetch);
+    return new GitLabClient(token, fetch, `${web}/api/v4`);
+  }
+
+  /** The Git servers of your own you told Overtex about (never a secret: addresses and host keys). */
+  private servers(): ServerRecord[] {
+    const list = this.context.globalState.get<unknown[]>(SERVERS);
+    return (Array.isArray(list) ? list : []).filter(isServerRecord);
+  }
+
+  private async saveServer(rec: ServerRecord): Promise<void> {
+    await this.context.globalState.update(SERVERS, [...this.servers().filter((s) => s.web !== rec.web), rec]);
+  }
+
+  /**
+   * Your own copy and the server it is on: GitHub, gitlab.com, or a GitLab server of your own (which
+   * Overtex asks about the first time). undefined: the project has no copy Overtex can use.
+   */
+  private async ownCopy(repo: Repository, args: CodeArgs): Promise<OwnCopy | undefined> {
+    const remote = ownRemote(repo);
+    const r = parseRemote(remote?.pushUrl ?? remote?.fetchUrl);
+    if (!r) {
+      return undefined;
+    }
+    if (isBuiltinHost(r.host) && !r.port) {
+      return { repo: { host: r.host, path: r.path }, server: r.host === 'github.com' ? { kind: 'github' } : { kind: 'gitlab', web: GITLAB_WEB } };
+    }
+    const where = r.port ? `${r.host}:${r.port}` : r.host;
+    let rec = this.servers().find((s) => (r.ssh ? s.sshHost === r.host && (s.sshPort ?? 22) === (r.port ?? 22) : new URL(s.web).host === where));
+    if (!rec) {
+      const ok =
+        args.yes ||
+        (await vscode.window.showInformationMessage(
+          `Your copy ${r.path} is on ${r.host}, which Overtex does not know yet. Is it a GitLab server (your university's or company's, say)?`,
+          { modal: true },
+          'It Is GitLab',
+          'Make a New Copy'
+        ));
+      if (!ok) {
+        throw new Stop();
+      }
+      if (ok === 'Make a New Copy') {
+        return undefined;
+      }
+      const web = args.server ? webOrigin(args.server) : await this.askServer(r.ssh ? `https://${r.host}` : `https://${where}`);
+      if (!web || (!r.ssh && (new URL(web).host !== where || !serverPath(web, r.path)))) {
+        throw new Refusal(`your copy's address ${r.host}${r.ssh ? '' : '/' + r.path} is not on ${web ?? 'that server'}.`);
+      }
+      const project = await this.withGitLab(web, `To use your copy on ${r.host}`, (gl) => gl.getProject((r.ssh ? r.path : serverPath(web, r.path)) ?? r.path));
+      rec = await this.recordServer(web, project.sshUrl, project.path);
+    }
+    const repoPath = r.ssh ? r.path : serverPath(rec.web, r.path);
+    if (!repoPath) {
+      return undefined;
+    }
+    const hostKey = rec.hostKey ?? (await this.learnHostKey(rec));
+    return { repo: { host: rec.sshHost, ...(rec.sshPort ? { port: rec.sshPort } : {}), path: repoPath, hostKey }, server: { kind: 'gitlab', web: rec.web } };
+  }
+
+  /** Asks for a GitLab server's web address (https only). */
+  private async askServer(value: string): Promise<string> {
+    const text = await vscode.window.showInputBox({
+      title: 'Your GitLab server',
+      prompt: 'The web address you open your GitLab projects at, for example https://gitlab.example.edu.',
+      value,
+      ignoreFocusOut: true,
+      validateInput: (v) => (webOrigin(v) ? undefined : 'Use an https:// address, such as https://gitlab.example.edu.'),
+    });
+    const web = text && webOrigin(text);
+    if (!web) {
+      throw new Stop();
+    }
+    return web;
+  }
+
+  /** Remembers a GitLab server with the ssh address it gives for one of its projects. */
+  private async recordServer(web: string, sshUrl: string, projectPath: string): Promise<ServerRecord> {
+    const ssh = parseRemote(sshUrl);
+    if (!ssh?.ssh || ssh.path.toLowerCase() !== projectPath.toLowerCase()) {
+      throw new Refusal(`${new URL(web).host} gave an ssh address Overtex does not recognise for ${projectPath}.`);
+    }
+    const old = this.servers().find((s) => s.web === web);
+    const same = old && old.sshHost === ssh.host && old.sshPort === ssh.port;
+    const rec: ServerRecord = { web, kind: 'gitlab', sshHost: ssh.host, ...(ssh.port ? { sshPort: ssh.port } : {}), ...(same && old.hostKey ? { hostKey: old.hostKey } : {}) };
+    await this.saveServer(rec);
+    return rec;
+  }
+
+  /**
+   * The ed25519 ssh host key of your own server, which goes into your codes so your co-author's Git
+   * talks to that server and no other. Taken from your own known_hosts when you already use the
+   * server over ssh; otherwise asked from the server and shown to you to confirm.
+   */
+  private async learnHostKey(rec: ServerRecord): Promise<string> {
+    const name = rec.sshPort ? `[${rec.sshHost}]:${rec.sshPort}` : rec.sshHost;
+    let hostKey = await knownHostKey(name);
+    if (!hostKey) {
+      const scanned = await scanHostKey(rec.sshHost, rec.sshPort);
+      if (!scanned) {
+        throw new Refusal(
+          `Overtex could not get an ed25519 ssh key from ${name}. Your co-author's Git needs one to reach your copy safely; ask your server's admin whether it has one.`
+        );
+      }
+      // Always asked, even with `yes`: a key read off the network is trusted only by you.
+      const ok = await vscode.window.showWarningMessage(
+          `Your co-author's Git will reach ${rec.sshHost} over ssh. Its ssh key fingerprint is ${hostKeyFingerprint(scanned)}. Check that it is the one your server's help pages or admin give, then trust it.`,
+          { modal: true },
+          'Trust This Key'
+        );
+      if (!ok) {
+        throw new Stop();
+      }
+      hostKey = scanned;
+    }
+    await this.saveServer({ ...rec, hostKey });
+    return hostKey;
   }
 
   /** The folder with this project's co-author keys and ssh config, inside .git (never shared). */
@@ -497,10 +705,10 @@ class GitSync implements vscode.Disposable {
       const id = file.replace(/\.json$/, '');
       const meta = file.endsWith('.json') && validKeyId(id) ? readMeta(dir, id) : undefined;
       if (meta?.host) {
-        entries.push({ id, host: meta.host });
+        entries.push({ id, host: meta.host, port: meta.port, hostKey: meta.hostKey });
       }
     }
-    fs.writeFileSync(path.join(dir, 'known_hosts'), KNOWN_HOSTS);
+    fs.writeFileSync(path.join(dir, 'known_hosts'), knownHosts(entries));
     // ssh reads a backslash in its config as an escape, so Windows paths go in with forward slashes.
     const sshDir = dir.replace(/\\/g, '/');
     const config = `${sshDir}/ssh_config`;
@@ -516,13 +724,21 @@ class GitSync implements vscode.Disposable {
   }
 
   /**
-   * Makes the project's own online copy where you keep your other projects (GitHub or GitLab, see
-   * ownHost.ts). Asks which only when nothing on this computer points either way.
+   * Makes the project's own online copy where you keep your other projects (GitHub, GitLab, or a
+   * GitLab server of your own; see ownHost.ts). Asks which only when nothing on this computer points
+   * either way.
    */
-  private async makeOwnCopy(repo: Repository, branch: string, args: CodeArgs, lead: string): Promise<HostedRepo> {
-    const guess: HostGuess = args.host
-      ? { host: args.host, ssh: args.ssh, why: '' }
-      : guessOwnHost(await this.hostEvidence(repo));
+  private async makeOwnCopy(repo: Repository, branch: string, args: CodeArgs, lead: string): Promise<OwnCopy> {
+    if (args.server) {
+      const web = webOrigin(args.server);
+      if (!web) {
+        throw new Refusal('that is not an https address of a GitLab server.');
+      }
+      return this.publish(repo, branch, { kind: 'gitlab', web }, args.ssh, args);
+    }
+    const builtin = (host: BuiltinHost): Server => (host === 'github.com' ? { kind: 'github' } : { kind: 'gitlab', web: GITLAB_WEB });
+    const other = 'Other GitLab Server…';
+    const guess: HostGuess = args.host ? { host: args.host, ssh: args.ssh, why: '' } : guessOwnHost(await this.hostEvidence(repo));
     let host = guess.host;
     if (!host) {
       const picked = args.yes
@@ -531,30 +747,38 @@ class GitSync implements vscode.Disposable {
             `${lead} Overtex could not tell whether you keep your projects on GitHub or GitLab. Where should it make a private copy?`,
             { modal: true },
             'GitHub',
-            'GitLab'
+            'GitLab',
+            other
           );
       if (!picked) {
         throw new Stop();
       }
+      if (picked === other) {
+        return this.publish(repo, branch, { kind: 'gitlab', web: await this.askServer('https://') }, undefined, args);
+      }
       host = picked === 'GitLab' ? 'gitlab.com' : 'github.com';
     } else if (!args.yes) {
       const why = guess.why ? ` (${guess.why})` : '';
-      const other: Host = host === 'github.com' ? 'gitlab.com' : 'github.com';
+      const second: BuiltinHost = host === 'github.com' ? 'gitlab.com' : 'github.com';
       const make = `Make ${hostName(host)} Copy`;
-      const instead = `Use ${hostName(other)} Instead`;
+      const instead = `Use ${hostName(second)} Instead`;
       const picked = await vscode.window.showInformationMessage(
         `${lead} Make a private one on ${hostName(host)}, where you keep your projects${why}?`,
         { modal: true },
         make,
-        instead
+        instead,
+        other
       );
       if (!picked) {
         throw new Stop();
       }
-      host = picked === instead ? other : host;
+      if (picked === other) {
+        return this.publish(repo, branch, { kind: 'gitlab', web: await this.askServer('https://') }, undefined, args);
+      }
+      host = picked === instead ? second : host;
     }
     // The guess says how you reach that host only if it is the host you kept.
-    return this.publish(repo, branch, host, host === guess.host ? guess.ssh : undefined, args);
+    return this.publish(repo, branch, builtin(host), host === guess.host ? guess.ssh : undefined, args);
   }
 
   /** What this computer shows about where you keep projects. Reads no secret and makes no network call. */
@@ -586,9 +810,9 @@ class GitSync implements vscode.Disposable {
   }
 
   /** Makes a private repository (GitHub) or project (GitLab) for the project and sends the project there. */
-  private async publish(repo: Repository, branch: string, host: Host, ssh: boolean | undefined, args: InviteArgs): Promise<HostedRepo> {
-    const site = hostName(host);
-    const valid = host === 'github.com' ? validRepoName : validProjectName;
+  private async publish(repo: Repository, branch: string, target: Server, ssh: boolean | undefined, args: InviteArgs): Promise<OwnCopy> {
+    const site = serverName(target);
+    const valid = target.kind === 'github' ? validRepoName : validProjectName;
     let suggested = repoNameFor(path.basename(repo.rootUri.fsPath));
     const current = ownRemote(repo)?.name;
     const moving = current ? ` From now on Share Changes sends to it; ${current} stays as a copy you get changes from.` : '';
@@ -597,7 +821,7 @@ class GitSync implements vscode.Disposable {
         args.repoName ??
         (await vscode.window.showInputBox({
           title: `Put this project on ${site}`,
-          prompt: `Overtex makes a private ${host === 'github.com' ? 'repository' : 'project'} under your ${site} account. Only people you let in can see it.${moving}`,
+          prompt: `Overtex makes a private ${target.kind === 'github' ? 'repository' : 'project'} under your ${site} account. Only people you let in can see it.${moving}`,
           value: suggested,
           ignoreFocusOut: true,
           validateInput: (v) => (valid(v.trim()) ? undefined : 'Use letters, numbers, dots, dashes and underscores, starting and ending with a letter or number.'),
@@ -608,21 +832,30 @@ class GitSync implements vscode.Disposable {
       try {
         let made: HostedRepo;
         let url: string;
-        if (host === 'github.com') {
+        let rec: ServerRecord | undefined;
+        if (target.kind === 'github') {
           const created = await (await githubClient()).createPrivateRepo(name.trim());
-          made = { host, path: `${created.owner}/${created.name}` };
+          made = { host: 'github.com', path: `${created.owner}/${created.name}` };
           url = created.cloneUrl;
         } else {
-          const created = await this.withGitLab('To make your GitLab copy', (gl) => gl.createPrivateProject(name.trim()));
-          made = { host, path: created.path };
+          const created = await this.withGitLab(target.web, `To make your copy on ${site}`, (gl) => gl.createPrivateProject(name.trim()));
+          if (target.web === GITLAB_WEB) {
+            made = { host: 'gitlab.com', path: created.path };
+          } else {
+            rec = await this.recordServer(target.web, created.sshUrl, created.path);
+            made = { host: rec.sshHost, ...(rec.sshPort ? { port: rec.sshPort } : {}), path: created.path };
+          }
           // The way you reach GitLab from your other projects. With nothing to go on, ssh if your own keys
           // get in, else https. The token is never put in the URL.
-          url = (ssh ?? (await this.sshGetsIn(repo, created.sshUrl))) ? created.sshUrl : created.httpUrl;
-          if (parseHostedRemote(url)?.path.toLowerCase() !== made.path.toLowerCase()) {
-            throw new Refusal(`GitLab gave an address Overtex does not recognise for ${made.path}.`);
+          const viaSsh = ssh ?? (await this.sshGetsIn(repo, created.sshUrl));
+          url = viaSsh ? created.sshUrl : created.httpUrl;
+          const at = parseRemote(url);
+          const atPath = at && (at.ssh ? at.path : serverPath(target.web, at.path));
+          if (atPath?.toLowerCase() !== made.path.toLowerCase()) {
+            throw new Refusal(`${site} gave an address Overtex does not recognise for ${made.path}.`);
           }
         }
-        const remote = repo.state.remotes.some((r) => r.name === 'origin') ? (host === 'github.com' ? 'github' : 'gitlab') : 'origin';
+        const remote = repo.state.remotes.some((r) => r.name === 'origin') ? (target.kind === 'github' ? 'github' : 'gitlab') : 'origin';
         await this.git(repo, ['remote', 'add', remote, url]);
         try {
           await repo.status();
@@ -642,7 +875,10 @@ class GitSync implements vscode.Disposable {
           );
           throw err;
         }
-        return made;
+        if (rec) {
+          made.hostKey = rec.hostKey ?? (await this.learnHostKey(rec));
+        }
+        return { repo: made, server: target };
       } catch (err) {
         const taken = (err instanceof GitHubError && err.status === 422) || (err instanceof GitLabError && err.status === 409);
         if (taken && args.repoName === undefined) {
@@ -961,17 +1197,12 @@ function ownRemote(repo: Repository) {
   return repo.state.remotes.find((r) => r.name === name);
 }
 
-/** Your own copy on GitHub or GitLab, if the project has one. */
-function ownCopy(repo: Repository): HostedRepo | undefined {
-  const own = ownRemote(repo);
-  return parseHostedRemote(own?.pushUrl ?? own?.fetchUrl);
-}
-
 /** The name of the remote that already gets changes from this co-author copy, if any. */
 function coauthorRemote(repo: Repository, dir: string, target: HostedRepo): string | undefined {
   for (const r of repo.state.remotes) {
     const m = /^git@overtex-([0-9a-f]{16}):(.+)\.git$/.exec(r.fetchUrl ?? '');
-    if (m && m[2].toLowerCase() === target.path.toLowerCase() && readMeta(dir, m[1])?.host === target.host) {
+    const meta = m ? readMeta(dir, m[1]) : undefined;
+    if (m && meta && sameCopy({ host: meta.host, port: meta.port, path: m[2] }, target)) {
       return r.name;
     }
   }
@@ -984,7 +1215,11 @@ function asGitHubRepo(r: HostedRepo): GitHubRepo {
 }
 
 function hostName(host: Host): string {
-  return host === 'github.com' ? 'GitHub' : 'GitLab';
+  return host === 'github.com' ? 'GitHub' : host === 'gitlab.com' ? 'GitLab' : host;
+}
+
+function serverName(server: Server): string {
+  return server.kind === 'github' ? 'GitHub' : server.web === GITLAB_WEB ? 'GitLab' : new URL(server.web).host;
 }
 
 interface KeyMeta {
@@ -992,7 +1227,10 @@ interface KeyMeta {
   role: 'invite' | 'join';
   /** The co-author copy the key reads, once known. */
   host?: Host;
+  port?: number;
   path?: string;
+  /** That copy's server's ssh host key, for a host that is not built in. */
+  hostKey?: string;
 }
 
 function newKeyId(): string {
@@ -1005,8 +1243,13 @@ function readMeta(dir: string, id: string): KeyMeta | undefined {
   }
   try {
     const m = JSON.parse(fs.readFileSync(path.join(dir, 'keys', `${id}.json`), 'utf8'));
-    const host = m?.host === 'github.com' || m?.host === 'gitlab.com' ? (m.host as Host) : undefined;
-    return m?.role === 'invite' || m?.role === 'join' ? { role: m.role, host, path: typeof m.path === 'string' ? m.path : undefined } : undefined;
+    if (m?.role !== 'invite' && m?.role !== 'join') {
+      return undefined;
+    }
+    const host = validHostname(m.host) ? m.host : undefined;
+    const port = validPort(m.port) ? m.port : undefined;
+    const hostKey = normalizeHostKey(m.hostKey);
+    return { role: m.role, host, port, path: typeof m.path === 'string' ? m.path : undefined, hostKey };
   } catch {
     return undefined;
   }

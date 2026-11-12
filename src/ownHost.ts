@@ -2,7 +2,7 @@
 // already shows. Overtex then puts their copy of a project there without asking which one. Nothing goes
 // over the network and no secret is read: only remote URLs, host names in Git and ssh config, and
 // whether a GitLab token or a GitHub sign-in exists.
-import { HOSTS, parseHostedRemote, type Host } from './inviteCode';
+import { HOSTS, parseHostedRemote, type BuiltinHost as Host } from './inviteCode';
 
 export interface HostEvidence {
   /** Remote URLs of this project's own remotes (not a co-author's read-only copy). */
@@ -66,18 +66,20 @@ export function guessOwnHost(e: HostEvidence): HostGuess {
   for (const url of new Set(e.project)) {
     const r = parseHostedRemote(url);
     if (r) {
-      score[r.host] += WEIGHT.project;
-      urls[r.host].push(url);
-      reasons[r.host].push('this project already has a copy there');
+      const h = r.host as Host;
+      score[h] += WEIGHT.project;
+      urls[h].push(url);
+      reasons[h].push('this project already has a copy there');
     }
   }
   const othersSeen: Record<Host, number> = { 'github.com': 0, 'gitlab.com': 0 };
   for (const url of new Set(e.others)) {
     const r = parseHostedRemote(url);
     if (r) {
-      score[r.host] += WEIGHT.other;
-      urls[r.host].push(url);
-      othersSeen[r.host]++;
+      const h = r.host as Host;
+      score[h] += WEIGHT.other;
+      urls[h].push(url);
+      othersSeen[h]++;
     }
   }
   for (const host of HOSTS) {

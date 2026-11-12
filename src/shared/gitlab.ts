@@ -26,7 +26,10 @@ export function validProjectName(name: string): boolean {
   return /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/.test(name) && !/\.(git|atom)$/i.test(name) && !/[._-]{2}/.test(name);
 }
 
-type Fetch =(url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{
+type Fetch = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body?: string; redirect?: 'error' }
+) => Promise<{
   status: number;
   json(): Promise<unknown>;
 }>;
@@ -50,6 +53,8 @@ export class GitLabClient {
           ...(body ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
+        // The token is for this server only: a redirect elsewhere would take the header along.
+        redirect: 'error',
       });
     } catch {
       throw new GitLabError(0, 'Could not reach GitLab. Check your internet connection and try again.');
@@ -73,7 +78,7 @@ export class GitLabClient {
     if (status === 201 || status === 200) {
       const fields = [data?.path_with_namespace, data?.ssh_url_to_repo, data?.http_url_to_repo];
       if (fields.some((f) => typeof f !== 'string')) {
-        throw new GitLabError(status, 'GitLab made the project but did not say where it is. Look for it on gitlab.com.');
+        throw new GitLabError(status, 'GitLab made the project but did not say where it is. Look for it on GitLab.');
       }
       return { path: data.path_with_namespace, sshUrl: data.ssh_url_to_repo, httpUrl: data.http_url_to_repo };
     }
@@ -88,6 +93,25 @@ export class GitLabClient {
     }
     const detail = typeof data?.message === 'string' ? data.message : typeof data?.error === 'string' ? data.error : `HTTP ${status}`;
     throw new GitLabError(status, `GitLab refused the request: ${detail}.`);
+  }
+
+  /** A project the token can see, with the addresses the server gives for it (its ssh one in particular). */
+  async getProject(projectPath: string): Promise<CreatedProject> {
+    const { status, data } = await this.call('GET', `/projects/${encodeURIComponent(projectPath)}`);
+    if (status === 200) {
+      const fields = [data?.path_with_namespace, data?.ssh_url_to_repo, data?.http_url_to_repo];
+      if (fields.some((f) => typeof f !== 'string')) {
+        throw new GitLabError(status, `The server did not answer like GitLab does for ${projectPath}.`);
+      }
+      return { path: data.path_with_namespace, sshUrl: data.ssh_url_to_repo, httpUrl: data.http_url_to_repo };
+    }
+    if (status === 401) {
+      throw new GitLabError(401, 'GitLab did not accept the access token. Make a new one and try again.');
+    }
+    if (status === 404) {
+      throw new GitLabError(404, `GitLab has no project ${projectPath} that this token can see.`);
+    }
+    throw new GitLabError(status, `The server did not answer like GitLab does (HTTP ${status}).`);
   }
 
   /** Gives a public key read-only access to the project (a deploy key). */
