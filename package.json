@@ -419,6 +419,18 @@
         "title": "Refresh",
         "category": "Overtex",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "overtex.shareChanges",
+        "title": "Share Changes",
+        "category": "Overtex",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "overtex.getChanges",
+        "title": "Get Changes",
+        "category": "Overtex",
+        "icon": "$(cloud-download)"
       }
     ],
     "menus": {

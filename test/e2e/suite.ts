@@ -1,6 +1,7 @@
 // Runs inside the VS Code extension host (see run.mjs). Drives build, forward search and inverse
 // search through the real PDF viewer webview, using the test hooks enabled by OVERTEX_E2E.
 import * as assert from 'assert';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as http from 'http';
 import type { AddressInfo } from 'net';
@@ -888,7 +889,113 @@ export async function run(): Promise<void> {
     assert.notStrictEqual(holding('main.pdf'), holding('main.tex'));
   });
 
+  await step('shares changes: commits new files, gets the co-author version, pushes only to your copy', async () => {
+    const box = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-sync-')));
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' }).trim();
+    try {
+      const own = path.join(box, 'own.git');
+      const theirs = path.join(box, 'theirs.git');
+      const seed = path.join(box, 'seed');
+      git(box, 'init', '--bare', own);
+      git(box, 'init', '--bare', theirs);
+      git(box, 'init', seed);
+      fs.writeFileSync(path.join(seed, 'main.tex'), 'line one\nline two\nline three\n');
+      git(seed, 'add', '.');
+      git(seed, 'commit', '-m', 'Start');
+      git(seed, 'push', own, 'main');
+      git(seed, 'push', theirs, 'main');
+
+      // The co-author works in their own copy.
+      const co = path.join(box, 'co');
+      git(box, 'clone', theirs, co);
+      fs.writeFileSync(path.join(co, 'main.tex'), 'line one\nline two\nline three\nco-author line\n');
+      git(co, 'commit', '-am', 'Co-author edit');
+      git(co, 'push', 'origin', 'main');
+
+      // You: your own copy as origin, the co-author's as a second remote.
+      const work = path.join(box, 'work');
+      git(box, 'clone', own, work);
+      git(work, 'remote', 'add', 'coauthor', theirs);
+      git(work, 'config', 'user.name', 'You');
+      git(work, 'config', 'user.email', 'you@example.invalid');
+      fs.writeFileSync(path.join(work, 'main.tex'), 'line one, edited\nline two\nline three\n');
+      fs.mkdirSync(path.join(work, '.overtex'));
+      fs.writeFileSync(path.join(work, '.overtex', 'notes.json'), '{"version":1,"threads":[]}\n');
+
+      const theirsBefore = git(theirs, 'rev-parse', 'main');
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: 'Add notes' });
+
+      const files = git(own, 'ls-tree', '-r', '--name-only', 'main').split('\n');
+      assert.ok(files.includes('.overtex/notes.json'), `the new notes file was shared (${files.join(', ')})`);
+      const log = git(own, 'log', '--format=%s', 'main');
+      assert.ok(log.includes('Add notes'), 'your version reached your copy');
+      assert.ok(log.includes('Co-author edit'), 'the co-author version came along');
+      const text = git(own, 'show', 'main:main.tex');
+      assert.strictEqual(text, 'line one, edited\nline two\nline three\nco-author line');
+      assert.strictEqual(git(theirs, 'rev-parse', 'main'), theirsBefore, "nothing was pushed to the co-author's copy");
+
+      // Both edit the same line: Share stops before pushing and leaves the conflict to resolve.
+      fs.writeFileSync(path.join(co, 'main.tex'), 'line one, theirs\nline two\nline three\nco-author line\n');
+      git(co, 'commit', '-am', 'Co-author again');
+      git(co, 'push', 'origin', 'main');
+      fs.writeFileSync(path.join(work, 'main.tex'), 'line one, mine\nline two\nline three\nco-author line\n');
+      const ownBefore = git(own, 'rev-parse', 'main');
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: '' });
+      assert.match(git(work, 'status', '--porcelain'), /^UU main\.tex$/m, 'main.tex is left with both versions marked');
+      assert.strictEqual(git(own, 'rev-parse', 'main'), ownBefore, 'nothing was pushed during the conflict');
+      assert.strictEqual(git(work, 'log', '-1', '--format=%s', 'HEAD'), 'Update', 'an empty message becomes "Update"');
+
+      // Pick a version and save, without any git command: Share finishes the merge and sends it.
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: '' });
+      assert.strictEqual(git(own, 'rev-parse', 'main'), ownBefore, 'still nothing sent while the markers are there');
+      fs.writeFileSync(path.join(work, 'main.tex'), 'line one, both\nline two\nline three\nco-author line\n');
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: '' });
+      assert.strictEqual(git(own, 'show', 'main:main.tex'), 'line one, both\nline two\nline three\nco-author line');
+      assert.ok(git(own, 'log', '--format=%s', 'main').includes('Co-author again'), 'the co-author version is in the shared history');
+      assert.strictEqual(git(work, 'status', '--porcelain'), '', 'nothing left half-done');
+
+      // Keeping your own version exactly also finishes the merge.
+      git(co, 'pull', '--no-rebase', '-q', own, 'main');
+      fs.writeFileSync(path.join(co, 'main.tex'), 'line one, both\nline two, theirs\nline three\nco-author line\n');
+      git(co, 'commit', '-qam', 'Co-author line two');
+      git(co, 'push', '-q', 'origin', 'HEAD:main');
+      const mine = 'line one, both\nline two, mine\nline three\nco-author line\n';
+      fs.writeFileSync(path.join(work, 'main.tex'), mine);
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: 'Mine' });
+      assert.match(git(work, 'status', '--porcelain'), /^UU main\.tex$/m);
+      fs.writeFileSync(path.join(work, 'main.tex'), mine);
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(work), message: '' });
+      assert.strictEqual(git(own, 'show', 'main:main.tex') + '\n', mine);
+      assert.ok(git(own, 'log', '--format=%s', 'main').includes('Co-author line two'));
+
+      // Get Changes combines a co-author version without sending anything.
+      git(co, 'pull', '--no-rebase', '-q', own, 'main');
+      fs.writeFileSync(path.join(co, 'notes.txt'), 'from the co-author\n');
+      git(co, 'add', 'notes.txt');
+      git(co, 'commit', '-qm', 'Co-author file');
+      git(co, 'push', '-q', 'origin', 'HEAD:main');
+      const ownNow = git(own, 'rev-parse', 'main');
+      await vscode.commands.executeCommand('overtex.getChanges', { uri: vscode.Uri.file(work) });
+      assert.ok(fs.existsSync(path.join(work, 'notes.txt')), 'the co-author file arrived');
+      assert.strictEqual(git(own, 'rev-parse', 'main'), ownNow, 'Get Changes sends nothing');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      removeScratch(box);
+    }
+  });
+
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
+  }
+}
+
+/** Removes a scratch folder. On Windows a file there may still be open for a moment (git, a file
+ * watcher), so it retries and then leaves the folder rather than fail the step that used it. */
+function removeScratch(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (err) {
+    console.warn(`left scratch folder ${dir}: ${(err as Error).message}`);
   }
 }
