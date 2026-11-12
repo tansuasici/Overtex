@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 
-import { AuxLabel, describeAuxLabel, readAuxLabels } from './latex/aux';
+import { AuxLabel, describeAuxLabel, readAuxLabels } from './latex/auxFile';
 import { LabelEntry, scanLabels } from './latex/labels';
 import { mathAt } from './latex/math';
 import { MathRenderer } from './mathPreview';
