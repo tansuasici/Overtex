@@ -2,7 +2,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { parseAux } from './aux';
+import { parseAux } from './auxFile';
 import { LogEntry, parseLog, parseTectonicLog } from './logParser';
 import { withEngineHint } from './engineHint';
 import { DEFAULT_LOOP_LIMITS, DEFAULT_STALL_TIMEOUT_SECONDS, LoopLimits, LoopWatch, loopMessage, silenceMessage } from './stall';
