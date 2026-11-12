@@ -115,3 +115,31 @@ describe('GitHubClient', () => {
     expect((err as GitHubError).message).not.toContain('secret-token');
   });
 });
+
+describe('GitHubClient.addDeployKey', () => {
+  const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl';
+
+  it('adds a read-only key', async () => {
+    const { fn, calls } = fakeFetch({ 'POST /repos/ada/thesis/keys': { status: 201, body: {} } });
+    expect(await new GitHubClient('tok', fn).addDeployKey({ owner: 'ada', name: 'thesis' }, 'Overtex', key)).toBe('added');
+    expect(JSON.parse(calls[0].body!)).toEqual({ title: 'Overtex', key, read_only: true });
+  });
+
+  it('reports a key the repository has already', async () => {
+    const { fn } = fakeFetch({
+      'POST /repos/ada/thesis/keys': { status: 422, body: { message: 'Validation Failed' } },
+      'GET /repos/ada/thesis/keys?per_page=100': { status: 200, body: [{ key: `${key} overtex` }] },
+    });
+    expect(await new GitHubClient('tok', fn).addDeployKey({ owner: 'ada', name: 'thesis' }, 'Overtex', key)).toBe('already');
+  });
+
+  it('explains a key used on another repository, and a repository you do not own', async () => {
+    const used = fakeFetch({
+      'POST /repos/ada/thesis/keys': { status: 422, body: { message: 'Validation Failed' } },
+      'GET /repos/ada/thesis/keys?per_page=100': { status: 200, body: [] },
+    });
+    await expect(new GitHubClient('tok', used.fn).addDeployKey({ owner: 'ada', name: 'thesis' }, 'Overtex', key)).rejects.toThrow(/new code/);
+    const notOwner = fakeFetch({ 'POST /repos/ada/thesis/keys': { status: 404, body: { message: 'Not Found' } } });
+    await expect(new GitHubClient('tok', notOwner.fn).addDeployKey({ owner: 'ada', name: 'thesis' }, 'Overtex', key)).rejects.toThrow(/only its owner/);
+  });
+});

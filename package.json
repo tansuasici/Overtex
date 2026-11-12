@@ -437,6 +437,18 @@
         "title": "Invite Co-author",
         "category": "Overtex",
         "icon": "$(person-add)"
+      },
+      {
+        "command": "overtex.createInviteCode",
+        "title": "Create Invite Code",
+        "category": "Overtex",
+        "icon": "$(key)"
+      },
+      {
+        "command": "overtex.enterInviteCode",
+        "title": "Enter Invite Code",
+        "category": "Overtex",
+        "icon": "$(link)"
       }
     ],
     "menus": {

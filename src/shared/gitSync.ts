@@ -99,6 +99,21 @@ export function pushRemote(remotes: string[], upstreamRemote?: string): string |
   return remotes.length === 1 ? remotes[0] : undefined;
 }
 
+/**
+ * Where a project with no versions yet starts from: the first remote copy of this branch, else of
+ * `main` or `master`. The branch is the one to switch the empty project to.
+ */
+export function startingRef(remoteBranches: string[], remotes: string[], branch: string): { ref: string; branch: string } | undefined {
+  for (const name of [branch, 'main', 'master']) {
+    for (const remote of remotes) {
+      if (remoteBranches.includes(`${remote}/${name}`)) {
+        return { ref: `${remote}/${name}`, branch: name };
+      }
+    }
+  }
+  return undefined;
+}
+
 export interface SyncCounts {
   /** Edited files not yet saved as a version. */
   changes: number;

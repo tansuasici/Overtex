@@ -1092,6 +1092,137 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('invite codes: GitHub and GitLab copies give each other read access, empty project starts from the co-author', async () => {
+    const box = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-codes-')));
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' }).trim();
+    const calls: { method: string; url: string; auth?: string; token?: string; body: string }[] = [];
+    // Stand-ins for api.github.com and gitlab.com/api/v4 (under /gl).
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        calls.push({ method: req.method ?? '', url: req.url ?? '', auth: req.headers.authorization, token: req.headers['private-token'] as string | undefined, body });
+        const ok = (req.method === 'POST' && req.url === '/repos/ada/paper/keys') || (req.method === 'POST' && req.url === '/gl/projects/bo%2Fpaper/deploy_keys');
+        res.writeHead(ok ? 201 : 404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(ok ? {} : { message: 'Not Found' }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    process.env.OVERTEX_E2E_GITHUB_API = api;
+    process.env.OVERTEX_E2E_GITLAB_API = `${api}/gl`;
+    // Hosted URLs lead to local bare repositories, so nothing goes over the network.
+    const mapTo = (work: string, bare: string, url: string) => git(work, 'config', '--add', `url.${bare}.insteadOf`, url);
+    try {
+      const adaBare = path.join(box, 'ada.git');
+      const boBare = path.join(box, 'bo.git');
+      git(box, 'init', '--bare', adaBare);
+      git(box, 'init', '--bare', boBare);
+
+      // Ada has a project on GitHub.
+      const ada = path.join(box, 'ada');
+      git(box, 'init', ada);
+      fs.writeFileSync(path.join(ada, 'main.tex'), 'from ada\n');
+      git(ada, 'add', '.');
+      git(ada, 'commit', '-qm', 'Start');
+      git(ada, 'push', '-q', adaBare, 'HEAD:main');
+      git(ada, 'remote', 'add', 'origin', 'https://github.com/ada/paper.git');
+      mapTo(ada, adaBare, 'https://github.com/ada/paper.git');
+      git(ada, 'fetch', '-q', 'origin');
+      git(ada, 'branch', '-u', 'origin/main');
+
+      const invite = (await vscode.commands.executeCommand('overtex.createInviteCode', { uri: vscode.Uri.file(ada) })) as string;
+      assert.match(invite ?? '', /^overtex-invite:/);
+      const inviteData = JSON.parse(Buffer.from(invite.slice('overtex-invite:'.length), 'base64url').toString());
+      assert.deepStrictEqual({ host: inviteData.host, path: inviteData.path }, { host: 'github.com', path: 'ada/paper' });
+      const adaKeys = path.join(ada, '.git', 'overtex', 'keys');
+      if (process.platform !== 'win32') {
+        assert.strictEqual(fs.statSync(path.join(adaKeys, inviteData.id)).mode & 0o777, 0o600, 'the private key is readable only by you');
+      }
+      assert.ok(fs.readFileSync(path.join(adaKeys, `${inviteData.id}.pub`), 'utf8').startsWith(inviteData.key));
+      assert.strictEqual(calls.length, 0, 'making a code sends nothing');
+
+      // Bo has an empty project with an empty copy on GitLab, and enters the invite.
+      const bo = path.join(box, 'bo');
+      git(box, 'init', bo);
+      git(bo, 'config', 'user.name', 'Bo');
+      git(bo, 'config', 'user.email', 'bo@example.invalid');
+      git(bo, 'remote', 'add', 'origin', 'https://gitlab.com/bo/paper.git');
+      mapTo(bo, boBare, 'https://gitlab.com/bo/paper.git');
+      const answer = (await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(bo), code: invite, yes: true })) as string;
+      assert.match(answer ?? '', /^overtex-join:/);
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /gl/projects/bo%2Fpaper/deploy_keys']);
+      assert.deepStrictEqual(JSON.parse(calls[0].body), { title: 'Overtex co-author: github.com/ada/paper', key: inviteData.key, can_push: false });
+      assert.strictEqual(calls[0].token, 'e2e');
+      assert.strictEqual(git(bo, 'config', '--get', 'remote.coauthor-ada.pushurl'), 'overtex-read-only://do-not-push');
+      const boAlias = git(bo, 'config', '--get', 'remote.coauthor-ada.url');
+      assert.match(boAlias, /^git@overtex-[0-9a-f]{16}:ada\/paper\.git$/);
+      assert.match(git(bo, 'config', '--get', 'core.sshCommand'), /^ssh -F ".*\/\.git\/overtex\/ssh_config"$/);
+      assert.ok(fs.readFileSync(path.join(bo, '.git', 'overtex', 'ssh_config'), 'utf8').includes(`Host ${boAlias.slice(4, boAlias.indexOf(':'))}`));
+      const answerData = JSON.parse(Buffer.from(answer.slice('overtex-join:'.length), 'base64url').toString());
+      // What ssh reads from the written config for Bo's remote (no connection is made).
+      const resolved = execFileSync('ssh', ['-F', path.join(bo, '.git', 'overtex', 'ssh_config'), '-G', boAlias.slice(4, boAlias.indexOf(':'))], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      assert.match(resolved, /^hostname github\.com$/m);
+      assert.match(resolved, /^hostkeyalias github\.com$/m);
+      assert.match(resolved, /^identitiesonly yes$/m);
+      assert.match(resolved, /^identityfile .*\/\.git\/overtex\/keys\/[0-9a-f]{16}$/m);
+      assert.match(resolved, /^userknownhostsfile .*\/\.git\/overtex\/known_hosts$/m);
+      assert.deepStrictEqual({ host: answerData.host, path: answerData.path, id: answerData.id }, { host: 'gitlab.com', path: 'bo/paper', id: inviteData.id });
+
+      // Bo's empty project starts from Ada's copy; Share sends only to Bo's own copy.
+      mapTo(bo, adaBare, boAlias);
+      await vscode.commands.executeCommand('overtex.getChanges', { uri: vscode.Uri.file(bo) });
+      assert.strictEqual(fs.readFileSync(path.join(bo, 'main.tex'), 'utf8').replace(/\r\n/g, '\n'), 'from ada\n', "Ada's project arrived");
+      fs.writeFileSync(path.join(bo, 'main.tex'), 'from ada\nand bo\n');
+      const adaBefore = git(adaBare, 'rev-parse', 'main');
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(bo), message: 'Bo edit' });
+      assert.strictEqual(git(boBare, 'log', '-1', '--format=%s', 'main'), 'Bo edit', "Bo's copy got the change");
+      assert.strictEqual(git(adaBare, 'rev-parse', 'main'), adaBefore, "nothing was sent to Ada's copy");
+
+      // Entering the same invite again, or a code for your own copy, changes nothing.
+      calls.length = 0;
+      await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(bo), code: invite, yes: true });
+      await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(ada), code: invite, yes: true });
+      await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(ada), code: invite.slice(0, -10), yes: true });
+      assert.strictEqual(calls.length, 0, 'refused codes send nothing');
+      assert.strictEqual(git(bo, 'remote').split('\n').length, 2);
+
+      // Ada enters the answer: Bo's key reads Ada's copy, and Ada gets Bo's changes.
+      const remote = await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(ada), code: answer, yes: true });
+      assert.strictEqual(remote, 'coauthor-bo');
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /repos/ada/paper/keys']);
+      assert.deepStrictEqual(JSON.parse(calls[0].body), { title: 'Overtex co-author: gitlab.com/bo/paper', key: answerData.key, read_only: true });
+      assert.strictEqual(calls[0].auth, 'Bearer e2e');
+      const adaAlias = git(ada, 'config', '--get', 'remote.coauthor-bo.url');
+      assert.strictEqual(adaAlias, `git@overtex-${inviteData.id}:bo/paper.git`, "Ada reads Bo's copy with the invite key");
+      assert.strictEqual(git(ada, 'config', '--get', 'remote.coauthor-bo.pushurl'), 'overtex-read-only://do-not-push');
+      mapTo(ada, boBare, adaAlias);
+      await vscode.commands.executeCommand('overtex.getChanges', { uri: vscode.Uri.file(ada) });
+      assert.strictEqual(fs.readFileSync(path.join(ada, 'main.tex'), 'utf8').replace(/\r\n/g, '\n'), 'from ada\nand bo\n', "Bo's change arrived");
+
+      // An answer code entered a second time is refused.
+      calls.length = 0;
+      await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(ada), code: answer, yes: true });
+      assert.strictEqual(calls.length, 0);
+      // An answer from a second co-author to the same invite would reuse its key: refused.
+      const otherAnswer = 'overtex-join:' + Buffer.from(JSON.stringify({ ...answerData, path: 'cy/paper' })).toString('base64url');
+      await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(ada), code: otherAnswer, yes: true });
+      assert.strictEqual(calls.length, 0);
+      assert.strictEqual(git(ada, 'remote').split('\n').length, 2, 'no remote for the second answer');
+      assert.strictEqual(JSON.parse(fs.readFileSync(path.join(adaKeys, `${inviteData.id}.json`), 'utf8')).path, 'bo/paper');
+    } finally {
+      delete process.env.OVERTEX_E2E_GITHUB_API;
+      delete process.env.OVERTEX_E2E_GITLAB_API;
+      server.close();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      removeScratch(box);
+    }
+  });
+
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
   }

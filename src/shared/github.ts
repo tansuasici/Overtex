@@ -160,6 +160,32 @@ export class GitHubClient {
     }
     throw failure(status, data);
   }
+
+  /**
+   * Gives a public key read-only access to the repository (a deploy key). 'already' means the
+   * repository has that key already. GitHub lets a key be a deploy key of one repository only.
+   */
+  async addDeployKey(repo: GitHubRepo, title: string, key: string): Promise<'added' | 'already'> {
+    const base = `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/keys`;
+    const { status, data } = await this.call('POST', base, { title, key, read_only: true });
+    if (status === 201) {
+      return 'added';
+    }
+    if (status === 422) {
+      const list = await this.call('GET', `${base}?per_page=100`);
+      if (list.status === 200 && Array.isArray(list.data) && list.data.some((k: any) => typeof k?.key === 'string' && k.key.trim().startsWith(key))) {
+        return 'already';
+      }
+      throw new GitHubError(422, 'GitHub already uses that key for another repository. Ask your co-author for a new code.');
+    }
+    if (status === 404 || status === 403) {
+      throw new GitHubError(
+        status,
+        `Overtex could not give access to ${repo.owner}/${repo.name}: only its owner (or an admin) can, and the repository has to exist.`
+      );
+    }
+    throw failure(status, data);
+  }
 }
 
 function failure(status: number, data: any): GitHubError {
