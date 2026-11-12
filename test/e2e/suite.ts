@@ -981,11 +981,21 @@ export async function run(): Promise<void> {
       assert.strictEqual(git(own, 'rev-parse', 'main'), ownNow, 'Get Changes sends nothing');
     } finally {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      fs.rmSync(box, { recursive: true, force: true });
+      removeScratch(box);
     }
   });
 
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
+  }
+}
+
+/** Removes a scratch folder. On Windows a file there may still be open for a moment (git, a file
+ * watcher), so it retries and then leaves the folder rather than fail the step that used it. */
+function removeScratch(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (err) {
+    console.warn(`left scratch folder ${dir}: ${(err as Error).message}`);
   }
 }
