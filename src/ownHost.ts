@@ -22,8 +22,11 @@ export interface HostEvidence {
 export interface HostGuess {
   /** undefined: nothing points either way, or both equally. */
   host: Host | undefined;
-  /** Clone over ssh rather than https: what this person's other remotes for that host use. */
-  ssh: boolean;
+  /**
+   * Reach the copy over ssh rather than https: what this person's other remotes for that host use.
+   * undefined: nothing on this computer says.
+   */
+  ssh: boolean | undefined;
   /** Plain-language reason, for the confirmation. */
   why: string;
 }
@@ -106,10 +109,11 @@ export function guessOwnHost(e: HostEvidence): HostGuess {
   const [a, b] = HOSTS;
   const host = score[a] === score[b] ? undefined : score[a] > score[b] ? a : b;
   if (!host) {
-    return { host: undefined, ssh: false, why: '' };
+    return { host: undefined, ssh: undefined, why: '' };
   }
   const ssh = urls[host].filter(isSsh).length;
   const https = urls[host].length - ssh;
   const sshNamed = sshLines.some((l) => hostIn(l, host));
-  return { host, ssh: ssh > https || (ssh === 0 && https === 0 && sshNamed), why: reasons[host][0] ?? '' };
+  const way = ssh || https ? ssh > https : sshNamed ? true : undefined;
+  return { host, ssh: way, why: reasons[host][0] ?? '' };
 }

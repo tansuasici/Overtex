@@ -1236,8 +1236,8 @@ export async function run(): Promise<void> {
         uri: vscode.Uri.file(cy),
         code: invite,
         yes: true,
+        // No ssh/https preference given: Overtex tries ssh without prompting, which gets in here.
         host: 'gitlab.com',
-        ssh: true,
         repoName: 'paper',
       })) as string;
       assert.match(cyAnswer ?? '', /^overtex-join:/);

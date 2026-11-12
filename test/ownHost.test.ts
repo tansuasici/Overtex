@@ -14,6 +14,7 @@ describe('guessOwnHost', () => {
   it('follows the remotes of your other projects, over ssh if they use ssh', () => {
     expect(guess({ others: ['git@gitlab.com:bo/thesis.git'] })).toMatchObject({ host: 'gitlab.com', ssh: true });
     expect(guess({ others: ['https://gitlab.com/bo/thesis.git'] })).toMatchObject({ host: 'gitlab.com', ssh: false });
+    expect(guess({ gitlabToken: true })).toMatchObject({ host: 'gitlab.com', ssh: undefined });
     expect(guess({ others: ['https://github.com/bo/a.git', 'https://github.com/bo/b.git', 'git@gitlab.com:bo/c.git'] }).host).toBe('github.com');
   });
 
