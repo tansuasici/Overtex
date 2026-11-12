@@ -1259,6 +1259,111 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('invite codes: a copy on a GitLab server of your own carries its ssh port and pinned host key', async () => {
+    const box = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-own-')));
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' }).trim();
+    // A throwaway ed25519 key standing in for the server's ssh host key.
+    const hostKey = 'AAAAC3NzaC1lZDI1NTE5AAAAIIFgkwzRnszZU1AVKiUnTlzdOmYymkYRp9XWJfr0zia2';
+    const knownHostsFile = path.join(box, 'known_hosts');
+    fs.writeFileSync(knownHostsFile, `[git.uni-example.edu]:2222 ssh-ed25519 ${hostKey}\n`);
+    const sshUrl = 'ssh://git@git.uni-example.edu:2222/dee/paper.git';
+    const calls: { method: string; url: string; auth?: string; token?: string; body: string }[] = [];
+    // Stand-ins for the university's GitLab API (under /gl) and api.github.com.
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        calls.push({ method: req.method ?? '', url: req.url ?? '', auth: req.headers.authorization, token: req.headers['private-token'] as string | undefined, body });
+        const key = `${req.method} ${req.url}`;
+        const answers: Record<string, [number, unknown]> = {
+          'GET /gl/projects/dee%2Fpaper': [200, { path_with_namespace: 'dee/paper', ssh_url_to_repo: sshUrl, http_url_to_repo: 'https://git.uni-example.edu/dee/paper.git' }],
+          'POST /gl/projects/dee%2Fpaper/deploy_keys': [201, {}],
+          'POST /repos/eve/paper/keys': [201, {}],
+        };
+        const [status, data] = answers[key] ?? [404, { message: 'Not Found' }];
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    process.env.OVERTEX_E2E_GITHUB_API = api;
+    process.env.OVERTEX_E2E_GITLAB_API = `${api}/gl`;
+    process.env.OVERTEX_E2E_KNOWN_HOSTS = knownHostsFile;
+    const mapTo = (work: string, bare: string, url: string) => git(work, 'config', '--add', `url.${bare}.insteadOf`, url);
+    try {
+      // Dee keeps the project on the university's GitLab, reached over ssh at port 2222.
+      const deeBare = path.join(box, 'dee.git');
+      git(box, 'init', '--bare', deeBare);
+      const dee = path.join(box, 'dee');
+      git(box, 'init', dee);
+      fs.writeFileSync(path.join(dee, 'main.tex'), 'from dee\n');
+      git(dee, 'add', '.');
+      git(dee, 'commit', '-qm', 'Start');
+      git(dee, 'push', '-q', deeBare, 'HEAD:main');
+      git(dee, 'remote', 'add', 'origin', sshUrl);
+      mapTo(dee, deeBare, sshUrl);
+
+      const invite = (await vscode.commands.executeCommand('overtex.createInviteCode', {
+        uri: vscode.Uri.file(dee),
+        yes: true,
+        server: 'https://git.uni-example.edu',
+      })) as string;
+      assert.match(invite ?? '', /^overtex-invite:/);
+      const inviteData = JSON.parse(Buffer.from(invite.slice('overtex-invite:'.length), 'base64url').toString());
+      assert.deepStrictEqual(
+        { v: inviteData.v, host: inviteData.host, port: inviteData.port, path: inviteData.path, hk: inviteData.hk },
+        { v: 2, host: 'git.uni-example.edu', port: 2222, path: 'dee/paper', hk: hostKey },
+        'the code names the server, its ssh port and the host key from your own known_hosts'
+      );
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['GET /gl/projects/dee%2Fpaper'], 'only the server was asked where the project is');
+
+      // Eve keeps hers on GitHub and enters Dee's invite.
+      const eveBare = path.join(box, 'eve.git');
+      git(box, 'init', '--bare', eveBare);
+      const eve = path.join(box, 'eve');
+      git(box, 'init', eve);
+      git(eve, 'config', 'user.name', 'Eve');
+      git(eve, 'config', 'user.email', 'eve@example.invalid');
+      git(eve, 'remote', 'add', 'origin', 'https://github.com/eve/paper.git');
+      mapTo(eve, eveBare, 'https://github.com/eve/paper.git');
+      calls.length = 0;
+      const answer = (await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(eve), code: invite, yes: true })) as string;
+      assert.match(answer ?? '', /^overtex-join:/);
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /repos/eve/paper/keys']);
+      const eveAlias = git(eve, 'config', '--get', 'remote.coauthor-dee.url');
+      assert.match(eveAlias, /^git@overtex-[0-9a-f]{16}:dee\/paper\.git$/);
+      const alias = eveAlias.slice(4, eveAlias.indexOf(':'));
+      const overtexDir = path.join(eve, '.git', 'overtex');
+      const resolved = execFileSync('ssh', ['-F', path.join(overtexDir, 'ssh_config'), '-G', alias], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      assert.match(resolved, /^hostname git\.uni-example\.edu$/m);
+      assert.match(resolved, /^port 2222$/m);
+      assert.match(resolved, new RegExp(`^hostkeyalias ${alias}$`, 'm'), "the server's key is looked up under the remote's own name");
+      const pinned = fs.readFileSync(path.join(overtexDir, 'known_hosts'), 'utf8');
+      assert.ok(pinned.includes(`[${alias}]:2222 ssh-ed25519 ${hostKey}\n`), 'the code\'s host key is pinned for that remote');
+      assert.ok(!/^git\.uni-example\.edu /m.test(pinned), 'and not under the host name, where it could stand in for another remote');
+
+      // Dee enters Eve's answer: the deploy key goes to the university's GitLab, with its token.
+      calls.length = 0;
+      const remote = await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(dee), code: answer, yes: true });
+      assert.strictEqual(remote, 'coauthor-eve');
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /gl/projects/dee%2Fpaper/deploy_keys']);
+      assert.strictEqual(calls[0].token, 'e2e');
+      assert.strictEqual(JSON.parse(calls[0].body).can_push, false);
+    } finally {
+      delete process.env.OVERTEX_E2E_GITHUB_API;
+      delete process.env.OVERTEX_E2E_GITLAB_API;
+      delete process.env.OVERTEX_E2E_KNOWN_HOSTS;
+      server.close();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      removeScratch(box);
+    }
+  });
+
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
   }
