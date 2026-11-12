@@ -1,7 +1,8 @@
 // Invite codes for co-authors who keep their own copy on GitHub or GitLab. Each side gives the other
 // read-only access with a deploy key, so nobody needs the other's account. A code carries only a
 // repository address and a public key; it is pasted by a person, so everything in it is checked
-// before it reaches a git remote URL or an ssh config file. No vscode import: unit tested.
+// before it reaches a git remote URL or an ssh config file. No vscode import: unit tested. Node only
+// (Buffer), so it is not in src/shared, which the webview also compiles.
 
 export const HOSTS = ['github.com', 'gitlab.com'] as const;
 export type Host = (typeof HOSTS)[number];

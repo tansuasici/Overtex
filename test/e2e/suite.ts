@@ -1137,7 +1137,9 @@ export async function run(): Promise<void> {
       const inviteData = JSON.parse(Buffer.from(invite.slice('overtex-invite:'.length), 'base64url').toString());
       assert.deepStrictEqual({ host: inviteData.host, path: inviteData.path }, { host: 'github.com', path: 'ada/paper' });
       const adaKeys = path.join(ada, '.git', 'overtex', 'keys');
-      assert.strictEqual(fs.statSync(path.join(adaKeys, inviteData.id)).mode & 0o777, 0o600, 'the private key is readable only by you');
+      if (process.platform !== 'win32') {
+        assert.strictEqual(fs.statSync(path.join(adaKeys, inviteData.id)).mode & 0o777, 0o600, 'the private key is readable only by you');
+      }
       assert.ok(fs.readFileSync(path.join(adaKeys, `${inviteData.id}.pub`), 'utf8').startsWith(inviteData.key));
       assert.strictEqual(calls.length, 0, 'making a code sends nothing');
 

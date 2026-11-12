@@ -38,7 +38,7 @@ import {
   type Code,
   type Host,
   type HostedRepo,
-} from './shared/inviteCode';
+} from './inviteCode';
 
 export interface SyncArgs {
   /** A file or folder inside the repository; the active file's repository otherwise. */
