@@ -123,7 +123,7 @@ describe('project ssh config', () => {
   });
 
   it('makes ssh use only the project key for the alias (ssh -G)', () => {
-    const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex ı-')), 'overtex');
+    const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex ı-')), 'overtex').replace(/\\/g, '/');
     try {
       fs.mkdirSync(path.join(dir, 'keys'), { recursive: true });
       fs.writeFileSync(path.join(dir, 'ssh_config'), sshConfig(dir, [{ id: ID, host: 'github.com' }]));

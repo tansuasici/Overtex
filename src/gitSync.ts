@@ -500,8 +500,10 @@ class GitSync implements vscode.Disposable {
       }
     }
     fs.writeFileSync(path.join(dir, 'known_hosts'), KNOWN_HOSTS);
-    const config = `${dir}/ssh_config`;
-    fs.writeFileSync(config, sshConfig(dir, entries));
+    // ssh reads a backslash in its config as an escape, so Windows paths go in with forward slashes.
+    const sshDir = dir.replace(/\\/g, '/');
+    const config = `${sshDir}/ssh_config`;
+    fs.writeFileSync(config, sshConfig(sshDir, entries));
     await this.git(repo, ['config', '--local', 'core.sshCommand', sshCommand(config)]);
   }
 
