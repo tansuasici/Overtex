@@ -1176,7 +1176,7 @@ export async function run(): Promise<void> {
       // Bo's empty project starts from Ada's copy; Share sends only to Bo's own copy.
       mapTo(bo, adaBare, boAlias);
       await vscode.commands.executeCommand('overtex.getChanges', { uri: vscode.Uri.file(bo) });
-      assert.strictEqual(fs.readFileSync(path.join(bo, 'main.tex'), 'utf8'), 'from ada\n', "Ada's project arrived");
+      assert.strictEqual(fs.readFileSync(path.join(bo, 'main.tex'), 'utf8').replace(/\r\n/g, '\n'), 'from ada\n', "Ada's project arrived");
       fs.writeFileSync(path.join(bo, 'main.tex'), 'from ada\nand bo\n');
       const adaBefore = git(adaBare, 'rev-parse', 'main');
       await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(bo), message: 'Bo edit' });
@@ -1202,7 +1202,7 @@ export async function run(): Promise<void> {
       assert.strictEqual(git(ada, 'config', '--get', 'remote.coauthor-bo.pushurl'), 'overtex-read-only://do-not-push');
       mapTo(ada, boBare, adaAlias);
       await vscode.commands.executeCommand('overtex.getChanges', { uri: vscode.Uri.file(ada) });
-      assert.strictEqual(fs.readFileSync(path.join(ada, 'main.tex'), 'utf8'), 'from ada\nand bo\n', "Bo's change arrived");
+      assert.strictEqual(fs.readFileSync(path.join(ada, 'main.tex'), 'utf8').replace(/\r\n/g, '\n'), 'from ada\nand bo\n', "Bo's change arrived");
 
       // An answer code entered a second time is refused.
       calls.length = 0;
