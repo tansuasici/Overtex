@@ -2,37 +2,19 @@
 // fetch. The access token goes only into the PRIVATE-TOKEN header of requests to the API base; it is
 // never logged or put in a message.
 
+import { CreatedProject, ForgeError, Fetch } from './forge';
+
+export type { CreatedProject } from './forge';
+
 export const GITLAB_API = 'https://gitlab.com/api/v4';
 
 /** A failed GitLab call, with the HTTP status and a message the person can act on. */
-export class GitLabError extends Error {
-  constructor(
-    readonly status: number,
-    message: string
-  ) {
-    super(message);
-  }
-}
-
-export interface CreatedProject {
-  /** namespace/name */
-  path: string;
-  sshUrl: string;
-  httpUrl: string;
-}
+export class GitLabError extends ForgeError {}
 
 /** A project name GitLab accepts as both name and path. */
 export function validProjectName(name: string): boolean {
   return /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/.test(name) && !/\.(git|atom)$/i.test(name) && !/[._-]{2}/.test(name);
 }
-
-type Fetch = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body?: string; redirect?: 'error' }
-) => Promise<{
-  status: number;
-  json(): Promise<unknown>;
-}>;
 
 export class GitLabClient {
   constructor(

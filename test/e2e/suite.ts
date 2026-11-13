@@ -1409,6 +1409,114 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('invite codes: Codeberg needs no question, and a Gitea server of your own gets Gitea calls', async () => {
+    const box = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-gitea-')));
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' }).trim();
+    // Codeberg's documented ed25519 host key, and a throwaway one standing in for the lab server's.
+    const codebergKey = 'AAAAC3NzaC1lZDI1NTE5AAAAIIVIC02vnjFyL+I4RHfvIGNtOgJMe769VTF1VR4EB3ZB';
+    const labKey = 'AAAAC3NzaC1lZDI1NTE5AAAAIIFgkwzRnszZU1AVKiUnTlzdOmYymkYRp9XWJfr0zia2';
+    const knownHostsFile = path.join(box, 'known_hosts');
+    fs.writeFileSync(knownHostsFile, `[git.lab-example.org]:2222 ssh-ed25519 ${labKey}\n`);
+    const gwenUrl = 'git@codeberg.org:gwen/paper.git';
+    const halUrl = 'ssh://git@git.lab-example.org:2222/hal/paper.git';
+    const calls: { method: string; url: string; auth?: string; token?: string; body: string }[] = [];
+    // Stand-in for the Gitea API (under /gt): Codeberg's and the lab's, as the client only sees its base.
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        calls.push({ method: req.method ?? '', url: req.url ?? '', auth: req.headers.authorization, token: req.headers['private-token'] as string | undefined, body });
+        const answers: Record<string, [number, unknown]> = {
+          'POST /gt/user/repos': [201, { full_name: 'hal/paper', ssh_url: halUrl, clone_url: 'https://git.lab-example.org/hal/paper.git' }],
+          'POST /gt/repos/gwen/paper/keys': [201, {}],
+          'POST /gt/repos/hal/paper/keys': [201, {}],
+        };
+        const [status, data] = answers[`${req.method} ${req.url}`] ?? [404, { message: 'Not Found' }];
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    process.env.OVERTEX_E2E_GITEA_API = `${api}/gt`;
+    process.env.OVERTEX_E2E_GITLAB_API = `${api}/gl`;
+    process.env.OVERTEX_E2E_KNOWN_HOSTS = knownHostsFile;
+    const mapTo = (work: string, bare: string, url: string) => git(work, 'config', '--add', `url.${bare}.insteadOf`, url);
+    try {
+      // Gwen keeps the project on Codeberg.
+      const gwenBare = path.join(box, 'gwen.git');
+      git(box, 'init', '--bare', gwenBare);
+      const gwen = path.join(box, 'gwen');
+      git(box, 'init', gwen);
+      fs.writeFileSync(path.join(gwen, 'main.tex'), 'from gwen\n');
+      git(gwen, 'add', '.');
+      git(gwen, 'commit', '-qm', 'Start');
+      git(gwen, 'push', '-q', gwenBare, 'HEAD:main');
+      git(gwen, 'remote', 'add', 'origin', gwenUrl);
+      mapTo(gwen, gwenBare, gwenUrl);
+
+      const invite = (await vscode.commands.executeCommand('overtex.createInviteCode', { uri: vscode.Uri.file(gwen), yes: true })) as string;
+      assert.match(invite ?? '', /^overtex-invite:/);
+      const inviteData = JSON.parse(Buffer.from(invite.slice('overtex-invite:'.length), 'base64url').toString());
+      assert.deepStrictEqual(
+        { v: inviteData.v, host: inviteData.host, port: inviteData.port, path: inviteData.path, hk: inviteData.hk },
+        { v: 2, host: 'codeberg.org', port: undefined, path: 'gwen/paper', hk: codebergKey },
+        "the code carries Codeberg's documented host key"
+      );
+      assert.strictEqual(calls.length, 0, 'Codeberg is known without asking it anything');
+
+      // Hal has no online copy yet and makes one on the lab's Gitea server while entering Gwen's invite.
+      const halBare = path.join(box, 'hal.git');
+      git(box, 'init', '--bare', halBare);
+      const hal = path.join(box, 'hal');
+      git(box, 'init', hal);
+      fs.writeFileSync(path.join(hal, 'notes.tex'), 'from hal\n');
+      git(hal, 'add', '.');
+      git(hal, 'commit', '-qm', 'Hal start');
+      mapTo(hal, halBare, halUrl);
+      const halAnswer = (await vscode.commands.executeCommand('overtex.enterInviteCode', {
+        uri: vscode.Uri.file(hal),
+        code: invite,
+        yes: true,
+        ssh: true,
+        server: 'https://git.lab-example.org',
+        forge: 'gitea',
+        repoName: 'paper',
+      })) as string;
+      assert.match(halAnswer ?? '', /^overtex-join:/);
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /gt/user/repos', 'POST /gt/repos/hal/paper/keys']);
+      assert.ok(calls.every((c) => c.auth === 'token e2e' && c.token === undefined), 'Gitea calls carry the token in the Authorization header only');
+      assert.strictEqual(JSON.parse(calls[0].body).private, true);
+      assert.strictEqual(JSON.parse(calls[1].body).read_only, true);
+      assert.strictEqual(git(hal, 'config', '--get', 'remote.origin.url'), halUrl);
+      assert.strictEqual(git(halBare, 'log', '-1', '--format=%s', 'main'), 'Hal start', "Hal's project went to the new copy");
+      const halData = JSON.parse(Buffer.from(halAnswer.slice('overtex-join:'.length), 'base64url').toString());
+      assert.deepStrictEqual(
+        { v: halData.v, host: halData.host, port: halData.port, path: halData.path, hk: halData.hk },
+        { v: 2, host: 'git.lab-example.org', port: 2222, path: 'hal/paper', hk: labKey }
+      );
+      // Gwen's copy is reached with the pinned Codeberg key.
+      const halAlias = git(hal, 'config', '--get', 'remote.coauthor-gwen.url');
+      const gwenHost = halAlias.slice(4, halAlias.indexOf(':'));
+      assert.ok(fs.readFileSync(path.join(hal, '.git', 'overtex', 'known_hosts'), 'utf8').includes(`${gwenHost} ssh-ed25519 ${codebergKey}\n`));
+
+      // Gwen enters Hal's answer: the deploy key goes to Codeberg's API, not GitLab's.
+      calls.length = 0;
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.enterInviteCode', { uri: vscode.Uri.file(gwen), code: halAnswer, yes: true }), 'coauthor-hal');
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /gt/repos/gwen/paper/keys']);
+      assert.strictEqual(calls[0].auth, 'token e2e');
+      assert.match(JSON.parse(calls[0].body).title, / [0-9a-f]{8}$/);
+    } finally {
+      delete process.env.OVERTEX_E2E_GITEA_API;
+      delete process.env.OVERTEX_E2E_GITLAB_API;
+      delete process.env.OVERTEX_E2E_KNOWN_HOSTS;
+      server.close();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      removeScratch(box);
+    }
+  });
+
   if (failed) {
     throw new Error(`${failed} end-to-end step(s) failed`);
   }
