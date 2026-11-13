@@ -2,7 +2,6 @@
 // they are unit tested with a fake fetch. The access token goes only into the Authorization header of
 // requests to the API base of the server it was entered for; it is never logged or put in a message.
 
-import { createHash } from 'crypto';
 import { CreatedProject, Fetch, ForgeError } from './forge';
 
 export const CODEBERG_WEB = 'https://codeberg.org';
@@ -26,6 +25,15 @@ function split(repoPath: string): [string, string] {
 /** "type base64" of an OpenSSH public key line, without its comment. */
 function keyBody(key: string): string {
   return key.trim().split(/\s+/).slice(0, 2).join(' ');
+}
+
+/** 8 hex digits telling keys apart in a title (FNV-1a; shared code has no Node crypto). Not a security check. */
+function keyTag(key: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    h = Math.imul(h ^ key.charCodeAt(i), 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
 }
 
 export class GiteaClient {
@@ -118,7 +126,7 @@ export class GiteaClient {
     const [owner, name] = split(repoPath);
     const base = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/keys`;
     // Gitea wants titles unique within a repository, so a later key from the same co-author gets its own.
-    const tag = createHash('sha256').update(keyBody(key)).digest('hex').slice(0, 8);
+    const tag = keyTag(keyBody(key));
     const { status, data } = await this.call('POST', base, { title: `${title.slice(0, 80)} ${tag}`, key, read_only: true });
     if (status === 201 || status === 200) {
       return 'added';
