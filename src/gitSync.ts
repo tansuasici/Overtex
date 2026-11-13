@@ -20,6 +20,8 @@ import {
   withIgnoreLines,
 } from './shared/gitSync';
 import { GitHubClient, GitHubError, normalizeUsername, parseGitHubRemote, repoNameFor, validRepoName, type GitHubRepo } from './shared/github';
+import { CreatedProject, ForgeError } from './shared/forge';
+import { CODEBERG_HOST_KEY, CODEBERG_WEB, GiteaClient } from './shared/gitea';
 import { GitLabClient, GitLabError, validProjectName } from './shared/gitlab';
 import { guessOwnHost, type HostEvidence, type HostGuess } from './ownHost';
 import {
@@ -74,8 +76,10 @@ export interface CodeArgs extends SyncArgs {
   repoName?: string;
   /** Where to make a new online copy, instead of working it out (tests). */
   host?: BuiltinHost;
-  /** A GitLab server of your own (its https address), instead of asking for it (tests). */
+  /** A Git server of your own (its https address), instead of asking for it (tests). */
   server?: string;
+  /** With server: what that server runs, and with yes, what an unknown server of your copy runs (tests). GitLab if not given. */
+  forge?: Forge;
   /** With host: reach a new GitLab copy over ssh rather than https (tests). */
   ssh?: boolean;
 }
@@ -95,11 +99,24 @@ class Refusal extends Error {}
 
 const GITLAB_TOKEN = 'overtex.gitlabToken';
 const GITLAB_WEB = 'https://gitlab.com';
-/** globalState: the GitLab servers of your own Overtex has used, as ServerRecord[]. */
+/** globalState: the Git servers of your own Overtex has used, as ServerRecord[]. */
 const SERVERS = 'overtex.gitServers';
 
-/** Where your own copy is kept: GitHub, or a GitLab server (gitlab.com or your own) by web address. */
-type Server = { kind: 'github' } | { kind: 'gitlab'; web: string };
+/** What a server other than GitHub runs. Forgejo (Codeberg's) answers like Gitea. */
+type Forge = 'gitlab' | 'gitea';
+
+/**
+ * Where your own copy is kept: GitHub, or a GitLab, Gitea or Forgejo server (gitlab.com, Codeberg or
+ * your own) by web address.
+ */
+type Server = { kind: 'github' } | { kind: Forge; web: string };
+
+/** The calls Overtex makes to a GitLab or Gitea server. */
+interface ForgeClient {
+  createPrivateProject(name: string): Promise<CreatedProject>;
+  getProject(projectPath: string): Promise<CreatedProject>;
+  addDeployKey(projectPath: string, title: string, key: string): Promise<'added' | 'already'>;
+}
 
 interface OwnCopy {
   /** How a co-author's Git reaches it: what goes into your codes. */
@@ -111,7 +128,7 @@ interface OwnCopy {
 interface ServerRecord {
   /** https origin (plus path, for a server under a sub-path), no trailing slash. */
   web: string;
-  kind: 'gitlab';
+  kind: Forge;
   /** The ssh address the server gives for its projects, which may differ from the web one. */
   sshHost: string;
   sshPort?: number;
@@ -122,7 +139,7 @@ interface ServerRecord {
 function isServerRecord(x: any): x is ServerRecord {
   return (
     !!x &&
-    x.kind === 'gitlab' &&
+    (x.kind === 'gitlab' || x.kind === 'gitea') &&
     typeof x.web === 'string' &&
     webOrigin(x.web) === x.web &&
     validHostname(x.sshHost) &&
@@ -130,6 +147,9 @@ function isServerRecord(x: any): x is ServerRecord {
     (x.hostKey === undefined || normalizeHostKey(x.hostKey) === x.hostKey)
   );
 }
+
+/** Codeberg, known without asking: its ssh host key is the one Codeberg documents. */
+const CODEBERG: ServerRecord = { web: CODEBERG_WEB, kind: 'gitea', sshHost: 'codeberg.org', hostKey: CODEBERG_HOST_KEY };
 
 /** Each server's token under its own name; gitlab.com keeps the name it always had. */
 function tokenKey(web: string): string {
@@ -517,42 +537,48 @@ class GitSync implements vscode.Disposable {
       await (await githubClient()).addDeployKey({ owner, name }, title, key);
       return;
     }
-    await this.withGitLab(own.server.web, 'To give your co-author read access', (gl) => gl.addDeployKey(own.repo.path, title, key));
+    await this.withForge(own.server, 'To give your co-author read access', (c) => c.addDeployKey(own.repo.path, title, key));
   }
 
-  /** Runs GitLab calls; a token the server rejects is forgotten, so the next try asks for a new one. */
-  private async withGitLab<T>(web: string, purpose: string, fn: (gl: GitLabClient) => Promise<T>): Promise<T> {
-    const gl = await this.gitlabClient(web, purpose);
+  /** Runs a server's calls; a token the server rejects is forgotten, so the next try asks for a new one. */
+  private async withForge<T>(server: { kind: Forge; web: string }, purpose: string, fn: (c: ForgeClient) => Promise<T>): Promise<T> {
+    const client = await this.forgeClient(server, purpose);
     try {
-      return await fn(gl);
+      return await fn(client);
     } catch (err) {
-      if (err instanceof GitLabError && err.status === 401) {
-        await this.context.secrets.delete(tokenKey(web));
+      if (err instanceof ForgeError && err.status === 401) {
+        await this.context.secrets.delete(tokenKey(server.web));
       }
       throw err;
     }
   }
 
   /**
-   * A client for the GitLab server at `web` (gitlab.com or your own), with that server's access token
-   * kept in VS Code's secret storage (asked for once). A token only ever goes to the server it was given
-   * for; `web` comes from your own remote or what you typed, never from a co-author's code. Under the
-   * end-to-end tests only, OVERTEX_E2E_GITLAB_API points every server at a local fake.
+   * A client for the GitLab or Gitea server at `web` (gitlab.com, Codeberg or your own), with that
+   * server's access token kept in VS Code's secret storage (asked for once). A token only ever goes to
+   * the server it was given for; `web` comes from your own remote or what you typed, never from a
+   * co-author's code. Under the end-to-end tests only, OVERTEX_E2E_GITLAB_API and OVERTEX_E2E_GITEA_API
+   * point every server of that kind at a local fake.
    */
-  private async gitlabClient(web: string, purpose: string): Promise<GitLabClient> {
-    const fake = process.env.OVERTEX_E2E && process.env.OVERTEX_E2E_GITLAB_API;
+  private async forgeClient({ kind, web }: { kind: Forge; web: string }, purpose: string): Promise<ForgeClient> {
+    const make = (token: string, base?: string): ForgeClient =>
+      kind === 'gitlab' ? new GitLabClient(token, fetch, base ?? `${web}/api/v4`) : new GiteaClient(token, fetch, base ?? `${web}/api/v1`);
+    const fake = process.env.OVERTEX_E2E && (kind === 'gitlab' ? process.env.OVERTEX_E2E_GITLAB_API : process.env.OVERTEX_E2E_GITEA_API);
     if (fake) {
-      return new GitLabClient('e2e', fetch, fake);
+      return make('e2e', fake);
     }
     const key = tokenKey(web);
-    const site = web === GITLAB_WEB ? 'GitLab' : new URL(web).host;
+    const site = serverName({ kind, web });
+    const how =
+      kind === 'gitlab'
+        ? 'with the "api" scope (GitLab: Preferences > Access tokens)'
+        : 'with "repository" and "user" set to Read and Write (Settings > Applications > Generate New Token)';
     let token = await this.context.secrets.get(key);
     if (!token) {
       token = (
         await vscode.window.showInputBox({
           title: `Access token for ${site}`,
-          prompt:
-            `${purpose}, Overtex needs a personal access token for ${web} with the "api" scope (GitLab: Preferences > Access tokens). It is sent only to ${site}, and VS Code keeps it in its secret storage.`,
+          prompt: `${purpose}, Overtex needs an access token for ${web} ${how}. It is sent only to ${site}, and VS Code keeps it in its secret storage.`,
           password: true,
           ignoreFocusOut: true,
         })
@@ -562,22 +588,29 @@ class GitSync implements vscode.Disposable {
       }
       await this.context.secrets.store(key, token);
     }
-    return new GitLabClient(token, fetch, `${web}/api/v4`);
+    return make(token);
   }
 
-  /** The Git servers of your own you told Overtex about (never a secret: addresses and host keys). */
+  /** The Git servers of your own you told Overtex about (never a secret: addresses and host keys), and Codeberg. */
   private servers(): ServerRecord[] {
+    return [CODEBERG, ...this.savedServers()];
+  }
+
+  private savedServers(): ServerRecord[] {
     const list = this.context.globalState.get<unknown[]>(SERVERS);
-    return (Array.isArray(list) ? list : []).filter(isServerRecord);
+    return (Array.isArray(list) ? list : []).filter(isServerRecord).filter((s) => s.web !== CODEBERG_WEB);
   }
 
   private async saveServer(rec: ServerRecord): Promise<void> {
-    await this.context.globalState.update(SERVERS, [...this.servers().filter((s) => s.web !== rec.web), rec]);
+    if (rec.web === CODEBERG_WEB) {
+      return;
+    }
+    await this.context.globalState.update(SERVERS, [...this.savedServers().filter((s) => s.web !== rec.web), rec]);
   }
 
   /**
-   * Your own copy and the server it is on: GitHub, gitlab.com, or a GitLab server of your own (which
-   * Overtex asks about the first time). undefined: the project has no copy Overtex can use.
+   * Your own copy and the server it is on: GitHub, gitlab.com, Codeberg, or a GitLab, Gitea or Forgejo
+   * server of your own (which Overtex asks about the first time). undefined: the project has no copy Overtex can use.
    */
   private async ownCopy(repo: Repository, args: CodeArgs): Promise<OwnCopy | undefined> {
     const remote = ownRemote(repo);
@@ -591,43 +624,47 @@ class GitSync implements vscode.Disposable {
     const where = r.port ? `${r.host}:${r.port}` : r.host;
     let rec = this.servers().find((s) => (r.ssh ? s.sshHost === r.host && (s.sshPort ?? 22) === (r.port ?? 22) : new URL(s.web).host === where));
     if (!rec) {
-      const ok =
-        args.yes ||
-        (await vscode.window.showInformationMessage(
-          `Your copy ${r.path} is on ${r.host}, which Overtex does not know yet. Is it a GitLab server (your university's or company's, say)?`,
-          { modal: true },
-          'It Is GitLab',
-          'Make a New Copy'
-        ));
+      const gitea = 'Gitea or Forgejo';
+      const ok = args.yes
+        ? args.forge ?? 'gitlab'
+        : await vscode.window.showInformationMessage(
+            `Your copy ${r.path} is on ${r.host}, which Overtex does not know yet. Is it a GitLab, Gitea or Forgejo server (your university's or company's, say)?`,
+            { modal: true },
+            'GitLab',
+            gitea,
+            'Make a New Copy'
+          );
       if (!ok) {
         throw new Stop();
       }
       if (ok === 'Make a New Copy') {
         return undefined;
       }
-      const web = args.server ? webOrigin(args.server) : await this.askServer(r.ssh ? `https://${r.host}` : `https://${where}`);
+      const kind: Forge = ok === gitea || ok === 'gitea' ? 'gitea' : 'gitlab';
+      const web = args.server ? webOrigin(args.server) : await this.askServer(kind, r.ssh ? `https://${r.host}` : `https://${where}`);
       if (!web || (!r.ssh && (new URL(web).host !== where || !serverPath(web, r.path)))) {
         throw new Refusal(`your copy's address ${r.host}${r.ssh ? '' : '/' + r.path} is not on ${web ?? 'that server'}.`);
       }
-      const project = await this.withGitLab(web, `To use your copy on ${r.host}`, (gl) => gl.getProject((r.ssh ? r.path : serverPath(web, r.path)) ?? r.path));
-      rec = await this.recordServer(web, project.sshUrl, project.path);
+      const project = await this.withForge({ kind, web }, `To use your copy on ${r.host}`, (c) => c.getProject((r.ssh ? r.path : serverPath(web, r.path)) ?? r.path));
+      rec = await this.recordServer(web, kind, project.sshUrl, project.path);
     }
     const repoPath = r.ssh ? r.path : serverPath(rec.web, r.path);
     if (!repoPath) {
       return undefined;
     }
     const hostKey = rec.hostKey ?? (await this.learnHostKey(rec));
-    return { repo: { host: rec.sshHost, ...(rec.sshPort ? { port: rec.sshPort } : {}), path: repoPath, hostKey }, server: { kind: 'gitlab', web: rec.web } };
+    return { repo: { host: rec.sshHost, ...(rec.sshPort ? { port: rec.sshPort } : {}), path: repoPath, hostKey }, server: { kind: rec.kind, web: rec.web } };
   }
 
-  /** Asks for a GitLab server's web address (https only). */
-  private async askServer(value: string): Promise<string> {
+  /** Asks for a GitLab or Gitea server's web address (https only). */
+  private async askServer(kind: Forge, value: string): Promise<string> {
+    const example = kind === 'gitlab' ? 'https://gitlab.example.edu' : 'https://git.example.edu';
     const text = await vscode.window.showInputBox({
-      title: 'Your GitLab server',
-      prompt: 'The web address you open your GitLab projects at, for example https://gitlab.example.edu.',
+      title: kind === 'gitlab' ? 'Your GitLab server' : 'Your Gitea or Forgejo server',
+      prompt: `The web address you open your ${kind === 'gitlab' ? 'projects' : 'repositories'} at, for example ${example}.`,
       value,
       ignoreFocusOut: true,
-      validateInput: (v) => (webOrigin(v) ? undefined : 'Use an https:// address, such as https://gitlab.example.edu.'),
+      validateInput: (v) => (webOrigin(v) ? undefined : `Use an https:// address, such as ${example}.`),
     });
     const web = text && webOrigin(text);
     if (!web) {
@@ -636,15 +673,22 @@ class GitSync implements vscode.Disposable {
     return web;
   }
 
-  /** Remembers a GitLab server with the ssh address it gives for one of its projects. */
-  private async recordServer(web: string, sshUrl: string, projectPath: string): Promise<ServerRecord> {
+  /** Remembers a server with the ssh address it gives for one of its projects. */
+  private async recordServer(web: string, kind: Forge, sshUrl: string, projectPath: string): Promise<ServerRecord> {
     const ssh = parseRemote(sshUrl);
     if (!ssh?.ssh || ssh.path.toLowerCase() !== projectPath.toLowerCase()) {
       throw new Refusal(`${new URL(web).host} gave an ssh address Overtex does not recognise for ${projectPath}.`);
     }
+    if (web === CODEBERG_WEB) {
+      // Its address and host key are known: only the ones Codeberg documents are used.
+      if (ssh.host !== CODEBERG.sshHost || (ssh.port ?? 22) !== 22) {
+        throw new Refusal(`Codeberg gave an ssh address Overtex does not recognise for ${projectPath}.`);
+      }
+      return CODEBERG;
+    }
     const old = this.servers().find((s) => s.web === web);
     const same = old && old.sshHost === ssh.host && old.sshPort === ssh.port;
-    const rec: ServerRecord = { web, kind: 'gitlab', sshHost: ssh.host, ...(ssh.port ? { sshPort: ssh.port } : {}), ...(same && old.hostKey ? { hostKey: old.hostKey } : {}) };
+    const rec: ServerRecord = { web, kind, sshHost: ssh.host, ...(ssh.port ? { sshPort: ssh.port } : {}), ...(same && old.hostKey ? { hostKey: old.hostKey } : {}) };
     await this.saveServer(rec);
     return rec;
   }
@@ -724,20 +768,20 @@ class GitSync implements vscode.Disposable {
   }
 
   /**
-   * Makes the project's own online copy where you keep your other projects (GitHub, GitLab, or a
-   * GitLab server of your own; see ownHost.ts). Asks which only when nothing on this computer points
+   * Makes the project's own online copy where you keep your other projects (GitHub, GitLab, or another
+   * server you pick: Codeberg or a GitLab, Gitea or Forgejo server of your own; see ownHost.ts). Asks which only when nothing on this computer points
    * either way.
    */
   private async makeOwnCopy(repo: Repository, branch: string, args: CodeArgs, lead: string): Promise<OwnCopy> {
     if (args.server) {
       const web = webOrigin(args.server);
       if (!web) {
-        throw new Refusal('that is not an https address of a GitLab server.');
+        throw new Refusal('that is not an https address of a Git server.');
       }
-      return this.publish(repo, branch, { kind: 'gitlab', web }, args.ssh, args);
+      return this.publish(repo, branch, { kind: args.forge ?? 'gitlab', web }, args.ssh, args);
     }
     const builtin = (host: BuiltinHost): Server => (host === 'github.com' ? { kind: 'github' } : { kind: 'gitlab', web: GITLAB_WEB });
-    const other = 'Other GitLab Server…';
+    const other = 'Other Server…';
     const guess: HostGuess = args.host ? { host: args.host, ssh: args.ssh, why: '' } : guessOwnHost(await this.hostEvidence(repo));
     let host = guess.host;
     if (!host) {
@@ -754,7 +798,7 @@ class GitSync implements vscode.Disposable {
         throw new Stop();
       }
       if (picked === other) {
-        return this.publish(repo, branch, { kind: 'gitlab', web: await this.askServer('https://') }, undefined, args);
+        return this.publish(repo, branch, await this.otherServer(), undefined, args);
       }
       host = picked === 'GitLab' ? 'gitlab.com' : 'github.com';
     } else if (!args.yes) {
@@ -773,12 +817,28 @@ class GitSync implements vscode.Disposable {
         throw new Stop();
       }
       if (picked === other) {
-        return this.publish(repo, branch, { kind: 'gitlab', web: await this.askServer('https://') }, undefined, args);
+        return this.publish(repo, branch, await this.otherServer(), undefined, args);
       }
       host = picked === instead ? second : host;
     }
     // The guess says how you reach that host only if it is the host you kept.
     return this.publish(repo, branch, builtin(host), host === guess.host ? guess.ssh : undefined, args);
+  }
+
+  /** Codeberg, or a GitLab, Gitea or Forgejo server of your own. */
+  private async otherServer(): Promise<Server> {
+    const picked = await vscode.window.showQuickPick(
+      [
+        { label: 'Codeberg', description: 'codeberg.org', forge: 'codeberg' as const },
+        { label: 'A GitLab server of your own', description: "your university's or company's, say", forge: 'gitlab' as const },
+        { label: 'A Gitea or Forgejo server of your own', forge: 'gitea' as const },
+      ],
+      { title: 'Where should Overtex make a private copy?', ignoreFocusOut: true }
+    );
+    if (!picked) {
+      throw new Stop();
+    }
+    return picked.forge === 'codeberg' ? { kind: 'gitea', web: CODEBERG_WEB } : { kind: picked.forge, web: await this.askServer(picked.forge, 'https://') };
   }
 
   /** What this computer shows about where you keep projects. Reads no secret and makes no network call. */
@@ -809,7 +869,7 @@ class GitSync implements vscode.Disposable {
     };
   }
 
-  /** Makes a private repository (GitHub) or project (GitLab) for the project and sends the project there. */
+  /** Makes a private repository (GitHub, Gitea) or project (GitLab) for the project and sends the project there. */
   private async publish(repo: Repository, branch: string, target: Server, ssh: boolean | undefined, args: InviteArgs): Promise<OwnCopy> {
     const site = serverName(target);
     const valid = target.kind === 'github' ? validRepoName : validProjectName;
@@ -821,7 +881,7 @@ class GitSync implements vscode.Disposable {
         args.repoName ??
         (await vscode.window.showInputBox({
           title: `Put this project on ${site}`,
-          prompt: `Overtex makes a private ${target.kind === 'github' ? 'repository' : 'project'} under your ${site} account. Only people you let in can see it.${moving}`,
+          prompt: `Overtex makes a private ${target.kind === 'gitlab' ? 'project' : 'repository'} under your ${site} account. Only people you let in can see it.${moving}`,
           value: suggested,
           ignoreFocusOut: true,
           validateInput: (v) => (valid(v.trim()) ? undefined : 'Use letters, numbers, dots, dashes and underscores, starting and ending with a letter or number.'),
@@ -838,14 +898,14 @@ class GitSync implements vscode.Disposable {
           made = { host: 'github.com', path: `${created.owner}/${created.name}` };
           url = created.cloneUrl;
         } else {
-          const created = await this.withGitLab(target.web, `To make your copy on ${site}`, (gl) => gl.createPrivateProject(name.trim()));
-          if (target.web === GITLAB_WEB) {
+          const created = await this.withForge(target, `To make your copy on ${site}`, (c) => c.createPrivateProject(name.trim()));
+          if (target.kind === 'gitlab' && target.web === GITLAB_WEB) {
             made = { host: 'gitlab.com', path: created.path };
           } else {
-            rec = await this.recordServer(target.web, created.sshUrl, created.path);
+            rec = await this.recordServer(target.web, target.kind, created.sshUrl, created.path);
             made = { host: rec.sshHost, ...(rec.sshPort ? { port: rec.sshPort } : {}), path: created.path };
           }
-          // The way you reach GitLab from your other projects. With nothing to go on, ssh if your own keys
+          // The way you reach the server from your other projects. With nothing to go on, ssh if your own keys
           // get in, else https. The token is never put in the URL.
           const viaSsh = ssh ?? (await this.sshGetsIn(repo, created.sshUrl));
           url = viaSsh ? created.sshUrl : created.httpUrl;
@@ -855,7 +915,7 @@ class GitSync implements vscode.Disposable {
             throw new Refusal(`${site} gave an address Overtex does not recognise for ${made.path}.`);
           }
         }
-        const remote = repo.state.remotes.some((r) => r.name === 'origin') ? (target.kind === 'github' ? 'github' : 'gitlab') : 'origin';
+        const remote = repo.state.remotes.some((r) => r.name === 'origin') ? remoteName(target) : 'origin';
         await this.git(repo, ['remote', 'add', remote, url]);
         try {
           await repo.status();
@@ -880,7 +940,7 @@ class GitSync implements vscode.Disposable {
         }
         return { repo: made, server: target };
       } catch (err) {
-        const taken = (err instanceof GitHubError && err.status === 422) || (err instanceof GitLabError && err.status === 409);
+        const taken = (err instanceof GitHubError && err.status === 422) || (err instanceof ForgeError && err.status === 409);
         if (taken && args.repoName === undefined) {
           void vscode.window.showWarningMessage(`Overtex: ${err.message}`);
           suggested = `${name.trim()}-2`;
@@ -936,8 +996,8 @@ class GitSync implements vscode.Disposable {
       }
       await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Overtex: ${title}…` }, () => flow(repo, branch));
     } catch (err) {
-      if (err instanceof GitHubError || err instanceof GitLabError) {
-        this.deps.log(`${title} failed: ${err instanceof GitHubError ? 'GitHub' : 'GitLab'} ${err.status}\n`);
+      if (err instanceof GitHubError || err instanceof ForgeError) {
+        this.deps.log(`${title} failed: ${err instanceof GitHubError ? 'GitHub' : err instanceof GitLabError ? 'GitLab' : 'Gitea'} ${err.status}\n`);
         void vscode.window.showErrorMessage(`Overtex: ${err.message}`);
       } else if (err instanceof Refusal) {
         void vscode.window.showWarningMessage(`Overtex: ${err.message}`);
@@ -1219,7 +1279,15 @@ function hostName(host: Host): string {
 }
 
 function serverName(server: Server): string {
-  return server.kind === 'github' ? 'GitHub' : server.web === GITLAB_WEB ? 'GitLab' : new URL(server.web).host;
+  if (server.kind === 'github') {
+    return 'GitHub';
+  }
+  return server.web === GITLAB_WEB ? 'GitLab' : server.web === CODEBERG_WEB ? 'Codeberg' : new URL(server.web).host;
+}
+
+/** The remote a new copy is added as, when the project already has an origin. */
+function remoteName(server: Server): string {
+  return server.kind === 'gitea' ? (server.web === CODEBERG_WEB ? 'codeberg' : 'gitea') : server.kind;
 }
 
 interface KeyMeta {
