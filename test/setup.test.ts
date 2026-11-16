@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SetupInput, checkSetup, formatReport, setupOptions, standardTexDirs, texInstallHint } from '../src/latex/setup';
+import { SetupInput, checkSetup, formatReport, setupOptions, standardTexDirs, texInstallHint, withTexDirs } from '../src/latex/setup';
 
 function input(files: string[], overrides: Partial<SetupInput> = {}): SetupInput {
   const set = new Set(files);
@@ -128,6 +128,28 @@ describe('standardTexDirs', () => {
       '/usr/local/texlive/2025/bin/x86_64-linux',
       '/usr/local/texlive/2023/bin/x86_64-linux',
     ]);
+  });
+});
+
+describe('withTexDirs', () => {
+  it('adds TeX folders after PATH so the user\'s own tools still win', () => {
+    const env = withTexDirs({ PATH: '/usr/bin:/bin', HOME: '/h' }, 'darwin', ['/Library/TeX/texbin']);
+    expect(env.PATH).toBe('/usr/bin:/bin:/Library/TeX/texbin');
+    expect(env.HOME).toBe('/h');
+  });
+
+  it('leaves PATH alone when the folders are already on it', () => {
+    const env = { PATH: '/Library/TeX/texbin:/usr/bin' };
+    expect(withTexDirs(env, 'darwin', ['/Library/TeX/texbin'])).toBe(env);
+  });
+
+  it('sets PATH when there is none', () => {
+    expect(withTexDirs({}, 'linux', ['/usr/local/texlive/2025/bin/x86_64-linux']).PATH).toBe('/usr/local/texlive/2025/bin/x86_64-linux');
+  });
+
+  it('keeps Windows\' Path key and compares folders without case', () => {
+    const env = withTexDirs({ Path: 'C:\\Windows;c:\\texlive\\2025\\bin\\windows' }, 'win32', ['C:\\texlive\\2025\\bin\\windows', 'C:\\MiKTeX\\bin']);
+    expect(env).toEqual({ Path: 'C:\\Windows;c:\\texlive\\2025\\bin\\windows;C:\\MiKTeX\\bin' });
   });
 });
 
