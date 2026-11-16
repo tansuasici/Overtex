@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { parseAux } from './auxFile';
 import { LogEntry, parseLog, parseTectonicLog } from './logParser';
+import { linenoLogWarning } from './doctor';
 import { withEngineHint } from './engineHint';
 import { DEFAULT_LOOP_LIMITS, DEFAULT_STALL_TIMEOUT_SECONDS, LoopLimits, LoopWatch, loopMessage, silenceMessage } from './stall';
 
@@ -394,6 +395,10 @@ export class Builder {
             const log = fs.readFileSync(out.log, 'utf-8');
             entries = settings.tool === 'tectonic' ? parseTectonicLog(log, cwd) : parseLog(log, cwd);
             entries = withEngineHint(entries, log, settings.tool, settings.engine);
+            const lineno = linenoLogWarning(log);
+            if (lineno) {
+              entries = [...entries, { severity: 'warning', message: lineno, file: mainFile, line: 0 }];
+            }
             logRead = true;
           } catch {
             // No log: the tool failed before TeX ran.

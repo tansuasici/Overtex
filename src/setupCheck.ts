@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
+import * as cp from 'child_process';
 import * as fs from 'fs';
+import * as path from 'path';
 
 import { buildSettings, settings } from './config';
 import { BuildTool, toolPathSetting } from './latex/builder';
+import { DoctorReport, diagnose, formatDoctor, installCommand } from './latex/doctor';
 import { findExecutable } from './latex/executable';
 import { SetupOption, SetupReport, TEXLAB_INSTALL_URL, checkSetup, formatReport, setupOptions } from './latex/setup';
 import { TEXLAB_EXTENSION_ID } from './latex/texlabConfig';
@@ -63,7 +66,101 @@ export function checkSetupCommand(output: vscode.OutputChannel): SetupReport {
   const report = inspectSetup();
   output.append(formatReport(report, process.platform));
   void notify(report, output);
+  void checkProjectPackages(report, output);
   return report;
+}
+
+let projectMain: (() => string | null) | undefined;
+
+/** How the setup check finds the project whose packages it looks up. */
+export function useMainFile(find: () => string | null): void {
+  projectMain = find;
+}
+
+function readText(file: string): string | undefined {
+  try {
+    return fs.readFileSync(file, 'utf-8');
+  } catch {
+    return undefined;
+  }
+}
+
+/** kpsewhich from the TeX that builds: next to latexmk first, else on PATH. */
+function kpsewhichFor(report: SetupReport): string | undefined {
+  const latexmk = report.tools.find((t) => t.name === 'latexmk')?.resolved;
+  if (latexmk) {
+    const beside = path.join(path.dirname(latexmk), process.platform === 'win32' ? 'kpsewhich.exe' : 'kpsewhich');
+    if (isFile(beside)) {
+      return beside;
+    }
+  }
+  return findExecutable('kpsewhich', process.env, process.platform, isFile);
+}
+
+/** Runs kpsewhich; it exits 1 when a name is missing, so its output counts whatever the exit code. */
+function kpsewhich(command: string, args: string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    cp.execFile(command, args, { cwd, timeout: 20000, windowsHide: true, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      if (err && (typeof err.code === 'string' || err.killed)) {
+        reject(err);
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+}
+
+/**
+ * The TeX doctor: are the packages, classes and Times fonts the project loads installed, and is lineno
+ * a fixed version. Only for latexmk, since Tectonic fetches packages itself and Docker images bring their
+ * own TeX. Looks things up; installs nothing.
+ */
+async function checkProjectPackages(report: SetupReport, output: vscode.OutputChannel): Promise<DoctorReport | undefined> {
+  const main = projectMain?.();
+  const command = report.tool === 'latexmk' && report.canBuild ? kpsewhichFor(report) : undefined;
+  if (!main || !command) {
+    return undefined;
+  }
+  const cwd = path.dirname(main);
+  let doctor: DoctorReport;
+  try {
+    // MiKTeX may install a missing package when asked for it; this check should not, so it leaves MiKTeX alone.
+    if (/miktex/i.test(await kpsewhich(command, ['--version'], cwd))) {
+      output.append('Packages: not checked, since MiKTeX manages them (MiKTeX Console > Packages).\n');
+      return undefined;
+    }
+    doctor = await diagnose({
+      mainFile: main,
+      engine: buildSettings().engine,
+      read: readText,
+      lookup: async (names) => (await kpsewhich(command, names, cwd)).split(/\r?\n/).filter((l) => l.trim()),
+    });
+  } catch {
+    output.append('Packages: not checked, since kpsewhich did not run.\n');
+    return undefined;
+  }
+  output.append(formatDoctor(doctor, main, process.platform));
+  const missing = doctor.findings.filter((f) => f.severity === 'error').length;
+  const warnings = doctor.findings.length - missing;
+  if (!doctor.findings.length) {
+    return doctor;
+  }
+  const install = installCommand(doctor.install, process.platform);
+  const showDetails = 'Show Details';
+  const typeIt = 'Install in Terminal…';
+  const message = missing
+    ? `Overtex: ${missing} package${missing === 1 ? '' : 's'} that ${path.basename(main)} loads ${missing === 1 ? 'is' : 'are'} not installed.`
+    : `Overtex: ${warnings} possible problem${warnings === 1 ? '' : 's'} with the TeX packages for ${path.basename(main)}.`;
+  const choice = await vscode.window.showWarningMessage(message, ...(install ? [typeIt, showDetails] : [showDetails]));
+  if (choice === typeIt && install) {
+    // Typed, not run: pressing Enter in the terminal is the user's go-ahead.
+    const terminal = vscode.window.createTerminal({ name: 'Overtex Setup' });
+    terminal.show();
+    terminal.sendText(install, false);
+  } else if (choice === showDetails) {
+    output.show(true);
+  }
+  return doctor;
 }
 
 async function notify(report: SetupReport, output: vscode.OutputChannel): Promise<void> {

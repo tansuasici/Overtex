@@ -23,7 +23,7 @@ import { findWord } from './shared/clickedWord';
 import type { ClickedWord } from './shared/clickedWord';
 import { PdfPanel } from './viewer/pdfPanel';
 import { notesFilePath } from './shared/notes';
-import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough } from './setupCheck';
+import { checkSetupCommand, nudgeIfSetupMissing, openWalkthrough, useMainFile } from './setupCheck';
 import { TEMPLATES, placeTemplate } from './latex/templates';
 import { addCitation } from './addCitation';
 import { citeFromZotero } from './citeFromZotero';
@@ -155,6 +155,8 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
       active,
     });
   }
+
+  useMainFile(mainFile);
 
   function pdfFor(main: string): string {
     return outputPaths(main, buildSettings().outDir).pdf;
