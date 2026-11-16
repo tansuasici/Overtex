@@ -145,10 +145,13 @@ describe('lineno versions', () => {
   });
 
   it('reads the build log', () => {
-    const log = (kernel: string, lineno: string) => `LaTeX2e <${kernel}>\nL3 programming layer <2026-01-01>\n(lineno.sty\nPackage: lineno ${lineno} line numbers on paragraphs\n)\n`;
+    // The shape of a real log (TeX Live 2025): the version comes last on lineno's line.
+    const log = (kernel: string, lineno: string) =>
+      `LaTeX2e <${kernel}> patch level 2\nL3 programming layer <2026-01-01>\n(lineno.sty\nPackage: lineno ${lineno.replace(/ (v[\d.]+)$/, ' line numbers on paragraphs $1')}\n)\n`;
     expect(linenoLogWarning(log('2026-06-01', '2026/02/16 v5.7'))).toContain('tlmgr update lineno');
     expect(linenoLogWarning(log('2026-06-01', '2026/03/08 v5.9'))).toBeUndefined();
     expect(linenoLogWarning(log('2025-02-01', '2026/02/16 v5.7'))).toBeUndefined();
+    expect(linenoLogWarning('LaTeX2e <2024-11-01> patch level 2\nPackage: lineno 2025/01/29 line numbers on paragraphs v5.4\n')).toBeUndefined();
     expect(linenoLogWarning('LaTeX2e <2026-06-01>\nPackage: amsmath 2025/07/09 v2.17z AMS math features\n')).toBeUndefined();
   });
 });

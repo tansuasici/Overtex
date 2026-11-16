@@ -162,7 +162,8 @@ const LINENO_ADVICE =
 
 /** The same check from a build's log, which names the lineno and kernel that actually ran. */
 export function linenoLogWarning(log: string): string | undefined {
-  const pkg = /^Package: lineno \d{4}\/\d\d\/\d\d\s+v(\d+(?:\.\d+)*)\b/m.exec(log);
+  // lineno puts its version last: "Package: lineno 2025/01/29 line numbers on paragraphs v5.4".
+  const pkg = /^Package: lineno \d{4}\/\d\d\/\d\d\b.*?\bv(\d+(?:\.\d+)*)\s*$/m.exec(log);
   const kernel = /^LaTeX2e <(\d{4})-(\d\d)-\d\d>/m.exec(log);
   if (!pkg || !kernel) {
     return undefined;

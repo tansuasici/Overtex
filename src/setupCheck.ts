@@ -66,7 +66,7 @@ export function checkSetupCommand(output: vscode.OutputChannel): SetupReport {
   const report = inspectSetup();
   output.append(formatReport(report, process.platform));
   void notify(report, output);
-  void checkProjectPackages(report, output);
+  void checkProjectPackages(report, output).catch(() => undefined);
   return report;
 }
 
