@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 (2026-11-16)
 
 - **Check LaTeX Installation** now checks the project too: it looks up each package and class the main file and its `\input` files load, and those a template's `.cls` or `.sty` in the project asks for, with `kpsewhich`, and names the missing ones with the file and line that load them. It checks the Times font metrics for `times`, `mathptmx` and `newtxtext` under pdfLaTeX, and warns when lineno 5.7 is installed on LaTeX from June 2025 on, where it draws two-column line numbers over the text. **Install in Terminal…** types the `tlmgr install` command; nothing is installed without you. Builds whose log shows that lineno also warn about it. Only for latexmk builds with TeX Live or MacTeX.
 - **Share Changes** and **Get Changes**: share your work with co-authors from the command palette or the status bar, without git commands. Share saves all your edits as one version (with an optional description, "Update" by default), gets your co-authors' versions from every remote, and sends the result to your own remote only, so co-authors on GitHub and GitLab can each keep their own copy. A status bar item shows versions to get and send. Build files can be added to `.gitignore` in one click, and a conflict stops the share and opens the file with both versions marked.
