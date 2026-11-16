@@ -51,6 +51,8 @@ Overleaf Connect is not part of the profile. Install it into the profile yoursel
 
 **Overtex: Getting Started** walks through the same steps on the Welcome page.
 
+New to LaTeX? The [documentation](docs/README.md) starts with a step-by-step [tutorial](docs/tutorial/README.md) that takes you from installing TeX to a paper ready to submit, and has a guide for every feature.
+
 ## Features
 
 - **Build** with latexmk using pdfLaTeX, XeLaTeX or LuaLaTeX. BibTeX/Biber passes run automatically. Builds run on save, and a build requested while another is running is queued, not started in parallel. A build that prints nothing for five minutes, or keeps printing the same lines, is stopped, and Overtex says why. When a XeLaTeX, LuaLaTeX or Tectonic build fails on a pdfTeX-only command such as `\pdfoutput`, the error suggests building with pdfLaTeX.
