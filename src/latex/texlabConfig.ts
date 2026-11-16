@@ -60,3 +60,17 @@ const BUILD_LOG_SOURCE = 'latex';
 export function withoutBuildLogDiagnostics<T extends { source?: string }>(diagnostics: readonly T[]): T[] {
   return diagnostics.filter((d) => d.source !== BUILD_LOG_SOURCE);
 }
+
+/**
+ * Characters VS Code percent-encodes in a file URI but texlab writes literally when it builds
+ * URIs for `\bibliography`, `\input` and the like. Sent encoded, the same folder gets two
+ * spellings, texlab does not link the files, and every citation shows as undefined
+ * (for example in Google Drive's Turkish "Drive'ım" folder). `[` and `]` are left out: texlab
+ * fails on those either way. `:` is left out so Windows drive letters keep VS Code's form.
+ */
+const LITERAL_IN_TEXLAB = /%(21|24|26|27|28|29|2A|2B|2C|3B|3D|40)/gi;
+
+/** A file URI spelled the way texlab spells it, so both sides name a file the same way. */
+export function texlabUri(uri: string): string {
+  return uri.startsWith('file:') ? uri.replace(LITERAL_IN_TEXLAB, (m) => decodeURIComponent(m)) : uri;
+}
