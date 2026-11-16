@@ -273,6 +273,39 @@ export function installCommand(packages: readonly string[], platform: NodeJS.Pla
   return `${platform === 'darwin' ? 'sudo ' : ''}tlmgr install ${packages.join(' ')}`;
 }
 
+/**
+ * The one-line notification for a report with findings. It counts what is surely missing apart from
+ * what may only be needed in some cases, and says how many packages the install command covers, so
+ * the numbers in the message and in the command agree.
+ */
+export function doctorMessage(report: DoctorReport, mainName: string): string {
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const missing = report.findings.filter((f) => f.severity === 'error').length;
+  const maybe = report.findings.filter((f) => f.severity === 'warning' && f.install).length;
+  const other = report.findings.length - missing - maybe;
+  const parts: string[] = [];
+  if (missing) {
+    parts.push(`${plural(missing, 'package')} that ${mainName} loads ${missing === 1 ? 'is' : 'are'} not installed`);
+  }
+  if (maybe) {
+    parts.push(
+      missing
+        ? `${maybe} more may be needed`
+        : `${plural(maybe, 'package')} that ${mainName} may need ${maybe === 1 ? 'is' : 'are'} not installed`
+    );
+  }
+  if (other) {
+    parts.push(
+      parts.length ? `${plural(other, 'other possible problem')}` : `${plural(other, 'possible problem')} with the TeX packages for ${mainName}`
+    );
+  }
+  let message = `Overtex: ${parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]}.`;
+  if (report.install.length > 1 && report.install.length !== missing) {
+    message += ` Install in Terminal… types one command for ${report.install.length === 2 ? 'both' : `all ${report.install.length}`}.`;
+  }
+  return message;
+}
+
 /** The report as plain text for the output channel. */
 export function formatDoctor(report: DoctorReport, main: string, platform: NodeJS.Platform): string {
   const lines = [`Packages for ${path.basename(main)}: ${report.checked} looked up.`];

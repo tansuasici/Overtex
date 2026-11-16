@@ -5,7 +5,7 @@ import * as path from 'path';
 
 import { buildSettings, settings } from './config';
 import { BuildTool, toolPathSetting } from './latex/builder';
-import { DoctorReport, diagnose, formatDoctor, installCommand } from './latex/doctor';
+import { DoctorReport, diagnose, doctorMessage, formatDoctor, installCommand } from './latex/doctor';
 import { findExecutable } from './latex/executable';
 import { SetupOption, SetupReport, TEXLAB_INSTALL_URL, checkSetup, formatReport, setupOptions } from './latex/setup';
 import { TEXLAB_EXTENSION_ID } from './latex/texlabConfig';
@@ -140,17 +140,13 @@ async function checkProjectPackages(report: SetupReport, output: vscode.OutputCh
     return undefined;
   }
   output.append(formatDoctor(doctor, main, process.platform));
-  const missing = doctor.findings.filter((f) => f.severity === 'error').length;
-  const warnings = doctor.findings.length - missing;
   if (!doctor.findings.length) {
     return doctor;
   }
   const install = installCommand(doctor.install, process.platform);
   const showDetails = 'Show Details';
   const typeIt = 'Install in Terminal…';
-  const message = missing
-    ? `Overtex: ${missing} package${missing === 1 ? '' : 's'} that ${path.basename(main)} loads ${missing === 1 ? 'is' : 'are'} not installed.`
-    : `Overtex: ${warnings} possible problem${warnings === 1 ? '' : 's'} with the TeX packages for ${path.basename(main)}.`;
+  const message = doctorMessage(doctor, path.basename(main));
   const choice = await vscode.window.showWarningMessage(message, ...(install ? [typeIt, showDetails] : [showDetails]));
   if (choice === typeIt && install) {
     // Typed, not run: pressing Enter in the terminal is the user's go-ahead.
