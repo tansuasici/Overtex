@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { findExecutable } from '../src/latex/executable';
-import { texlabOptions, texlabStartDecision, withoutBuildLogDiagnostics } from '../src/latex/texlabConfig';
+import { texlabOptions, texlabStartDecision, texlabUri, withoutBuildLogDiagnostics } from '../src/latex/texlabConfig';
 
 describe('texlabStartDecision', () => {
   const base = { enabled: true, workspaceTrusted: true, officialExtensionInstalled: false };
@@ -81,5 +81,24 @@ describe('findExecutable', () => {
     expect(
       findExecutable('texlab', { Path: 'C:\\Windows;C:\\tools', PATHEXT: '.COM;.EXE' }, 'win32', (f) => files.has(f))
     ).toBe('C:\\tools\\texlab.EXE');
+  });
+});
+
+describe('texlabUri', () => {
+  it("writes an apostrophe the way texlab does, so a Drive'ım folder links its .bib", () => {
+    expect(texlabUri('file:///Users/me/Drive%27%C4%B1m/paper/main.tex')).toBe("file:///Users/me/Drive'%C4%B1m/paper/main.tex");
+  });
+
+  it('decodes the other characters texlab writes literally', () => {
+    expect(texlabUri('file:///p/a%28b%29%26c%2Bd%2Ce%21f%40g%3Dh%3Bi%24j%2Ak/x.tex')).toBe('file:///p/a(b)&c+d,e!f@g=h;i$j*k/x.tex');
+  });
+
+  it('keeps everything texlab encodes too, and Windows drive letters', () => {
+    const uri = 'file:///c%3A/My%20Papers/%23draft/50%25/%5Bold%5D/%C3%BC.tex';
+    expect(texlabUri(uri)).toBe(uri);
+  });
+
+  it('leaves untitled documents alone', () => {
+    expect(texlabUri('untitled:Untitled-1%27')).toBe('untitled:Untitled-1%27');
   });
 });

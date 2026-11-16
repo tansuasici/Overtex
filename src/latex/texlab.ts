@@ -4,7 +4,13 @@ import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-lan
 
 import { findExecutable } from './executable';
 import { texEnv } from './texEnv';
-import { TEXLAB_EXTENSION_ID, texlabOptions, texlabStartDecision, withoutBuildLogDiagnostics } from './texlabConfig';
+import {
+  TEXLAB_EXTENSION_ID,
+  texlabOptions,
+  texlabStartDecision,
+  texlabUri,
+  withoutBuildLogDiagnostics,
+} from './texlabConfig';
 
 const HINT_DISMISSED_KEY = 'overtex.texlabMissingHintDismissed';
 const INSTALL_URL = 'https://github.com/latex-lsp/texlab#installation';
@@ -98,6 +104,10 @@ export class Texlab implements vscode.Disposable {
       ],
       initializationOptions: options(),
       outputChannelName: 'Overtex: TexLab',
+      uriConverters: {
+        code2Protocol: (uri) => texlabUri(uri.toString()),
+        protocol2Code: (value) => vscode.Uri.parse(value),
+      },
       middleware: {
         // texlab pulls its "texlab" section; Overtex has no such settings, so answer with its own.
         workspace: {
