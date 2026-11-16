@@ -34,6 +34,8 @@ The full installation takes a while. While it runs, go on with step 3.
 2. Search for **Overtex**.
 3. Click **Install** on the Overtex extension by tansuasici.
 
+From a terminal, `code --install-extension tansuasici.overtex` does the same.
+
 An Overtex icon now appears in the bar on the left (the Activity Bar). It opens the Overtex sidebar, which you will use from lesson 3 on.
 
 ## Step 4: Restart VS Code
@@ -74,7 +76,9 @@ If you also use VS Code for programming, you can keep LaTeX in its own [profile]
 
 3. Choose **Create**.
 
-The new profile has Overtex installed. It hides the minimap, breadcrumbs, sticky scroll, tips and AI chat, and wraps long lines. Switch between profiles from **Profile** in the gear menu at the bottom left.
+The new profile has Overtex installed. It hides the minimap, breadcrumbs, sticky scroll, tips and AI chat, and wraps long lines. Switch between profiles from **Profile** in the gear menu at the bottom left. Your other profiles are untouched.
+
+The profile leaves build tool and program paths at their defaults, so run **Overtex: Check LaTeX Installation** once in it. Overleaf Connect is not part of it; install it into the profile yourself if you work on Overleaf projects.
 
 ---
 
