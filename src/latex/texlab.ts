@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
 
 import { findExecutable } from './executable';
+import { texEnv } from './texEnv';
 import { TEXLAB_EXTENSION_ID, texlabOptions, texlabStartDecision, withoutBuildLogDiagnostics } from './texlabConfig';
 
 const HINT_DISMISSED_KEY = 'overtex.texlabMissingHintDismissed';
@@ -72,7 +73,8 @@ export class Texlab implements vscode.Disposable {
     }
 
     const configured = cfg.get<string>('texlab.path') || 'texlab';
-    const command = findExecutable(configured, process.env, process.platform, (p) => fs.existsSync(p) && fs.statSync(p).isFile());
+    const env = texEnv();
+    const command = findExecutable(configured, env, process.platform, (p) => fs.existsSync(p) && fs.statSync(p).isFile());
     if (!command) {
       this.log(`TexLab: "${configured}" not found; live diagnostics and completion are off.\n`);
       this.showInstallHint();
@@ -85,7 +87,8 @@ export class Texlab implements vscode.Disposable {
         chktex: vscode.workspace.getConfiguration('overtex').get<boolean>('texlab.chktex', false),
       });
 
-    const serverOptions: ServerOptions = { command, args: [] };
+    // texlab runs kpsewhich and chktex, which must be found too.
+    const serverOptions: ServerOptions = { command, args: [], options: { env } };
     const clientOptions: LanguageClientOptions = {
       documentSelector: [
         { scheme: 'file', language: 'latex' },

@@ -9,6 +9,7 @@ import { DoctorReport, diagnose, doctorMessage, formatDoctor, installCommand } f
 import { findExecutable } from './latex/executable';
 import { SetupOption, SetupReport, TEXLAB_INSTALL_URL, checkSetup, formatReport, setupOptions } from './latex/setup';
 import { TEXLAB_EXTENSION_ID } from './latex/texlabConfig';
+import { texEnv } from './latex/texEnv';
 
 export const WALKTHROUGH_ID = 'tansuasici.overtex#overtex.gettingStarted';
 /** Context key the walkthrough's first step completes on. */
@@ -45,7 +46,7 @@ export function inspectSetup(): SetupReport {
     synctex: settings.synctexPath(),
     latexdiff: settings.latexdiffPath(),
     texlab: texlabOurs ? texlabCfg.get<string>('path') || 'texlab' : undefined,
-    env: process.env,
+    env: texEnv(),
     platform: process.platform,
     isFile,
     listDir,
@@ -94,7 +95,7 @@ function kpsewhichFor(report: SetupReport): string | undefined {
       return beside;
     }
   }
-  return findExecutable('kpsewhich', process.env, process.platform, isFile);
+  return findExecutable('kpsewhich', texEnv(), process.platform, isFile);
 }
 
 /** Runs kpsewhich; it exits 1 when a name is missing, so its output counts whatever the exit code. */
@@ -209,7 +210,7 @@ async function notify(report: SetupReport, output: vscode.OutputChannel): Promis
 /** Offers the ways to get a working build: Tectonic, Docker when present, or a full TeX distribution. */
 async function chooseSetup(tool: BuildTool, output: vscode.OutputChannel): Promise<void> {
   const build = buildSettings();
-  const find = (command: string) => findExecutable(command, process.env, process.platform, isFile);
+  const find = (command: string) => findExecutable(command, texEnv(), process.platform, isFile);
   const options = setupOptions({
     platform: process.platform,
     tool,

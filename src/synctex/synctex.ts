@@ -1,6 +1,7 @@
 import * as cp from 'child_process';
 import * as path from 'path';
 import type { PageRect } from '../shared/messages';
+import { texEnv } from '../latex/texEnv';
 
 export interface SourceLocation {
   file: string;
@@ -44,7 +45,7 @@ export class SyncTex {
 
   private run(args: string[], cwd: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      cp.execFile(this.executable(), args, { cwd, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      cp.execFile(this.executable(), args, { cwd, env: texEnv(), maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) {
           reject(new Error(`synctex ${args[0]} failed: ${stderr || err.message}`));
         } else {

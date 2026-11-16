@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { BuildSettings, DockerHost, TEX_ENV, ToolCommand, dockerCommand, dockerRoot, latexmkArgs, outputPaths, tectonicArgs } from './builder';
+import { texEnv } from './texEnv';
 
 /** A .tex file as it is on disk, or the main file as it was in a git revision. */
 export type Version = { file: string } | { revision: string };
@@ -131,7 +132,7 @@ export function diffBuildArgs(texFile: string, buildDir: string, settings: Build
 
 /** The command that builds the diff from `cwd`. `root` is what Docker mounts; undefined means the usual folder. */
 export function diffCommand(texFile: string, buildDir: string, cwd: string, root: string | undefined, settings: BuildSettings, host?: DockerHost): ToolCommand {
-  const env = { ...process.env, ...TEX_ENV };
+  const env = texEnv({ ...process.env, ...TEX_ENV });
   if (settings.tool === 'tectonic') {
     // Tectonic looks for files beside its input, which here is one folder below the project.
     const args = tectonicArgs(`${buildDir}/${path.basename(texFile)}`, { ...settings, outDir: buildDir });
@@ -248,7 +249,7 @@ function snapshot(request: CompareRequest, version: Version, dest: string, sourc
 async function runLatexdiff(request: CompareRequest, oldFile: string, newFile: string, cwd: string): Promise<Buffer> {
   let result;
   try {
-    result = await run(request.latexdiff, latexdiffArgs(oldFile, newFile), { cwd, signal: request.signal });
+    result = await run(request.latexdiff, latexdiffArgs(oldFile, newFile), { cwd, env: texEnv(), signal: request.signal });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       throw new CompareError('latexdiff-missing', `could not run ${request.latexdiff}.`);
