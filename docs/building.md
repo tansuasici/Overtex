@@ -4,6 +4,18 @@ Overtex turns your `.tex` sources into a PDF with latexmk, or with Tectonic or D
 
 New to LaTeX? Start with the [tutorial](tutorial/README.md).
 
+## What you need
+
+A TeX distribution that provides `latexmk`, `synctex` and `texcount`: [TeX Live](https://tug.org/texlive/), [MacTeX](https://tug.org/mactex/) or [MiKTeX](https://miktex.org/). MiKTeX also needs Perl for latexmk. Or no distribution at all, with [Tectonic or Docker](#build-tools).
+
+**Overtex: Check LaTeX Installation** looks for latexmk, the selected engine, synctex and TexLab, and says what is missing and how to install it. It notices TeX that is installed but not yet on VS Code's `PATH`, which usually means VS Code needs a restart. With latexmk it also:
+
+- looks up every package and class the open project loads with `kpsewhich`, including those a conference template's own `.cls` or `.sty` asks for, so a missing one shows up before the build fails on it;
+- checks that the Times metrics are there for `times`, `mathptmx` and `newtxtext`;
+- warns about lineno 5.7, which draws line numbers over the text of two-column pages with LaTeX from June 2025 on.
+
+For what is missing it types the `tlmgr install` command into a terminal, for you to run; it installs nothing itself. MiKTeX's packages are left to MiKTeX Console. If latexmk is missing when Overtex starts, it offers this check once.
+
 ## Build
 
 - **On save:** saving a `.tex` or `.bib` file builds the project. Turn this off with `overtex.build.onSave`.
