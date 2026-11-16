@@ -44,4 +44,12 @@ export interface OvertexE2e {
   symbolPaletteReady(): boolean;
   /** Types `query` into the Math Symbols view's search box; the commands it then shows. */
   symbolPaletteSearch(query: string): Promise<string[]>;
+  /** Whether Track Changes is on for the main document. */
+  trackingChanges(): boolean;
+  /** The files changed since tracking started. */
+  trackedFiles(): { path: string; kind: 'added' | 'modified' | 'deleted'; hunks: number }[];
+  /** The tracked changes in a file, unsaved edits included. */
+  trackedHunks(file: string): { oldStart: number; newStart: number; oldLines: string[]; newLines: string[] }[];
+  /** What the editor marks in a visible file: inserted lines and words, and the deleted text. */
+  trackedMarks(file: string): { insertedLines: number; insertedWords: number; deleted: string[] } | undefined;
 }

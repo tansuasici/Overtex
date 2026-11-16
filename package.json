@@ -87,6 +87,11 @@
           "when": "overtex.active"
         },
         {
+          "id": "overtex.changes",
+          "name": "Changes",
+          "when": "overtex.active"
+        },
+        {
           "id": "overtex.sourceNotes",
           "name": "Notes",
           "when": "overtex.active"
@@ -116,6 +121,16 @@
       {
         "view": "overtex.history",
         "contents": "No snapshots yet. Overtex keeps a snapshot of the sources and the PDF after each successful build.\n[Save Snapshot](command:overtex.history.snapshot)"
+      },
+      {
+        "view": "overtex.changes",
+        "when": "!overtex.trackingChanges",
+        "contents": "Track Changes is off. Turn it on to mark every insertion and deletion from now on, and to accept or reject each one. Nothing is written into the project.\n[Start Tracking Changes](command:overtex.trackChanges.start)"
+      },
+      {
+        "view": "overtex.changes",
+        "when": "overtex.trackingChanges",
+        "contents": "No changes since tracking started.\n[Stop Tracking Changes](command:overtex.trackChanges.stop)"
       },
       {
         "view": "overtex.sourceNotes",
@@ -375,6 +390,60 @@
         "icon": "$(trash)"
       },
       {
+        "command": "overtex.trackChanges.start",
+        "title": "Start Tracking Changes",
+        "category": "Overtex",
+        "icon": "$(record)"
+      },
+      {
+        "command": "overtex.trackChanges.stop",
+        "title": "Stop Tracking Changes",
+        "category": "Overtex",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "overtex.trackChanges.accept",
+        "title": "Accept Change",
+        "category": "Overtex",
+        "icon": "$(check)"
+      },
+      {
+        "command": "overtex.trackChanges.reject",
+        "title": "Reject Change",
+        "category": "Overtex",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "overtex.trackChanges.acceptFile",
+        "title": "Accept All Changes in File",
+        "category": "Overtex",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "overtex.trackChanges.rejectFile",
+        "title": "Reject All Changes in File",
+        "category": "Overtex",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "overtex.trackChanges.openChange",
+        "title": "Show Changes",
+        "category": "Overtex",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "overtex.trackChanges.showMarkedPdf",
+        "title": "Show Tracked Changes in PDF (latexdiff)",
+        "category": "Overtex",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "overtex.trackChanges.refresh",
+        "title": "Refresh Changes",
+        "category": "Overtex",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "overtex.notes.add",
         "title": "Add Note",
         "category": "Overtex",
@@ -522,6 +591,26 @@
           "group": "navigation@2"
         },
         {
+          "command": "overtex.trackChanges.start",
+          "when": "view == overtex.changes && !overtex.trackingChanges",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overtex.trackChanges.showMarkedPdf",
+          "when": "view == overtex.changes && overtex.trackingChanges",
+          "group": "navigation@1"
+        },
+        {
+          "command": "overtex.trackChanges.refresh",
+          "when": "view == overtex.changes && overtex.trackingChanges",
+          "group": "navigation@2"
+        },
+        {
+          "command": "overtex.trackChanges.stop",
+          "when": "view == overtex.changes && overtex.trackingChanges",
+          "group": "navigation@3"
+        },
+        {
           "command": "overtex.notes.add",
           "when": "view == overtex.sourceNotes",
           "group": "navigation@1"
@@ -634,6 +723,31 @@
           "group": "1_use@2"
         },
         {
+          "command": "overtex.trackChanges.acceptFile",
+          "when": "view == overtex.changes && viewItem =~ /^trackedChange\\./",
+          "group": "inline@1"
+        },
+        {
+          "command": "overtex.trackChanges.rejectFile",
+          "when": "view == overtex.changes && viewItem =~ /^trackedChange\\./",
+          "group": "inline@2"
+        },
+        {
+          "command": "overtex.trackChanges.openChange",
+          "when": "view == overtex.changes && viewItem =~ /^trackedChange\\./",
+          "group": "1_use@1"
+        },
+        {
+          "command": "overtex.trackChanges.acceptFile",
+          "when": "view == overtex.changes && viewItem =~ /^trackedChange\\./",
+          "group": "1_use@2"
+        },
+        {
+          "command": "overtex.trackChanges.rejectFile",
+          "when": "view == overtex.changes && viewItem =~ /^trackedChange\\./",
+          "group": "1_use@3"
+        },
+        {
           "command": "overtex.notes.resolve",
           "when": "view == overtex.sourceNotes && viewItem == note.open",
           "group": "inline@1"
@@ -705,6 +819,42 @@
         },
         {
           "command": "overtex.history.restoreFile",
+          "when": "false"
+        },
+        {
+          "command": "overtex.trackChanges.start",
+          "when": "overtex.active && !overtex.trackingChanges"
+        },
+        {
+          "command": "overtex.trackChanges.stop",
+          "when": "overtex.trackingChanges"
+        },
+        {
+          "command": "overtex.trackChanges.accept",
+          "when": "overtex.trackingChanges && editorLangId =~ /^(latex|bibtex)$/"
+        },
+        {
+          "command": "overtex.trackChanges.reject",
+          "when": "overtex.trackingChanges && editorLangId =~ /^(latex|bibtex)$/"
+        },
+        {
+          "command": "overtex.trackChanges.acceptFile",
+          "when": "overtex.trackingChanges && editorLangId =~ /^(latex|bibtex)$/"
+        },
+        {
+          "command": "overtex.trackChanges.rejectFile",
+          "when": "overtex.trackingChanges && editorLangId =~ /^(latex|bibtex)$/"
+        },
+        {
+          "command": "overtex.trackChanges.openChange",
+          "when": "overtex.trackingChanges && editorLangId =~ /^(latex|bibtex)$/"
+        },
+        {
+          "command": "overtex.trackChanges.showMarkedPdf",
+          "when": "overtex.trackingChanges"
+        },
+        {
+          "command": "overtex.trackChanges.refresh",
           "when": "false"
         },
         {

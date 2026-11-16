@@ -404,6 +404,95 @@ export async function run(): Promise<void> {
     assert.strictEqual((await notes).enabled, false, 'the marked-up PDF takes no notes');
   });
 
+  await step('track changes marks edits, accepts and rejects them, and shows them in the PDF', async () => {
+    const partUri = vscode.Uri.file(part);
+    const original = await vscode.workspace.fs.readFile(partUri);
+    const extra = vscode.Uri.file(path.join(root, 'chapters', 'extra.tex'));
+    const lines = (...l: string[]) => l.map((x) => `${x}\n`).join('');
+    const tracked = (rel: string) => e2e!.trackedFiles().find((f) => f.path === rel);
+    try {
+      await vscode.workspace.fs.writeFile(
+        partUri,
+        Buffer.from(lines('% !TEX root = ../main.tex', 'Third page: the forward search target in an input file.', '', 'A second paragraph stays as it is.'))
+      );
+      await waitFor('the open part.tex to reload', () =>
+        vscode.workspace.textDocuments.every((d) => d.uri.fsPath !== partUri.fsPath || d.getText().includes('A second paragraph'))
+      );
+      await openAt(main, 0);
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.trackChanges.start'), true);
+      assert.ok(e2e!.trackingChanges(), 'tracking is on');
+      assert.deepStrictEqual(e2e!.trackedFiles(), [], 'nothing changed yet');
+
+      // Two unsaved edits: a word changed in line 2, and a sentence added at the end.
+      const doc = await vscode.workspace.openTextDocument(part);
+      const editor = await vscode.window.showTextDocument(doc);
+      await editor.edit((b) => {
+        const l = doc.lineAt(1);
+        const at = l.text.indexOf('forward');
+        b.replace(new vscode.Range(1, at, 1, at + 'forward'.length), 'reverse');
+        b.insert(new vscode.Position(doc.lineCount - 1, 0), 'A tracked sentence.\n');
+      });
+      await waitFor('the edits to be marked', () => (e2e!.trackedMarks(part)?.insertedLines ?? 0) === 2);
+      const marks = e2e!.trackedMarks(part)!;
+      assert.deepStrictEqual(marks.deleted, ['forward'], 'the replaced word is struck through');
+      assert.strictEqual(marks.insertedWords, 1, 'the new word is marked');
+      assert.strictEqual(e2e!.trackedHunks(part).length, 2);
+      await waitFor('the Changes list', () => tracked('chapters/part.tex')?.hunks === 2);
+
+      // Accept the word change: it joins the baseline, the added sentence is still a change.
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.trackChanges.accept', partUri.toString(), 0), true);
+      const left = e2e!.trackedHunks(part);
+      assert.strictEqual(left.length, 1);
+      assert.deepStrictEqual(left[0].newLines, ['A tracked sentence.\n']);
+
+      // Reject the sentence, then undo the reject.
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.trackChanges.reject', partUri.toString(), 0), true);
+      assert.ok(!doc.getText().includes('A tracked sentence.'), 'rejecting takes the sentence out');
+      assert.strictEqual(e2e!.trackedHunks(part).length, 0);
+      await vscode.window.showTextDocument(doc);
+      await vscode.commands.executeCommand('undo');
+      assert.ok(doc.getText().includes('A tracked sentence.'), 'undo brings it back');
+      assert.strictEqual(e2e!.trackedHunks(part).length, 1);
+
+      // A new file can be rejected (deleted); a deleted one can be rejected (restored).
+      await vscode.workspace.fs.writeFile(extra, Buffer.from('An extra file.\n'));
+      await waitFor('the new file in the list', () => tracked('chapters/extra.tex')?.kind === 'added');
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.trackChanges.rejectFile', extra.toString(), { force: true }), true);
+      assert.ok(!fs.existsSync(extra.fsPath), 'rejecting a new file deletes it');
+      await vscode.workspace.fs.writeFile(extra, Buffer.from('An extra file.\n'));
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.trackChanges.acceptFile', extra.toString()), true);
+      await vscode.workspace.fs.delete(extra);
+      await waitFor('the deleted file in the list', () => tracked('chapters/extra.tex')?.kind === 'deleted');
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.trackChanges.rejectFile', extra.toString()), true);
+      assert.strictEqual(fs.readFileSync(extra.fsPath, 'utf8'), 'An extra file.\n', 'rejecting a deletion restores the file');
+      await vscode.workspace.fs.delete(extra);
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.trackChanges.acceptFile', extra.toString()), true);
+
+      // The marked PDF compares the baseline with the sources now, through the \input file.
+      await openAt(main, 0);
+      const result = await vscode.commands.executeCommand<import('../../src/latex/latexdiff').CompareResult>('overtex.trackChanges.showMarkedPdf');
+      if (!result) {
+        assert.ok(!process.env.OVERTEX_REQUIRE_TEX, 'latexdiff did not run');
+      } else {
+        assert.strictEqual(result.status, 'built');
+        assert.ok(result.status === 'built' && /\\DIFadd\{[^}]*tracked sentence/.test(result.diffText), 'the pending sentence is marked');
+        assert.ok(result.status === 'built' && !/\\DIFdel\{[^}]*forward/.test(result.diffText), 'the accepted change is not');
+      }
+
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.trackChanges.acceptFile', partUri.toString()), true);
+      assert.deepStrictEqual(e2e!.trackedFiles(), [], 'accepting the file leaves nothing to review');
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.trackChanges.stop', { force: true }), true);
+      assert.ok(!e2e!.trackingChanges(), 'tracking is off');
+    } finally {
+      if (e2e!.trackingChanges()) {
+        await vscode.commands.executeCommand('overtex.trackChanges.stop', { force: true });
+      }
+      await vscode.workspace.fs.delete(extra).then(undefined, () => undefined);
+      await vscode.workspace.fs.writeFile(partUri, original);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    }
+  });
+
   await step('review PDF puts open notes in the margin of a numbered copy', async () => {
     const file = path.join(root, 'main.overtex-notes.json');
     // At the forward search results, so that SyncTeX finds lines in main.tex and chapters/part.tex.

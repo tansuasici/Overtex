@@ -7,12 +7,18 @@ import * as path from 'path';
 
 /** What a snapshot keeps: the files a build reads as text. Figures are left out; they are large and rarely edited. */
 const SOURCE_EXTENSIONS = new Set(['.tex', '.ltx', '.bib', '.sty', '.cls', '.bst', '.tikz', '.pgf', '.inc']);
+
+/** Whether a file name is one of the LaTeX sources snapshots keep. */
+export function isSourceFile(name: string): boolean {
+  return SOURCE_EXTENSIONS.has(path.extname(name).toLowerCase());
+}
 const SKIP_DIRS = new Set(['node_modules', 'out', 'build']);
 const MAX_FILES = 2000;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_PDF_BYTES = 100 * 1024 * 1024;
 const MAX_DEPTH = 8;
 const INDEX = 'index.json';
+const BASELINE = 'baseline.json';
 
 export interface SnapshotFile {
   /** Relative to the snapshot's root, with forward slashes. */
@@ -44,6 +50,18 @@ export interface RecordOptions {
   /** The build output folder, left out of the snapshot. Absolute. */
   outDir?: string;
   time?: number;
+}
+
+/**
+ * What Track Changes measures changes against: the sources as they were when tracking started,
+ * with each accepted change applied. Its files are kept with the snapshots' and never pruned.
+ */
+export interface Baseline {
+  /** Milliseconds since the epoch. */
+  started: number;
+  /** The main file, relative to the root. */
+  main: string;
+  files: SnapshotFile[];
 }
 
 export type ChangeKind = 'added' | 'modified' | 'deleted';
@@ -89,7 +107,7 @@ export function collectSources(root: string, outDir?: string): string[] {
         if (depth < MAX_DEPTH && !skipped) {
           walk(full, depth + 1);
         }
-      } else if (entry.isFile() && SOURCE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      } else if (entry.isFile() && isSourceFile(entry.name)) {
         found.push(path.relative(root, full).split(path.sep).join('/'));
       }
     }
@@ -172,20 +190,7 @@ export class HistoryStore {
   record(options: RecordOptions): Snapshot | undefined {
     const root = path.dirname(options.mainFile);
     const main = path.basename(options.mainFile);
-    const files: SnapshotFile[] = [];
-    for (const rel of collectSources(root, options.outDir)) {
-      const full = path.join(root, rel);
-      let data: Buffer;
-      try {
-        if (fs.statSync(full).size > MAX_FILE_BYTES) {
-          continue;
-        }
-        data = fs.readFileSync(full);
-      } catch {
-        continue;
-      }
-      files.push({ path: rel, hash: this.store(data) });
-    }
+    const files = this.storeSources(root, options.outDir);
     if (!files.some((f) => f.path === main)) {
       return undefined;
     }
@@ -213,6 +218,75 @@ export class HistoryStore {
       this.collect(kept);
     }
     return snapshot;
+  }
+
+  /** Stores the sources in `root` and returns them, as a snapshot lists them. */
+  private storeSources(root: string, outDir?: string): SnapshotFile[] {
+    const files: SnapshotFile[] = [];
+    for (const rel of collectSources(root, outDir)) {
+      const full = path.join(root, rel);
+      let data: Buffer;
+      try {
+        if (fs.statSync(full).size > MAX_FILE_BYTES) {
+          continue;
+        }
+        data = fs.readFileSync(full);
+      } catch {
+        continue;
+      }
+      files.push({ path: rel, hash: this.store(data) });
+    }
+    return files;
+  }
+
+  /** The Track Changes baseline, if tracking is on. */
+  baseline(): Baseline | undefined {
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(this.dir, BASELINE), 'utf8')) as Partial<Baseline>;
+      return typeof data.main === 'string' && Array.isArray(data.files) && typeof data.started === 'number' ? (data as Baseline) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Starts tracking: the sources in the main file's folder become the baseline. */
+  startBaseline(mainFile: string, outDir?: string, time = Date.now()): Baseline {
+    const baseline: Baseline = { started: time, main: path.basename(mainFile), files: this.storeSources(path.dirname(mainFile), outDir) };
+    this.saveBaseline(baseline);
+    return baseline;
+  }
+
+  /** Sets one file's baseline text, or leaves the file out of the baseline when `data` is undefined. */
+  setBaselineFile(rel: string, data: Buffer | undefined): void {
+    const baseline = this.baseline();
+    if (!baseline) {
+      return;
+    }
+    const files = baseline.files.filter((f) => f.path !== rel);
+    if (data !== undefined) {
+      files.push({ path: rel, hash: this.store(data) });
+      files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    }
+    this.saveBaseline({ ...baseline, files });
+  }
+
+  /** Stops tracking and lets go of the baseline's files no snapshot uses. */
+  clearBaseline(): void {
+    fs.rmSync(path.join(this.dir, BASELINE), { force: true });
+    this.collect(this.list());
+  }
+
+  private saveBaseline(baseline: Baseline): void {
+    fs.mkdirSync(this.dir, { recursive: true });
+    const file = path.join(this.dir, BASELINE);
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ version: 1, ...baseline }, null, 1));
+    fs.renameSync(tmp, file);
+  }
+
+  /** Writes the baseline's sources under `dest`. Returns where the main file landed. */
+  materializeBaseline(baseline: Baseline, dest: string): string {
+    return this.materialize({ id: 'baseline', time: baseline.started, main: baseline.main, files: baseline.files, trigger: 'manual' }, dest);
   }
 
   /** Names a snapshot, or clears its name when `label` is empty. */
@@ -284,9 +358,9 @@ export class HistoryStore {
     fs.renameSync(tmp, file);
   }
 
-  /** Deletes the blobs no snapshot in `snapshots` refers to. */
+  /** Deletes the blobs no snapshot in `snapshots`, and not the Track Changes baseline, refers to. */
   private collect(snapshots: Snapshot[]): void {
-    const used = new Set<string>();
+    const used = new Set<string>(this.baseline()?.files.map((f) => f.hash));
     for (const s of snapshots) {
       s.files.forEach((f) => used.add(f.hash));
       if (s.pdf) {
