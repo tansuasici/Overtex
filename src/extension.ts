@@ -40,6 +40,7 @@ import { Highlighter } from './highlighter';
 import { MathRenderer, registerMathPreview } from './mathPreview';
 import { registerRefHover } from './refHover';
 import { registerHistory } from './history';
+import { registerTrackChanges } from './trackChanges';
 import { registerSourceNotes } from './sourceNotes';
 import { registerGitSync } from './gitSync';
 import { registerTodos } from './todos';
@@ -116,6 +117,11 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     log,
   });
   context.subscriptions.push(onDidEndBuild.event((result) => result.success && !result.cancelled && history.record(result.mainFile, result.pdfFile, 'build')));
+  const trackChanges = registerTrackChanges(context, {
+    mainFile,
+    outDir: (main) => outputPaths(main, buildSettings().outDir).dir,
+    requireTrust: (action) => requireTrust(action),
+  });
   const mathRenderer = new MathRenderer(context.extensionPath, mainFile);
   const symbolPalette = registerSymbolPalette(context, mathRenderer, mainFile);
   context.subscriptions.push(
@@ -421,6 +427,10 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     insertSymbol: (cmd, options) => symbolPalette.insert(cmd, options),
     symbolPaletteReady: () => symbolPalette.ready(),
     symbolPaletteSearch: (query) => symbolPalette.webviewSearch(query),
+    trackingChanges: () => trackChanges.active(),
+    trackedFiles: () => trackChanges.changedFiles(),
+    trackedHunks: (file) => trackChanges.hunks(file),
+    trackedMarks: (file) => trackChanges.marks(file),
   };
 
   return {
