@@ -303,16 +303,25 @@ async function withPackages(
   }
   const text = target.getText();
   const missing = needed.filter((p) => !hasPackage(text, p));
-  const line = packageInsertLine(text);
-  if (!missing.length || line === undefined) {
-    return { snippet, added: [] };
+  const edit = addPackagesEdit(target, missing);
+  return edit ? { snippet, packages: edit, added: missing } : { snippet, added: [] };
+}
+
+/**
+ * Adds `\usepackage{…}` lines for `packages` to `target`'s preamble. Undefined when there is
+ * nothing to add or no preamble to add it to.
+ */
+export function addPackagesEdit(target: vscode.TextDocument, packages: string[]): vscode.WorkspaceEdit | undefined {
+  const line = packageInsertLine(target.getText());
+  if (!packages.length || line === undefined) {
+    return undefined;
   }
   const edit = new vscode.WorkspaceEdit();
   const at = line < target.lineCount ? new vscode.Position(line, 0) : target.lineAt(target.lineCount - 1).range.end;
   const eol = target.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
-  const lines = missing.map((p) => `\\usepackage{${p}}`).join(eol);
+  const lines = packages.map((p) => `\\usepackage{${p}}`).join(eol);
   edit.insert(target.uri, at, line < target.lineCount ? `${lines}${eol}` : `${eol}${lines}`);
-  return { snippet, packages: edit, added: missing };
+  return edit;
 }
 
 function snippetOf(segments: Segment[]): vscode.SnippetString {

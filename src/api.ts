@@ -36,4 +36,12 @@ export interface OvertexE2e {
   insertFiles(files: vscode.Uri[]): Promise<boolean>;
   /** The History panel's snapshots of the main document, newest first. */
   snapshots(): { id: string; time: number; label?: string; trigger: string; files: { path: string }[]; pdf?: string }[];
+  /** The math symbol commands a search finds, best first. */
+  symbolSearch(query: string): string[];
+  /** Inserts a math symbol as clicking it in the palette does; `addPackage` answers the missing-package prompt. */
+  insertSymbol(cmd: string, options?: { addPackage?: boolean }): Promise<{ inserted: boolean; missingPackage?: string; packageAdded?: boolean }>;
+  /** Whether the Math Symbols view has loaded and shows its symbols. */
+  symbolPaletteReady(): boolean;
+  /** Types `query` into the Math Symbols view's search box; the commands it then shows. */
+  symbolPaletteSearch(query: string): Promise<string[]>;
 }

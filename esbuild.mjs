@@ -85,7 +85,7 @@ const contexts = await Promise.all([
   }),
   esbuild.context({
     ...shared,
-    entryPoints: { pdfViewer: 'webview/pdfViewer.ts' },
+    entryPoints: { pdfViewer: 'webview/pdfViewer.ts', symbolPalette: 'webview/symbolPalette.ts' },
     outdir: webviewOut,
     platform: 'browser',
     format: 'esm',

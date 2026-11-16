@@ -1,0 +1,74 @@
+body {
+  padding: 0 8px 8px;
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+#search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 8px 0 4px;
+  padding: 4px 6px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  outline: none;
+}
+
+#search:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+h2 {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 2px;
+}
+
+.symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 36px;
+  padding: 2px;
+  overflow: hidden;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+}
+
+.symbol:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.symbol:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.symbol svg {
+  max-width: 100%;
+  max-height: 28px;
+}
+
+.empty {
+  color: var(--vscode-descriptionForeground);
+}
