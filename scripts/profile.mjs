@@ -1,5 +1,5 @@
-// Builds profile/Overtex.code-profile, the VS Code profile that README's
-// "Writing in a clean profile" section imports. Run: node scripts/profile.mjs
+// Builds profile/Overtex.code-profile, the VS Code profile that the tutorial's
+// "Optional: a quiet writing profile" section imports. Run: node scripts/profile.mjs
 //
 // A .code-profile nests JSON in strings: `settings` is a string holding
 // {"settings": "<settings.json text>"} and `extensions` is a string holding
