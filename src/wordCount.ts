@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
 
+import { texEnv } from './latex/texEnv';
 import { parseTexcount, texcountArgs, wordCountDetails, wordCountLabel, WordCount } from './latex/wordCount';
 
 /**
@@ -88,7 +89,7 @@ function goal(): number {
 
 function runTexcount(main: string): Promise<WordCount | null> {
   return new Promise((resolve) => {
-    cp.execFile('texcount', texcountArgs(path.basename(main)), { cwd: path.dirname(main), timeout: 15000, maxBuffer: 1024 * 1024 }, (_err, stdout) => {
+    cp.execFile('texcount', texcountArgs(path.basename(main)), { cwd: path.dirname(main), env: texEnv(), timeout: 15000, maxBuffer: 1024 * 1024 }, (_err, stdout) => {
       // texcount can fail on a missing \input file yet still print the totals, so go by the output.
       resolve(parseTexcount(stdout ?? ''));
     });

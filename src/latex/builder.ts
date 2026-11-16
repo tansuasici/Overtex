@@ -5,7 +5,8 @@ import * as path from 'path';
 import { parseAux } from './auxFile';
 import { LogEntry, parseLog, parseTectonicLog } from './logParser';
 import { linenoLogWarning } from './doctor';
-import { standardTexDirs, withTexDirs } from './setup';
+import { withTexDirs } from './setup';
+import { installedTexDirs, texEnv } from './texEnv';
 import { withEngineHint } from './engineHint';
 import { DEFAULT_LOOP_LIMITS, DEFAULT_STALL_TIMEOUT_SECONDS, LoopLimits, LoopWatch, loopMessage, silenceMessage } from './stall';
 
@@ -164,7 +165,7 @@ export function dockerCommand(cwd: string, root: string, latexmk: string[], sett
   }
   args.push('-v', `${root}:${containerPath(root, root, host.platform)}`, '-w', containerPath(cwd, root, host.platform));
   args.push(settings.dockerImage, 'latexmk', ...latexmk);
-  return { command: settings.docker, args, env: withTexDirs(process.env, host.platform, installedTexDirs()) };
+  return { command: settings.docker, args, env: texEnv() };
 }
 
 /** Why Docker cannot build this document, or undefined: output outside the mount would stay in the container. */
@@ -184,24 +185,6 @@ function dockerSettings(cwd: string, settings: BuildSettings, platform: NodeJS.P
     return settings;
   }
   return { ...settings, outDir: path.win32.relative(cwd, path.win32.resolve(cwd, settings.outDir)).split('\\').join('/') || '.' };
-}
-
-/** The standard TeX folders on this machine, which a VS Code started from the Dock may not have on PATH. */
-function installedTexDirs(): string[] {
-  const listDir = (dir: string) => {
-    try {
-      return fs.readdirSync(dir);
-    } catch {
-      return [];
-    }
-  };
-  return standardTexDirs(process.platform, process.env, listDir).filter((dir) => {
-    try {
-      return fs.statSync(dir).isDirectory();
-    } catch {
-      return false;
-    }
-  });
 }
 
 /** The command that builds `mainFile`, run from the main file's folder. */
