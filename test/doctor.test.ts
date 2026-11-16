@@ -19,7 +19,9 @@ const TEXMF = '/usr/local/texlive/2026/texmf-dist';
 /** A fake TeX: `installed` files resolve under TEXMF, project files relative to the project folder. */
 function fakeTex(files: Record<string, string>, installed: string[], texmf: Record<string, string> = {}) {
   const lookups: string[][] = [];
-  const read = (file: string) => files[path.relative(ROOT, file)] ?? texmf[file];
+  // Keys are written with '/'; on Windows paths come back with '\\' and a drive letter, so compare resolved.
+  const installedFiles = new Map(Object.entries(texmf).map(([k, v]) => [path.resolve(k), v]));
+  const read = (file: string) => files[path.relative(ROOT, file).split(path.sep).join('/')] ?? installedFiles.get(path.resolve(file));
   const lookup = async (names: string[]) => {
     lookups.push(names);
     return names.flatMap((n) => {
