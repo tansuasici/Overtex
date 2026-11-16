@@ -75,6 +75,23 @@ export function standardTexDirs(platform: NodeJS.Platform, env: NodeJS.ProcessEn
   return dirs;
 }
 
+/**
+ * `env` with the given TeX folders added after its PATH, skipping ones already on it. A build then
+ * finds latexmk and the engines it calls even when VS Code did not get the login shell's PATH.
+ */
+export function withTexDirs(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, dirs: string[]): NodeJS.ProcessEnv {
+  // Windows keeps it as "Path"; adding a second "PATH" key would leave which one wins undefined.
+  const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+  const sep = platform === 'win32' ? ';' : ':';
+  const current = (env[key] ?? '').split(sep).filter(Boolean);
+  const same = (a: string, b: string) => (platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+  const missing = dirs.filter((d) => !current.some((c) => same(c, d)));
+  if (missing.length === 0) {
+    return env;
+  }
+  return { ...env, [key]: [...current, ...missing].join(sep) };
+}
+
 function newestFirst(names: string[]): string[] {
   return names.filter((n) => /^\d{4}$/.test(n)).sort().reverse();
 }

@@ -28,6 +28,11 @@ describe('buildCommand', () => {
     expect(env.max_print_line).toBe('10000');
   });
 
+  it('puts the TeX folders on PATH so latexmk finds the engines it calls', () => {
+    const { env } = buildCommand('/p/main.tex', base, mac, ['/opt/tex/texbin']);
+    expect(env.PATH?.split(':').at(-1)).toBe('/opt/tex/texbin');
+  });
+
   it('runs tectonic with SyncTeX, a kept log and .aux, and no engine flag', () => {
     const { command, args, env } = buildCommand('/p/main.tex', { ...base, tool: 'tectonic', engine: 'lualatex', outDir: 'build', extraArgs: ['--print'] }, mac);
     expect(command).toBe('/opt/tectonic');
