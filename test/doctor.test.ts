@@ -1,7 +1,9 @@
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 import {
+  DoctorFinding,
   diagnose,
+  doctorMessage,
   formatDoctor,
   installCommand,
   kernelDate,
@@ -173,6 +175,33 @@ describe('install advice', () => {
   it('formats a clean report', () => {
     expect(formatDoctor({ checked: 4, findings: [], install: [] }, '/p/main.tex', 'linux')).toBe(
       'Packages for main.tex: 4 looked up.\n  Everything the project loads is installed.\n'
+    );
+  });
+});
+
+describe('notification message', () => {
+  const err = (install?: string) => ({ severity: 'error' as const, message: '', install });
+  const warn = (install?: string) => ({ severity: 'warning' as const, message: '', install });
+  const report = (findings: DoctorFinding[], install: string[]) => ({ checked: 9, findings, install });
+
+  it('counts surely missing packages', () => {
+    expect(doctorMessage(report([err('a')], ['a']), 'main.tex')).toBe('Overtex: 1 package that main.tex loads is not installed.');
+    expect(doctorMessage(report([err('a'), err('b')], ['a', 'b']), 'main.tex')).toBe(
+      'Overtex: 2 packages that main.tex loads are not installed.'
+    );
+  });
+
+  it('says how many the install command covers when some may only be needed', () => {
+    expect(doctorMessage(report([err('a'), err('b'), warn('c')], ['a', 'b', 'c']), 'main.tex')).toBe(
+      'Overtex: 2 packages that main.tex loads are not installed and 1 more may be needed. Install in Terminal… types one command for all 3.'
+    );
+    expect(doctorMessage(report([warn('c')], ['c']), 'paper.tex')).toBe('Overtex: 1 package that paper.tex may need is not installed.');
+  });
+
+  it('lists problems that are not packages to install', () => {
+    expect(doctorMessage(report([warn()], []), 'main.tex')).toBe('Overtex: 1 possible problem with the TeX packages for main.tex.');
+    expect(doctorMessage(report([err('a'), warn('c'), warn()], ['a', 'c']), 'main.tex')).toBe(
+      'Overtex: 1 package that main.tex loads is not installed, 1 more may be needed and 1 other possible problem. Install in Terminal… types one command for both.'
     );
   });
 });
