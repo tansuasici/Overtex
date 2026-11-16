@@ -45,6 +45,13 @@ export class MathRenderer {
     return md;
   }
 
+  /** `tex` as inline SVG coloured with currentColor, or undefined when MathJax cannot render it. */
+  svg(tex: string): string | undefined {
+    this.render ??= (require(path.join(this.extensionPath, 'out', 'mathRender.js')) as { renderMath: Render }).renderMath;
+    const result = this.render(tex, false, []);
+    return 'error' in result ? undefined : prepareSvg(result.svg, 1, 'currentColor');
+  }
+
   private mainMacros(file: string): string[] {
     try {
       const mtime = fs.statSync(file).mtimeMs;

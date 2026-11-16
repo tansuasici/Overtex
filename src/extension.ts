@@ -6,6 +6,7 @@ import type { OvertexApi, OvertexE2e } from './api';
 import { BibIndex } from './latex/bibIndex';
 import { registerLabels } from './labels';
 import { registerInsertHelpers } from './insertHelpers';
+import { registerSymbolPalette } from './symbolPalette';
 import { registerLibrary } from './library';
 import type { E2eFromViewerMessage } from './shared/messages';
 import { buildSettings, settings } from './config';
@@ -116,6 +117,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   });
   context.subscriptions.push(onDidEndBuild.event((result) => result.success && !result.cancelled && history.record(result.mainFile, result.pdfFile, 'build')));
   const mathRenderer = new MathRenderer(context.extensionPath, mainFile);
+  const symbolPalette = registerSymbolPalette(context, mathRenderer, mainFile);
   context.subscriptions.push(
     new Highlighter(context.extensionUri),
     registerMathPreview(mathRenderer),
@@ -415,6 +417,10 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     labelGroups: () => labels.groups(),
     insertFiles: (files) => insertHelpers.insertFiles(files),
     snapshots: () => history.snapshots(),
+    symbolSearch: (query) => symbolPalette.search(query),
+    insertSymbol: (cmd, options) => symbolPalette.insert(cmd, options),
+    symbolPaletteReady: () => symbolPalette.ready(),
+    symbolPaletteSearch: (query) => symbolPalette.webviewSearch(query),
   };
 
   return {

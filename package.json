@@ -95,6 +95,12 @@
           "id": "overtex.todos",
           "name": "To-dos",
           "when": "overtex.active"
+        },
+        {
+          "type": "webview",
+          "id": "overtex.symbols",
+          "name": "Math Symbols",
+          "when": "overtex.active"
         }
       ]
     },
@@ -193,6 +199,16 @@
       {
         "command": "overtex.insertFigure",
         "title": "Insert Figure",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.showSymbols",
+        "title": "Show Math Symbols",
+        "category": "Overtex"
+      },
+      {
+        "command": "overtex.insertSymbol",
+        "title": "Insert Math Symbol",
         "category": "Overtex"
       },
       {

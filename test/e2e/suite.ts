@@ -811,6 +811,54 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('the math symbol palette searches and inserts, with the package it needs', async () => {
+    const root = vscode.workspace.workspaceFolders![0].uri.fsPath;
+    const scratch = path.join(root, 'symbols.tex');
+    const mainDoc = await vscode.workspace.openTextDocument(main);
+    const mainBefore = mainDoc.getText();
+    try {
+      fs.writeFileSync(scratch, 'Text \nand $a$ here.\n');
+      const doc = await vscode.languages.setTextDocumentLanguage(await vscode.workspace.openTextDocument(scratch), 'latex');
+      const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+      editor.selection = new vscode.Selection(0, 5, 0, 5);
+
+      // The palette takes focus; clicks still go to the .tex editor that had it.
+      await vscode.commands.executeCommand('overtex.showSymbols');
+      await waitFor('the palette to show its symbols', () => e2e.symbolPaletteReady(), 30000);
+      assert.strictEqual((await e2e.symbolPaletteSearch('less or equal'))[0], '\\leq');
+      assert.strictEqual((await e2e.symbolPaletteSearch('≤'))[0], '\\leq');
+      assert.strictEqual(e2e.symbolSearch('leq')[0], '\\leq');
+
+      // Outside math it goes in $…$.
+      assert.deepStrictEqual(await e2e.insertSymbol('\\leq'), { inserted: true });
+      assert.strictEqual(doc.lineAt(0).text, 'Text $\\leq$', doc.getText());
+
+      // Inside math as it is, with arguments as tab stops.
+      const inMath = vscode.window.activeTextEditor!;
+      inMath.selection = new vscode.Selection(1, 6, 1, 6);
+      await e2e.insertSymbol('\\alpha');
+      assert.strictEqual(doc.lineAt(1).text, 'and $a\\alpha$ here.', doc.getText());
+      await e2e.insertSymbol('\\frac');
+      await vscode.commands.executeCommand('leaveSnippet');
+      assert.strictEqual(doc.lineAt(1).text, 'and $a\\alpha\\frac{}{}$ here.', doc.getText());
+
+      // A symbol from a package the preamble lacks offers to add it, once.
+      const result = await e2e.insertSymbol('\\leqslant', { addPackage: true });
+      assert.deepStrictEqual(result, { inserted: true, missingPackage: 'amssymb', packageAdded: true });
+      assert.ok(mainDoc.getText().startsWith('\\documentclass{article}\n\\usepackage{amssymb}\n'), mainDoc.getText());
+      assert.deepStrictEqual(await e2e.insertSymbol('\\varnothing', { addPackage: true }), { inserted: true });
+
+      await vscode.commands.executeCommand('workbench.action.files.save');
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    } finally {
+      const restore = new vscode.WorkspaceEdit();
+      restore.replace(mainDoc.uri, new vscode.Range(0, 0, mainDoc.lineCount, 0), mainBefore);
+      await vscode.workspace.applyEdit(restore);
+      await mainDoc.save();
+      fs.rmSync(scratch, { force: true });
+    }
+  });
+
   // These rearrange the editor groups, so they run last.
   const closeViewer = async () => {
     await api.viewPdf();
