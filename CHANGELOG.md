@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.1 (2026-11-16)
 
 - TexLab no longer shows every citation and reference as undefined when the project sits in a folder whose name has an apostrophe, such as Google Drive's Turkish "Drive'ım" folder, or `( ) & + , ! @ = ; $ *`. VS Code and TexLab spelled such paths differently, so TexLab did not link the `.bib` and `\input` files to the main file. Folder names with `[` or `]` still stop TexLab; that needs a fix in TexLab itself.
 
