@@ -296,6 +296,50 @@ export async function run(): Promise<void> {
     assert.ok(Math.floor(state.position + 0.01) === 1 || atBottom, `the preview is left at that page (${state.position}, ${JSON.stringify(state.layout)})`);
   });
 
+  await step('find in the PDF: matches, options, next and previous, Esc', async () => {
+    const after = async (act: () => void) => {
+      const found = nextMessage(e2e, 'e2e:found');
+      act();
+      return found;
+    };
+    const find = (query: string, options: { caseSensitive?: boolean; wholeWord?: boolean } = {}) => after(() => e2e.sendToViewer({ type: 'e2e:find', query, ...options }));
+    const key = (k: string, shift = false) => after(() => e2e.sendToViewer({ type: 'e2e:findKey', key: k, shift }));
+
+    // "page" is on each of the three pages; the first match shown is on or after the page in view.
+    let state = await find('page');
+    assert.strictEqual(state.open, true, 'the find bar opens');
+    assert.strictEqual(state.total, 3, `one match per page (${state.counter})`);
+    assert.strictEqual(state.counter, `${state.current + 1} / 3`);
+    assert.strictEqual(state.page, state.current + 1, 'the match is on its page');
+    assert.ok(state.inView, 'the current match is scrolled into view');
+    assert.ok(state.highlights >= 1 && state.currentBoxes === 1, `highlights drawn (${state.highlights}, ${state.currentBoxes} current)`);
+
+    const start = state.current;
+    state = await key('Enter');
+    assert.strictEqual(state.current, (start + 1) % 3, 'Enter goes to the next match');
+    assert.ok(state.inView, 'and shows it');
+    state = await key('Enter', true);
+    assert.strictEqual(state.current, start, 'Shift+Enter goes back');
+    for (let i = start; i < 3; i++) {
+      state = await key('Enter');
+    }
+    assert.strictEqual(state.current, 0, 'next wraps around after the last match');
+    assert.strictEqual(state.page, 1);
+    assert.ok(state.inView, 'the first page is scrolled to');
+
+    // A phrase across words, the case and whole-word options, and nothing found.
+    assert.strictEqual((await find('forward  search TARGET')).total, 2, 'a phrase on pages 2 and 3');
+    assert.strictEqual((await find('Page', { caseSensitive: true })).total, 0, 'matching case');
+    assert.strictEqual((await find('target', { wholeWord: true })).total, 2, 'a whole word');
+    state = await find('targe', { wholeWord: true });
+    assert.strictEqual(state.total, 0, 'part of a word is not a whole word');
+    assert.strictEqual(state.counter, 'No results');
+
+    state = await key('Escape');
+    assert.strictEqual(state.open, false, 'Esc closes the bar');
+    assert.strictEqual(state.highlights, 0, 'and clears the highlights');
+  });
+
   // Last: these show a notification and open an editor, which would get in the way of the viewer steps above.
   await step('setup check finds latexmk and the engine', async () => {
     const report = await vscode.commands.executeCommand<import('../../src/latex/setup').SetupReport>('overtex.checkSetup');
