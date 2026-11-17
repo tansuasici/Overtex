@@ -431,6 +431,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     trackedFiles: () => trackChanges.changedFiles(),
     trackedHunks: (file) => trackChanges.hunks(file),
     trackedMarks: (file) => trackChanges.marks(file),
+    texlabRunning: () => server.isRunning,
   };
 
   return {

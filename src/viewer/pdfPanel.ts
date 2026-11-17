@@ -251,7 +251,9 @@ export class PdfPanel implements vscode.Disposable {
     this.ready = false;
     this.pdfFile = undefined;
     this.panel = panel;
-    panel.iconPath = new vscode.ThemeIcon('file-pdf');
+    if (themeIconsInWebviewTabs()) {
+      panel.iconPath = new vscode.ThemeIcon('file-pdf') as unknown as vscode.Uri;
+    }
     panel.webview.html = this.html(panel.webview);
 
     panel.webview.onDidReceiveMessage((msg: FromViewerMessage) => this.onMessage(msg), null, this.disposables);
@@ -516,4 +518,10 @@ function createNonce(): string {
     text += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return text;
+}
+
+/** VS Code takes a codicon as a webview tab icon from 1.108; earlier versions (down to 1.85) only take files. */
+function themeIconsInWebviewTabs(): boolean {
+  const [major, minor] = vscode.version.split('.').map(Number);
+  return major > 1 || (major === 1 && minor >= 108);
 }
