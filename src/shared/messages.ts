@@ -121,6 +121,10 @@ export type E2eFoundMessage = {
   current: number;
   page: number;
   inView: boolean;
+  /** Whether the find bar is on screen, as the page lays it out. */
+  shown: boolean;
+  /** The current match's first box, in PDF points from the page's top-left corner. */
+  box: PageRect | null;
   highlights: number;
   currentBoxes: number;
 };

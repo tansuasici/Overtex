@@ -151,6 +151,9 @@ async function load(data: Uint8Array): Promise<void> {
   doc = next;
   pages = views;
   pageRuns = new Map();
+  // Old matches are not drawn on the new pages while the search runs again.
+  findHits = [];
+  findByPage = new Map();
   emptyEl.hidden = true;
   rebuildPageElements();
   if (presenting) {
@@ -1380,21 +1383,25 @@ findBar.addEventListener('keydown', (event) => {
   } else if (event[modifierKey] && key === 'f') {
     event.preventDefault();
     findInput.select();
-  } else if (event[modifierKey] && key === 'g') {
+  } else if (isFindStepKey(event)) {
     event.preventDefault();
     stepFind(event.shiftKey ? -1 : 1);
   }
 });
 
+/**
+ * F3 steps through matches, and ⌘G on a Mac. Ctrl+G is left alone elsewhere: VS Code also gets the
+ * key and would open Go to Line.
+ */
+function isFindStepKey(event: KeyboardEvent): boolean {
+  return event.key === 'F3' || (modifierKey === 'metaKey' && event.metaKey && !event.altKey && event.key.toLowerCase() === 'g');
+}
+
 function onFindKey(event: KeyboardEvent): void {
-  if (!event[modifierKey] || event.altKey) {
-    return;
-  }
-  const key = event.key.toLowerCase();
-  if (key === 'f' && !event.shiftKey) {
+  if (event[modifierKey] && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
     event.preventDefault();
     openFind();
-  } else if (key === 'g' && findOpen) {
+  } else if (findOpen && isFindStepKey(event)) {
     event.preventDefault();
     stepFind(event.shiftKey ? -1 : 1);
   }
@@ -1408,7 +1415,10 @@ async function reportFind(): Promise<void> {
   const hit = findHits[findCurrent];
   const view = hit && pages[hit.page];
   let inView = false;
+  let box: PageRect | null = null;
   if (view) {
+    const b = hit.boxes[0];
+    box = { page: view.index + 1, x: (b.left / 100) * view.width, y: (b.top / 100) * view.height, width: (b.width / 100) * view.width, height: (b.height / 100) * view.height };
     const top = view.el.offsetTop + (hit.boxes[0].top / 100) * view.el.offsetHeight - viewer.scrollTop;
     const bottom = top + (hit.boxes[0].height / 100) * view.el.offsetHeight;
     inView = top >= 0 && bottom <= viewer.clientHeight;
@@ -1421,6 +1431,8 @@ async function reportFind(): Promise<void> {
     current: findCurrent,
     page: hit ? hit.page + 1 : 0,
     inView,
+    shown: getComputedStyle(findBar).display !== 'none',
+    box,
     highlights: document.querySelectorAll('.find-hit').length,
     currentBoxes: document.querySelectorAll('.find-hit.current').length,
   });

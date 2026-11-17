@@ -20,6 +20,16 @@ SyncTeX is a map, written by each build, from places in the PDF to lines in your
 
 Jumps need the `synctex` program, which comes with TeX Live, MacTeX and MiKTeX. If a jump lands on the wrong line, see [Troubleshooting](troubleshooting.md#synctex-jumps-to-the-wrong-place).
 
+## Find in the PDF
+
+Press `⌘F` / `Ctrl+F` in the preview, or click the magnifier in its toolbar, and type. Every match is highlighted, the count shows where you are ("2 / 7"), and the preview scrolls to the first match from the page you are on.
+
+- `Enter` and `Shift+Enter` go to the next and previous match, as do `F3` and `Shift+F3` (and `⌘G` / `⇧⌘G` on a Mac). The arrows in the bar do the same.
+- **Aa** matches case, and **ab** matches whole words only.
+- `Esc` closes the bar and clears the highlights.
+
+Search reads the text in the PDF, so a word split by a hyphen at the end of a line, or one set with a ligature such as "fi", is still found. Without **Aa**, Turkish ı, i, I and İ all match each other. After a rebuild the same search runs again on the new PDF.
+
 ## Dark pages
 
 The ◐ button in the preview's toolbar, or **Toggle Dark PDF Preview**, shows light text on a dark gray page. Colors keep their hue, but figures and photos are inverted too.

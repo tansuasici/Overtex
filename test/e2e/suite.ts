@@ -308,6 +308,7 @@ export async function run(): Promise<void> {
     // "page" is on each of the three pages; the first match shown is on or after the page in view.
     let state = await find('page');
     assert.strictEqual(state.open, true, 'the find bar opens');
+    assert.strictEqual(state.shown, true, 'and is on screen');
     assert.strictEqual(state.total, 3, `one match per page (${state.counter})`);
     assert.strictEqual(state.counter, `${state.current + 1} / 3`);
     assert.strictEqual(state.page, state.current + 1, 'the match is on its page');
@@ -327,6 +328,22 @@ export async function run(): Promise<void> {
     assert.strictEqual(state.page, 1);
     assert.ok(state.inView, 'the first page is scrolled to');
 
+    // The highlight sits on the text: "page" on page 2 is on the line forward search marked there.
+    state = await key('Enter');
+    const line = targets['main.tex'];
+    assert.ok(line && state.box, 'needs the forward search result and a box');
+    assert.strictEqual(state.box.page, 2);
+    const overlap = Math.min(state.box.y + state.box.height, line.y + line.height) - Math.max(state.box.y, line.y);
+    assert.ok(overlap > state.box.height / 2, `the match ${JSON.stringify(state.box)} is on the line ${JSON.stringify(line)}`);
+    assert.ok(state.box.width > 10 && state.box.width < 40 && state.box.height > 5 && state.box.height < 20, `a word-sized box ${JSON.stringify(state.box)}`);
+
+    // A rebuild runs the search again and keeps the current match.
+    const rebuilt = nextMessage(e2e, 'e2e:found', 120000);
+    assert.ok((await api.build(main))?.success, 'build succeeded');
+    const again = await rebuilt;
+    assert.strictEqual(again.total, 3, 'the same matches after a rebuild');
+    assert.strictEqual(again.current, state.current, 'the same current match');
+
     // A phrase across words, the case and whole-word options, and nothing found.
     assert.strictEqual((await find('forward  search TARGET')).total, 2, 'a phrase on pages 2 and 3');
     assert.strictEqual((await find('Page', { caseSensitive: true })).total, 0, 'matching case');
@@ -337,6 +354,7 @@ export async function run(): Promise<void> {
 
     state = await key('Escape');
     assert.strictEqual(state.open, false, 'Esc closes the bar');
+    assert.strictEqual(state.shown, false, 'and it is off screen');
     assert.strictEqual(state.highlights, 0, 'and clears the highlights');
   });
 
