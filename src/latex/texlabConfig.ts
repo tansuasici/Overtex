@@ -83,6 +83,8 @@ export function texlabUri(uri: string): string {
 /**
  * texlab 5.26 exits with a panic (util/to_proto.rs) as soon as it reads a file whose path has
  * `[` or `]`, whether the URI spells them encoded or not. Such files are kept away from it.
+ * Fixed upstream in latex-lsp/texlab#1583 (after 5.26.0); this guard can go once a release with
+ * that fix is the version Overtex expects.
  */
 export function texlabCannotOpen(fsPath: string): boolean {
   return /[[\]]/.test(fsPath);
