@@ -907,15 +907,32 @@ export async function run(): Promise<void> {
   await step('Papers panel groups the .bib by citation and cites a paper', async () => {
     const bib = path.join(root, 'refs.bib');
     const tex = path.join(root, 'papers-e2e.tex');
+    const part = path.join(root, 'chapters', 'part.tex');
     const original = fs.readFileSync(bib, 'utf8');
+    const partOriginal = fs.readFileSync(part, 'utf8');
     try {
       fs.writeFileSync(bib, `${original}\n@article{citedPaper,\n  title = {Cited},\n  year = {2021}\n}\n\n@article{uncitedPaper,\n  title = {Not Cited Yet},\n  year = {2020},\n  eprint = {1706.03762},\n  archivePrefix = {arXiv}\n}\n`);
-      fs.writeFileSync(tex, '% \\cite{uncitedPaper}\n\\cite{citedPaper}\n');
+      fs.writeFileSync(tex, '% \\cite{uncitedPaper}\n\\section{Method}\n\\cite{citedPaper} and \\citep{citedPaper}\n');
+      // A citation in the built document gets the page it is on, once a build has it.
+      fs.writeFileSync(part, partOriginal.replace('Closing words.', 'Closing words \\cite{citedPaper}.'));
+      assert.ok((await api.build(main))?.success, 'build with the citation');
       await vscode.commands.executeCommand('overtex.library.refresh');
       const groups = await e2e.paperGroups();
       const group = (name: string) => groups.find((g) => g.group === name)?.keys ?? [];
       assert.ok(group('Cited').includes('citedPaper'), JSON.stringify(groups));
       assert.ok(group('Not cited').includes('uncitedPaper'), JSON.stringify(groups));
+      const cited = groups.find((g) => g.group === 'Cited')!;
+      assert.strictEqual(cited.counts[cited.keys.indexOf('citedPaper')], 3, JSON.stringify(groups));
+
+      const uses = await e2e.paperUses('citedPaper');
+      const inDraft = uses.filter((u) => u.file === tex);
+      assert.deepStrictEqual(inDraft.map((u) => [u.line, u.section, u.page]), [[2, 'Method', undefined], [2, 'Method', undefined]], JSON.stringify(uses));
+      const inPart = uses.find((u) => u.file === part);
+      assert.deepStrictEqual([inPart?.line, inPart?.section, inPart?.page], [3, 'Results', 3], JSON.stringify(uses));
+
+      await vscode.commands.executeCommand('overtex.library.showUncited');
+      assert.deepStrictEqual((await e2e.paperGroups()).map((g) => g.group), ['Not cited']);
+      await vscode.commands.executeCommand('overtex.library.showAll');
 
       const doc = await vscode.workspace.openTextDocument({ language: 'latex', content: 'See ' });
       const editor = await vscode.window.showTextDocument(doc);
@@ -926,6 +943,9 @@ export async function run(): Promise<void> {
     } finally {
       fs.writeFileSync(bib, original);
       fs.rmSync(tex, { force: true });
+      fs.writeFileSync(part, partOriginal);
+      await vscode.commands.executeCommand('overtex.library.showAll');
+      await api.build(main);
       await vscode.commands.executeCommand('overtex.library.refresh');
     }
   });

@@ -9,13 +9,13 @@ import { parseBib } from './latex/bibParser';
 import { citationHoverMarkdown } from './latex/cite';
 import { CitationNotFoundError } from './latex/citationImport';
 import {
-  CitedKeys,
+  CitationUses,
   PaperSort,
-  citedKeys,
+  citationCounts,
+  citationUses,
   fetchArxivPdf,
   findPdf,
   groupPapers,
-  mergeCited,
   paperPdfPath,
   paperUrl,
   paperYear,
@@ -27,6 +27,10 @@ import { TexFiles } from './texFiles';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 const SORT_STATE = 'overtex.papers.sort';
+const UNCITED_STATE = 'overtex.papers.uncitedOnly';
+/** How many SyncTeX lookups for page numbers run at once. */
+const PAGE_LOOKUPS = 4;
+const PAGE_TIMEOUT_MS = 10000;
 const SORTS: { sort: PaperSort; label: string }[] = [
   { sort: 'year', label: 'Year (newest first)' },
   { sort: 'author', label: 'First author' },
@@ -45,13 +49,29 @@ class GroupItem extends vscode.TreeItem {
   }
 }
 
+/** Where a paper is cited: a 0-based line and column of a .tex file, under a heading if one comes before it. */
+export interface PaperUse {
+  file: string;
+  line: number;
+  column: number;
+  section?: string;
+}
+
 class PaperItem extends vscode.TreeItem {
   constructor(
     readonly paper: IndexedEntry,
-    readonly pdf: string | undefined
+    readonly pdf: string | undefined,
+    readonly uses: PaperUse[],
+    group: string
   ) {
-    super(plainTex(paper.rawTitle ?? paper.title) || paper.key);
-    this.description = [shortAuthors(paper.rawAuthor ?? paper.author), paperYear(paper)].filter(Boolean).join(', ');
+    super(
+      plainTex(paper.rawTitle ?? paper.title) || paper.key,
+      uses.length ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+    );
+    // Keys can repeat across .bib files, so the file is part of the id.
+    this.id = `overtex.papers.${group}.${paper.file.toString()}#${paper.key}`;
+    const byline = [shortAuthors(paper.rawAuthor ?? paper.author), paperYear(paper)].filter(Boolean).join(', ');
+    this.description = uses.length ? [`${uses.length}×`, byline].filter(Boolean).join(' · ') : byline;
     this.tooltip = new vscode.MarkdownString(citationHoverMarkdown(paper));
     this.iconPath = new vscode.ThemeIcon(pdf ? 'file-pdf' : 'book');
     this.contextValue = [
@@ -63,7 +83,21 @@ class PaperItem extends vscode.TreeItem {
   }
 }
 
-type Node = GroupItem | PaperItem;
+class UseItem extends vscode.TreeItem {
+  constructor(use: PaperUse, page: number | undefined, parent: string) {
+    super(use.section ?? path.basename(use.file));
+    this.id = `${parent}@${use.file}:${use.line}:${use.column}`;
+    const where = `${vscode.workspace.asRelativePath(use.file, false)}:${use.line + 1}`;
+    this.description = page ? `${where} · page ${page}` : where;
+    this.tooltip = page ? `Cited in ${where}, on page ${page} of the PDF` : `Cited in ${where}`;
+    this.iconPath = new vscode.ThemeIcon('references');
+    this.contextValue = 'use';
+    const at = new vscode.Position(use.line, use.column);
+    this.command = { command: 'vscode.open', title: 'Open', arguments: [vscode.Uri.file(use.file), { selection: new vscode.Range(at, at) }] };
+  }
+}
+
+type Node = GroupItem | PaperItem | UseItem;
 
 class PapersProvider implements vscode.TreeDataProvider<Node> {
   private readonly changed = new vscode.EventEmitter<void>();
@@ -71,8 +105,10 @@ class PapersProvider implements vscode.TreeDataProvider<Node> {
 
   constructor(
     private readonly index: BibIndex,
-    private readonly scan: TexFiles<CitedKeys>,
-    private readonly sort: () => PaperSort
+    private readonly scan: TexFiles<CitationUses>,
+    private readonly sort: () => PaperSort,
+    private readonly uncitedOnly: () => boolean,
+    private readonly pageOf: (use: PaperUse) => Promise<number | undefined>
   ) {}
 
   refresh(): void {
@@ -80,10 +116,23 @@ class PapersProvider implements vscode.TreeDataProvider<Node> {
   }
 
   async groups(): Promise<GroupItem[]> {
-    const [entries, cited] = await Promise.all([this.index.entries(), this.scan.all()]);
-    return groupPapers(entries, mergeCited(cited.map((c) => c.value)), this.sort()).map(
-      ({ group, papers }) => new GroupItem(group, papers.map((p) => new PaperItem(p, pdfOf(p))))
-    );
+    const [entries, scanned] = await Promise.all([this.index.entries(), this.scan.all()]);
+    const uses = new Map<string, PaperUse[]>();
+    for (const { file, value } of scanned) {
+      for (const [key, list] of value) {
+        const all = uses.get(key) ?? [];
+        all.push(...list.map((use) => ({ file: file.fsPath, ...use })));
+        uses.set(key, all);
+      }
+    }
+    return groupPapers(entries, citationCounts(scanned.map((s) => s.value)), this.sort())
+      .filter(({ group }) => !this.uncitedOnly() || group === 'Not cited')
+      .map(({ group, papers }) => new GroupItem(group, papers.map((p) => new PaperItem(p, pdfOf(p), uses.get(p.key) ?? [], group))));
+  }
+
+  /** Where the paper is cited, each with its page in the PDF when SyncTeX can tell. */
+  async uses(paper: PaperItem): Promise<{ use: PaperUse; page?: number }[]> {
+    return Promise.all(paper.uses.map(async (use) => ({ use, page: await this.pageOf(use) })));
   }
 
   getTreeItem(node: Node): vscode.TreeItem {
@@ -94,8 +143,32 @@ class PapersProvider implements vscode.TreeDataProvider<Node> {
     if (!node) {
       return this.groups();
     }
-    return node instanceof GroupItem ? node.papers : [];
+    if (node instanceof GroupItem) {
+      return node.papers;
+    }
+    if (node instanceof PaperItem) {
+      return (await this.uses(node)).map(({ use, page }) => new UseItem(use, page, node.id ?? node.paper.key));
+    }
+    return [];
   }
+}
+
+/** Runs at most `limit` of the tasks at once. */
+function limiter(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  return async (task) => {
+    if (running >= limit) {
+      await new Promise<void>((resolve) => waiting.push(resolve));
+    }
+    running++;
+    try {
+      return await task();
+    } finally {
+      running--;
+      waiting.shift()?.();
+    }
+  };
 }
 
 function pdfOf(paper: IndexedEntry): string | undefined {
@@ -107,24 +180,41 @@ export interface LibraryOptions {
   mainFile: () => string | null;
   userAgent: string;
   showPdf: (pdfFile: string) => void | Promise<void>;
+  /** The PDF a build of the main file writes. */
+  pdfFor: (mainFile: string) => string;
+  /** SyncTeX's page for a 1-based line of a source file. */
+  forward: (pdf: string, file: string, line: number, column: number) => Promise<{ page: number } | null>;
+  /** Fires when a build ends, so page numbers can be looked up again. */
+  onDidBuild: vscode.Event<unknown>;
 }
 
 export interface Library {
-  groups(): Promise<{ group: string; keys: string[] }[]>;
+  groups(): Promise<{ group: string; keys: string[]; counts: number[] }[]>;
+  /** Where the paper with this key is cited, as its rows in the panel show it. */
+  uses(key: string): Promise<{ file: string; line: number; section?: string; page?: number }[]>;
 }
 
 /** The Papers panel: what the workspace's .bib files hold, cited or not, and what can be done with each paper. */
 export function registerLibrary(context: vscode.ExtensionContext, options: LibraryOptions): Library {
   const { index, mainFile, userAgent, showPdf } = options;
   const sort = () => context.workspaceState.get<PaperSort>(SORT_STATE, 'year');
+  const uncitedOnly = () => context.workspaceState.get<boolean>(UNCITED_STATE, false);
+  const pageOf = pageLookup(options);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const refreshSoon = () => {
     clearTimeout(timer);
     timer = setTimeout(() => provider.refresh(), 500);
   };
-  const scan = new TexFiles<CitedKeys>((text) => citedKeys(text), refreshSoon);
-  const provider = new PapersProvider(index, scan, sort);
+  const scan = new TexFiles<CitationUses>((text) => citationUses(text), refreshSoon);
+  const provider = new PapersProvider(index, scan, sort, uncitedOnly, pageOf);
+  const view = vscode.window.createTreeView('overtex.papers', { treeDataProvider: provider, showCollapseAll: true });
+  const showUncited = async (on: boolean) => {
+    await context.workspaceState.update(UNCITED_STATE, on);
+    await vscode.commands.executeCommand('setContext', UNCITED_STATE, on);
+    view.message = on ? 'Showing only papers the project does not cite.' : undefined;
+    provider.refresh();
+  };
   const pdfWatcher = vscode.workspace.createFileSystemWatcher('**/papers/*.pdf');
 
   /** A row of the panel, or a key from a command run by another extension or a test. */
@@ -243,7 +333,10 @@ export function registerLibrary(context: vscode.ExtensionContext, options: Libra
     pdfWatcher.onDidCreate(refreshSoon),
     pdfWatcher.onDidDelete(refreshSoon),
     index.onDidChange(refreshSoon),
-    vscode.window.createTreeView('overtex.papers', { treeDataProvider: provider, showCollapseAll: true }),
+    options.onDidBuild(refreshSoon),
+    view,
+    register('overtex.library.showUncited', () => showUncited(true)),
+    register('overtex.library.showAll', () => showUncited(false)),
     register('overtex.library.open', withPaper((paper) => (pdfOf(paper) ? openPdf(paper) : reveal(paper)))),
     register('overtex.library.cite', withPaper(cite)),
     register('overtex.library.reveal', withPaper(reveal)),
@@ -271,10 +364,59 @@ export function registerLibrary(context: vscode.ExtensionContext, options: Libra
     })
   );
   void vscode.commands.executeCommand('setContext', 'overtex.active', true);
+  void showUncited(uncitedOnly());
 
   return {
     groups: async () =>
-      (await provider.groups()).map((g) => ({ group: g.group, keys: g.papers.map((p) => p.paper.key) })),
+      (await provider.groups()).map((g) => ({
+        group: g.group,
+        keys: g.papers.map((p) => p.paper.key),
+        counts: g.papers.map((p) => p.uses.length),
+      })),
+    uses: async (key) => {
+      const paper = (await provider.groups()).flatMap((g) => g.papers).find((p) => p.paper.key === key);
+      return paper ? (await provider.uses(paper)).map(({ use, page }) => ({ file: use.file, line: use.line, section: use.section, page })) : [];
+    },
+  };
+}
+
+/**
+ * The PDF page a citation lands on, from SyncTeX. Nothing is built for it: with no PDF, or one
+ * older than the source (or an unsaved source), there is no page. Answers are kept per PDF build.
+ */
+function pageLookup(options: LibraryOptions): (use: PaperUse) => Promise<number | undefined> {
+  const limit = limiter(PAGE_LOOKUPS);
+  const cache = new Map<string, Promise<number | undefined>>();
+  return async (use) => {
+    const main = options.mainFile();
+    if (!main) {
+      return undefined;
+    }
+    const pdf = options.pdfFor(main);
+    const [pdfStat, sourceStat] = await Promise.all([fs.promises.stat(pdf).catch(() => null), fs.promises.stat(use.file).catch(() => null)]);
+    const dirty = vscode.workspace.textDocuments.some((d) => d.isDirty && d.uri.fsPath === use.file);
+    if (!pdfStat || !sourceStat || dirty || pdfStat.mtimeMs < sourceStat.mtimeMs) {
+      return undefined;
+    }
+    const key = `${pdf}\0${pdfStat.mtimeMs}\0${use.file}\0${use.line}\0${use.column}`;
+    let page = cache.get(key);
+    if (!page) {
+      if (cache.size > 2000) {
+        cache.clear();
+      }
+      page = limit(async () => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), PAGE_TIMEOUT_MS)));
+        try {
+          const rect = await Promise.race([options.forward(pdf, use.file, use.line + 1, use.column).catch(() => null), timeout]);
+          return rect?.page;
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+      cache.set(key, page);
+    }
+    return page;
   };
 }
 

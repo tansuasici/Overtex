@@ -44,6 +44,15 @@ The **Papers** view in the Overtex sidebar lists the papers in the workspace's `
 
 **Add Paper** takes a DOI, an arXiv ID, or BibTeX from the clipboard. Local attachment paths in pasted BibTeX are left out.
 
+### Citation counts
+
+Each cited paper shows how many times the project cites it, as **3×**. Expand it to see every place: the section the citation is in (or the file name, before the first heading of a file), the file and line, and the page of the PDF it lands on. Click a place to go there. The **filter** button in the title bar shows only the papers the project does not cite; click it again to show all.
+
+- Every `.tex` file in the workspace is counted, with `\cite`, `\citep`, `\citet`, `\parencite`, `\textcite`, `\autocite`, `\cites` and the other natbib and biblatex commands. Each key in `\cite{a,b}` counts once. Citations in comments and in verbatim environments do not count.
+- `\nocite{key}` counts as a citation of that key. `\nocite{*}` does not mark any paper as cited.
+- The section is the nearest heading above the citation in the same file. A citation in an `\input` file before its first heading shows the file name.
+- The page comes from SyncTeX and is the page's position in the PDF (the first page is 1), not its printed number. It is shown only when the PDF is newer than the file; the panel never builds for it.
+
 ### Where paper PDFs come from
 
 A paper's PDF is taken from its `file` field (as Zotero, JabRef and Mendeley write it, or a plain path), otherwise from `papers/<key>.pdf` beside the `.bib` file. The download button saves arXiv PDFs there. Whether `papers/` goes into git is up to your `.gitignore`.
