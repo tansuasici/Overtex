@@ -1,0 +1,47 @@
+name: Publish to Open VSX
+
+# Publishes the VSIX already attached to a GitHub release to Open VSX, without touching the
+# Marketplace or the release. For releases made before OVSX_PAT was set, or a failed Open VSX step.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, for example v0.9.1'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must look like v1.2.3, got: $TAG" >&2
+            exit 1
+          fi
+
+      - name: Download the VSIX from the release
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "overtex-${TAG#v}.vsix"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Publish to Open VSX
+        env:
+          TAG: ${{ inputs.tag }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "OVSX_PAT is not set" >&2
+            exit 1
+          fi
+          npx --yes ovsx publish "overtex-${TAG#v}.vsix" --skip-duplicate
