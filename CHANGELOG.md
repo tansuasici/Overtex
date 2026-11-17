@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- TexLab is no longer started in a workspace folder whose path has `[` or `]`, and a file from such a folder is not sent to it: TexLab 5.26 exits on those paths, and VS Code then restarted it over and over. A warning says why live error checking is off there and that renaming the folder turns it back on.
+
 ## 0.9.1 (2026-11-16)
 
 - TexLab no longer shows every citation and reference as undefined when the project sits in a folder whose name has an apostrophe, such as Google Drive's Turkish "Drive'ım" folder, or `( ) & + , ! @ = ; $ *`. VS Code and TexLab spelled such paths differently, so TexLab did not link the `.bib` and `\input` files to the main file. Folder names with `[` or `]` still stop TexLab; that needs a fix in TexLab itself.

@@ -1292,7 +1292,7 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p webview",
     "test": "vitest run",
-    "test:e2e": "npm run build && esbuild test/e2e/suite.ts --bundle --platform=node --format=cjs --external:vscode --outfile=out-e2e/suite.js --log-level=warning && node test/e2e/run.mjs",
+    "test:e2e": "npm run build && esbuild test/e2e/suite.ts test/e2e/texlab.ts --bundle --platform=node --format=cjs --external:vscode --outdir=out-e2e --log-level=warning && node test/e2e/run.mjs",
     "package": "vsce package"
   },
   "dependencies": {

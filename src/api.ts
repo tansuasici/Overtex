@@ -52,4 +52,6 @@ export interface OvertexE2e {
   trackedHunks(file: string): { oldStart: number; newStart: number; oldLines: string[]; newLines: string[] }[];
   /** What the editor marks in a visible file: inserted lines and words, and the deleted text. */
   trackedMarks(file: string): { insertedLines: number; insertedWords: number; deleted: string[] } | undefined;
+  /** Whether the TexLab language server is running. */
+  texlabRunning(): boolean;
 }

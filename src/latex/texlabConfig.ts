@@ -7,9 +7,11 @@ export interface TexlabStartInputs {
   workspaceTrusted: boolean;
   /** The official TexLab extension runs its own server; two servers would duplicate everything. */
   officialExtensionInstalled: boolean;
+  /** Local paths of the workspace folders. */
+  workspaceFolders: readonly string[];
 }
 
-export type TexlabStartDecision = 'start' | 'disabled' | 'untrusted' | 'official-extension';
+export type TexlabStartDecision = 'start' | 'disabled' | 'untrusted' | 'official-extension' | 'bracket-path';
 
 export function texlabStartDecision(inputs: TexlabStartInputs): TexlabStartDecision {
   if (!inputs.enabled) {
@@ -20,6 +22,9 @@ export function texlabStartDecision(inputs: TexlabStartInputs): TexlabStartDecis
   }
   if (!inputs.workspaceTrusted) {
     return 'untrusted';
+  }
+  if (inputs.workspaceFolders.some(texlabCannotOpen)) {
+    return 'bracket-path';
   }
   return 'start';
 }
@@ -73,4 +78,12 @@ const LITERAL_IN_TEXLAB = /%(21|24|26|27|28|29|2A|2B|2C|3B|3D|40)/gi;
 /** A file URI spelled the way texlab spells it, so both sides name a file the same way. */
 export function texlabUri(uri: string): string {
   return uri.startsWith('file:') ? uri.replace(LITERAL_IN_TEXLAB, (m) => decodeURIComponent(m)) : uri;
+}
+
+/**
+ * texlab 5.26 exits with a panic (util/to_proto.rs) as soon as it reads a file whose path has
+ * `[` or `]`, whether the URI spells them encoded or not. Such files are kept away from it.
+ */
+export function texlabCannotOpen(fsPath: string): boolean {
+  return /[[\]]/.test(fsPath);
 }

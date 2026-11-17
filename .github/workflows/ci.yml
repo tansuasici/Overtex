@@ -16,6 +16,8 @@ jobs:
     env:
       # Make the real-TeX integration test fail instead of skipping.
       OVERTEX_REQUIRE_TEX: '1'
+      # Make the TexLab end-to-end steps fail instead of skipping.
+      OVERTEX_E2E_TEXLAB: required
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +39,25 @@ jobs:
             listings
             lineno
             marginnote
+
+      # A pinned TexLab release, checked against the sha256 digests GitHub lists for its assets.
+      - name: Install TexLab
+        shell: bash
+        run: |
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64)   asset=texlab-x86_64-linux.tar.gz;   sum=8697bd5e479d4584b14b7eed5c320c80ec4e1d91ebefbb6801e6bf38e9971300 ;;
+            macOS-ARM64) asset=texlab-aarch64-macos.tar.gz;  sum=af7972ffd230711ba04ada9b69cc32ce9111d9196ba69538062872faefdbee56 ;;
+            macOS-X64)   asset=texlab-x86_64-macos.tar.gz;   sum=6091611f756b28e1a57612b130c196df4b0bb6e22dde5cf5d890578513397daf ;;
+            Windows-X64) asset=texlab-x86_64-windows.zip;    sum=cb028d44c3d2b85d36a2ed52d41a0ff43a341b1f04c500c56c4524c4eb72b316 ;;
+            *) echo "no TexLab asset for $RUNNER_OS-$RUNNER_ARCH"; exit 1 ;;
+          esac
+          dir="$RUNNER_TEMP/texlab"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/$asset" "https://github.com/latex-lsp/texlab/releases/download/v5.26.0/$asset"
+          if command -v sha256sum > /dev/null; then check="sha256sum -c -"; else check="shasum -a 256 -c -"; fi
+          echo "$sum  $dir/$asset" | $check
+          if [[ $asset == *.zip ]]; then 7z x -o"$dir" "$dir/$asset" > /dev/null; else tar -xzf "$dir/$asset" -C "$dir"; fi
+          echo "$dir" >> "$GITHUB_PATH"
 
       - run: npm ci
       - run: npm run typecheck

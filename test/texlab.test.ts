@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { findExecutable } from '../src/latex/executable';
-import { texlabOptions, texlabStartDecision, texlabUri, withoutBuildLogDiagnostics } from '../src/latex/texlabConfig';
+import { texlabCannotOpen, texlabOptions, texlabStartDecision, texlabUri, withoutBuildLogDiagnostics } from '../src/latex/texlabConfig';
 
 describe('texlabStartDecision', () => {
-  const base = { enabled: true, workspaceTrusted: true, officialExtensionInstalled: false };
+  const base = { enabled: true, workspaceTrusted: true, officialExtensionInstalled: false, workspaceFolders: ['/home/a/paper'] };
 
   it('starts in a trusted workspace', () => {
     expect(texlabStartDecision(base)).toBe('start');
@@ -19,6 +19,19 @@ describe('texlabStartDecision', () => {
 
   it('never runs a configurable executable in an untrusted workspace', () => {
     expect(texlabStartDecision({ ...base, workspaceTrusted: false })).toBe('untrusted');
+  });
+
+  it('does not start where a workspace folder path has [ or ], which crashes texlab', () => {
+    expect(texlabStartDecision({ ...base, workspaceFolders: ['/home/a/paper', '/home/a/draft [v2]'] })).toBe('bracket-path');
+    expect(texlabStartDecision({ ...base, workspaceFolders: ["/home/a/Drive'ım (1)/paper"] })).toBe('start');
+  });
+});
+
+describe('texlabCannotOpen', () => {
+  it('flags paths with square brackets only', () => {
+    expect(texlabCannotOpen('/a/b[1]/main.tex')).toBe(true);
+    expect(texlabCannotOpen('C:\\Users\\a\\x]\\main.tex')).toBe(true);
+    expect(texlabCannotOpen("/a/Drive'ım (1) & co/main.tex")).toBe(false);
   });
 });
 

@@ -6,6 +6,7 @@ import { findExecutable } from './executable';
 import { texEnv } from './texEnv';
 import {
   TEXLAB_EXTENSION_ID,
+  texlabCannotOpen,
   texlabOptions,
   texlabStartDecision,
   texlabUri,
@@ -14,6 +15,8 @@ import {
 
 const HINT_DISMISSED_KEY = 'overtex.texlabMissingHintDismissed';
 const INSTALL_URL = 'https://github.com/latex-lsp/texlab#installation';
+
+const sendable = (uri: vscode.Uri): boolean => uri.scheme !== 'file' || !texlabCannotOpen(uri.fsPath);
 
 /**
  * Runs the TexLab language server for live diagnostics, completion, hover and navigation.
@@ -72,9 +75,13 @@ export class Texlab implements vscode.Disposable {
       enabled: cfg.get<boolean>('texlab.enabled', true),
       workspaceTrusted: vscode.workspace.isTrusted,
       officialExtensionInstalled: vscode.extensions.getExtension(TEXLAB_EXTENSION_ID) !== undefined,
+      workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
     });
     if (decision !== 'start') {
       this.log(`TexLab: not started (${decision}).\n`);
+      if (decision === 'bracket-path') {
+        this.warnBracketPath();
+      }
       return;
     }
 
@@ -114,6 +121,11 @@ export class Texlab implements vscode.Disposable {
           configuration: (params) => params.items.map((item) => (item.section === 'texlab' ? options() : null)),
         },
         handleDiagnostics: (uri, diagnostics, next) => next(uri, withoutBuildLogDiagnostics(diagnostics)),
+        // texlab crashes on a path with [ or ]; such a file opened from outside the workspace is not sent.
+        didOpen: (doc, next) => (sendable(doc.uri) ? next(doc) : this.warnBracketPath()),
+        didChange: (event, next) => (sendable(event.document.uri) ? next(event) : Promise.resolve()),
+        didSave: (doc, next) => (sendable(doc.uri) ? next(doc) : Promise.resolve()),
+        didClose: (doc, next) => (sendable(doc.uri) ? next(doc) : Promise.resolve()),
       },
     };
 
@@ -126,6 +138,20 @@ export class Texlab implements vscode.Disposable {
       this.log(`TexLab: failed to start: ${err instanceof Error ? err.message : String(err)}\n`);
       await client.dispose().catch(() => undefined);
     }
+  }
+
+  private bracketWarned = false;
+
+  /** Once per session: say why TexLab is off for a folder whose name has [ or ]. */
+  private warnBracketPath(): Promise<void> {
+    if (!this.bracketWarned) {
+      this.bracketWarned = true;
+      this.log('TexLab: skipped a path with [ or ]; texlab cannot read such paths.\n');
+      void vscode.window.showWarningMessage(
+        'Overtex: TexLab cannot check files in a folder whose name contains [ or ], so live error checking and completion are off there. Renaming the folder turns them back on.'
+      );
+    }
+    return Promise.resolve();
   }
 
   private showInstallHint(): void {
