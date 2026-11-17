@@ -17,6 +17,7 @@ SyncTeX is a map, written by each build, from places in the PDF to lines in your
 
 - **Source to PDF:** put the cursor on a line and press `⌘⌥J` / `Ctrl+Alt+J` (**SyncTeX: Jump to PDF**). The preview scrolls to that spot and marks it.
 - **PDF to source:** hold `⌘` (macOS) or `Ctrl` and click in the PDF. The editor opens the file and puts the cursor on the word you clicked.
+- **Follow the Outline:** go to a heading from the Outline view, the breadcrumbs or **Go to Symbol** (`⌘⇧O` / `Ctrl+Shift+O`), and the open preview scrolls to it. If the PDF is older than your source, Overtex builds first, which saves your unsaved files. Moving the cursor with the keyboard or mouse does not scroll the preview, and nothing opens a closed preview.
 
 Jumps need the `synctex` program, which comes with TeX Live, MacTeX and MiKTeX. If a jump lands on the wrong line, see [Troubleshooting](troubleshooting.md#synctex-jumps-to-the-wrong-place).
 
@@ -76,4 +77,5 @@ The preview also opens the PDFs of papers in your bibliography, from the [Papers
 | --- | --- | --- |
 | `overtex.viewer.autoOpen` | `true` | Open the preview after a successful build. |
 | `overtex.viewer.colorScheme` | `light` | `light`, `dark` or `auto`. |
+| `overtex.viewer.followOutline` | `true` | Scroll the preview to a heading you go to from the Outline view, the breadcrumbs or Go to Symbol. |
 | `overtex.synctex.path` | | Full path to `synctex` if it is not on the `PATH`. |

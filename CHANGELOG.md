@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Follow the Outline**: going to a heading from the Outline view, the breadcrumbs or Go to Symbol scrolls the open PDF preview to it. When the PDF is older than the source, Overtex builds first (saving unsaved files); a heading that is not in the PDF shows a note in the status bar. Turn it off with `overtex.viewer.followOutline`.
 - **Find in the PDF**: `⌘F` / `Ctrl+F` in the preview, or its magnifier button, opens a find bar that highlights every match on every page and counts them. `Enter` / `Shift+Enter`, `F3` / `Shift+F3` and the arrows move between matches, with options to match case and whole words. Words hyphenated at a line end and ligatures are found, and Turkish dotted and dotless i match each other unless case is on. The search runs again after each build without moving the preview.
 - TexLab is no longer started in a workspace folder whose path has `[` or `]`, and a file from such a folder is not sent to it: TexLab 5.26 exits on those paths, and VS Code then restarted it over and over. A warning says why live error checking is off there and that renaming the folder turns it back on.
 

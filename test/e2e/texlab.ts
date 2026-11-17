@@ -4,6 +4,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { OvertexApi } from '../../src/api';
+import { isHeadingLine } from '../../src/shared/headings';
 
 async function waitFor(what: string, check: () => boolean, timeoutMs = 30000): Promise<void> {
   const end = Date.now() + timeoutMs;
@@ -50,6 +51,22 @@ export async function run(): Promise<void> {
     assert.deepStrictEqual(texlabMessages(main), ['7: Undefined reference']);
   });
 
+  await step("TexLab's Outline puts the cursor on a line Overtex takes for a heading", async () => {
+    const uri = vscode.Uri.file(path.join(root, 'chapters', 'intro.tex'));
+    const doc = await vscode.workspace.openTextDocument(uri);
+    let symbols: vscode.DocumentSymbol[] | undefined;
+    const end = Date.now() + 30000;
+    while (!symbols?.length && Date.now() < end) {
+      symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>('vscode.executeDocumentSymbolProvider', uri);
+      if (!symbols?.length) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+    const section = symbols?.find((s) => s.name.includes('Introduction'));
+    assert.ok(section, `symbols: ${JSON.stringify(symbols?.map((s) => s.name))}`);
+    const line = section.selectionRange.start.line;
+    assert.ok(isHeadingLine(doc.lineAt(line).text), `line ${line + 1}: ${doc.lineAt(line).text}`);
+  });
   await step('a file in a folder with [ ] is not sent to TexLab, which keeps running', async () => {
     const outside = vscode.Uri.file(path.join(path.dirname(path.dirname(root)), 'draft [v2]', 'notes.tex'));
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(outside));

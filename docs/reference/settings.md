@@ -66,6 +66,7 @@ Open **Preferences: Open Settings (UI)** and search for `overtex`, or add these 
 | Setting | Values | Default | Description |
 | --- | --- | --- | --- |
 | `overtex.viewer.autoOpen` | boolean | `true` | Open the PDF preview after a successful build. |
+| `overtex.viewer.followOutline` | boolean | `true` | When you go to a heading from the Outline view, the breadcrumbs or Go to Symbol, scroll the open PDF preview to it. Builds first when the PDF is older than the source. |
 | `overtex.viewer.colorScheme` | `light`, `dark`, `auto` | `"light"` | How the PDF preview draws pages. Only the preview changes; the PDF file is untouched. **Toggle Dark PDF Preview** and the preview's toolbar button switch between light and dark. |
 
 ## grammar

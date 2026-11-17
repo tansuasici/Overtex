@@ -1076,6 +1076,11 @@
           "default": true,
           "description": "Open the PDF preview after a successful build."
         },
+        "overtex.viewer.followOutline": {
+          "type": "boolean",
+          "default": true,
+          "description": "When you go to a heading from the Outline view, the breadcrumbs or Go to Symbol, scroll the open PDF preview to it. Builds first when the PDF is older than the source."
+        },
         "overtex.viewer.colorScheme": {
           "type": "string",
           "enum": [

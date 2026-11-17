@@ -113,6 +113,103 @@ export async function run(): Promise<void> {
   await step('forward search: \\input file line -> page 3', () => forward(part, 1, 3));
   await step('inverse search: click on page 2 -> main.tex:5', () => inverse(targets['main.tex'], main, 4));
   await step('inverse search: click on page 3 -> chapters/part.tex:2', () => inverse(targets['part.tex'], part, 1));
+  await step('outline: going to a heading scrolls the preview there, typing and PDF clicks do not', async () => {
+    const heading = 2; // \section{Results} in chapters/part.tex
+    const quiet = async (what: string, action: () => Thenable<unknown>) => {
+      let revealed = false;
+      const sub = e2e.onViewerMessage((m) => (revealed ||= m.type === 'e2e:revealed'));
+      try {
+        await action();
+        await new Promise((r) => setTimeout(r, 800));
+        assert.ok(!revealed, `${what} scrolled the preview`);
+      } finally {
+        sub.dispose();
+      }
+    };
+    // A jump from elsewhere to the heading, as Go to Symbol and the breadcrumbs make it.
+    await openAt(part, 1);
+    let revealed = nextMessage(e2e, 'e2e:revealed', 10000);
+    await openAt(part, heading);
+    const jump = await revealed;
+    assert.strictEqual(jump.target.page, 3, 'page');
+    assert.ok(jump.inView, 'the heading is in view');
+    assert.ok(jump.target.y > targets['part.tex'].y, `the heading (y ${jump.target.y}) is below the paragraph before it (y ${targets['part.tex'].y})`);
+    targets['heading'] = jump.target;
+
+    // Go to Symbol, a jump the workbench makes, with a symbol provider standing in for TexLab.
+    const provider = vscode.languages.registerDocumentSymbolProvider({ language: 'latex' }, {
+      provideDocumentSymbols: (doc) => {
+        const range = doc.lineAt(heading).range;
+        return doc.uri.fsPath === part ? [new vscode.DocumentSymbol('Results', '', vscode.SymbolKind.Module, range, range)] : [];
+      },
+    });
+    try {
+      await openAt(part, 0);
+      await new Promise((r) => setTimeout(r, 300));
+      revealed = nextMessage(e2e, 'e2e:revealed', 10000);
+      await vscode.commands.executeCommand('workbench.action.quickOpen', '@Results');
+      await new Promise((r) => setTimeout(r, 1000));
+      await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
+      const fromSymbol = await revealed;
+      assert.strictEqual(fromSymbol.target.page, 3, 'page from Go to Symbol');
+      assert.ok(cursorAt(part, heading), 'Go to Symbol put the cursor on the heading');
+    } finally {
+      provider.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+    }
+
+    // A cursor that only passes over the heading (another extension's motion) is not a jump.
+    await openAt(part, 1);
+    await new Promise((r) => setTimeout(r, 300));
+    await quiet('a cursor passing over the heading', async () => {
+      const ed = vscode.window.activeTextEditor!;
+      ed.selection = new vscode.Selection(heading, 0, heading, 0);
+      await new Promise((r) => setTimeout(r, 50));
+      ed.selection = new vscode.Selection(heading + 1, 0, heading + 1, 0);
+    });
+
+    // Arrow keys onto the heading are reading, not navigating.
+    await openAt(part, 1);
+    await new Promise((r) => setTimeout(r, 300));
+    await quiet('the arrow keys', () => vscode.commands.executeCommand('cursorDown'));
+    assert.ok(cursorAt(part, heading), 'cursorDown reached the heading');
+
+    // Clicking the heading in the PDF puts the cursor on it; the preview must not jump back.
+    await openAt(part, 1);
+    await quiet('a click on the heading in the PDF', async () => {
+      const t = targets['heading'];
+      e2e.sendToViewer({ type: 'e2e:click', page: t.page, x: t.x + Math.max(t.width, 40) / 2, y: t.y + t.height / 2 });
+      await waitFor('the cursor on the heading', () => cursorAt(part, heading));
+    });
+
+    // With unsaved edits the PDF is out of date: it builds, then scrolls.
+    await openAt(part, 1);
+    const editor = vscode.window.activeTextEditor!;
+    const end = editor.document.lineAt(editor.document.lineCount - 1).range.end;
+    await editor.edit((b) => b.insert(end, '% unsaved\n'));
+    await openAt(part, 1);
+    await new Promise((r) => setTimeout(r, 300));
+    const started = new Promise<void>((resolve) => {
+      const sub = api.onDidStartBuild(() => {
+        sub.dispose();
+        resolve();
+      });
+    });
+    revealed = nextMessage(e2e, 'e2e:revealed', 120000);
+    await openAt(part, heading);
+    await started;
+    assert.strictEqual((await revealed).target.page, 3, 'page after the build');
+    assert.ok(!vscode.window.activeTextEditor!.document.isDirty, 'the build saved the file');
+
+    // Put the file back as it was, and the PDF with it.
+    const doc = vscode.window.activeTextEditor!.document;
+    await vscode.window.activeTextEditor!.edit((b) => b.delete(new vscode.Range(doc.lineCount - 2, 0, doc.lineCount - 1, 0)));
+    await doc.save();
+    const loaded = nextMessage(e2e, 'e2e:loaded', 120000);
+    assert.ok((await api.build(main))?.success, 'rebuild');
+    await loaded;
+    await new Promise((r) => setTimeout(r, 500));
+  });
   await step('notes: add, keep through a rebuild and zoom, edit, delete', async () => {
     const file = path.join(root, 'main.overtex-notes.json');
     const saved = () => JSON.parse(fs.readFileSync(file, 'utf8')).notes as { id: string; page: number; x: number; y: number; text: string }[];
