@@ -23,7 +23,7 @@ const files = {
     '\\end{document}',
     '',
   ].join('\n'),
-  'chapters/part.tex': ['% !TEX root = ../main.tex', 'Third page: the forward search target in an input file.', ''].join('\n'),
+  'chapters/part.tex': ['% !TEX root = ../main.tex', 'Third page: the forward search target in an input file.', '\\section{Results}', 'Closing words.', ''].join('\n'),
   '.vscode/settings.json': JSON.stringify({
     'overtex.texlab.enabled': false,
     'overtex.build.onSave': false,

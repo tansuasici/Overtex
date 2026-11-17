@@ -44,6 +44,7 @@ import { registerTrackChanges } from './trackChanges';
 import { registerSourceNotes } from './sourceNotes';
 import { registerGitSync } from './gitSync';
 import { registerTodos } from './todos';
+import { OutlineSync } from './outlineSync';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 
@@ -304,6 +305,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
       // SyncTeX knows the line, not the word: find the clicked word on or just before that line.
       const found = word && findWord(doc.getText().split(/\r?\n/), source.line - 1, word);
       const position = found ? new vscode.Position(found.line, found.column) : new vscode.Position(source.line - 1, source.column);
+      outlineSync.suppress(doc.uri.fsPath, position.line);
       const viewColumn =
         vscode.window.visibleTextEditors.find((e) => e.document.uri.fsPath === doc.uri.fsPath)?.viewColumn ??
         vscode.window.visibleTextEditors.find((e) => TEX_LANGUAGES.has(e.document.languageId))?.viewColumn ??
@@ -324,6 +326,19 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
         .then((choice) => choice && vscode.commands.executeCommand('overtex.checkSetup'));
     }
   }
+
+  const outlineSync = new OutlineSync({
+    mainFile,
+    pdfFor,
+    shownPdf: () => (pdfPanel.isOpen ? pdfPanel.currentPdf : undefined),
+    forward: (pdf, file, line, column) => synctex.forward(pdf, file, line, column),
+    reveal: (target) => pdfPanel.reveal(target),
+    build: (main) => build(main),
+    isBuilding: () => builder.isBuilding,
+    onDidEndBuild: onDidEndBuild.event,
+    log,
+  });
+  context.subscriptions.push(outlineSync);
 
   // ---- Commands ----
 
