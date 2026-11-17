@@ -672,3 +672,122 @@ body.presenting .present-bar:focus-within {
   font: inherit;
   cursor: pointer;
 }
+
+/* ---- Find ---- */
+
+.find-bar {
+  position: fixed;
+  top: calc(var(--toolbar-height) + 4px);
+  right: 16px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 3px 4px;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-editorWidget-border, transparent);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+
+.find-bar input {
+  flex: 1 1 200px;
+  min-width: 60px;
+  width: 200px;
+  height: 22px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  font: inherit;
+}
+
+.find-bar input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.find-bar.no-results input {
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+.find-bar button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 3px;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.find-bar button:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.find-bar button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.find-bar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.find-bar button[aria-pressed='true'] {
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+  background: var(--vscode-inputOption-activeBackground, rgba(0, 127, 212, 0.4));
+  border-color: var(--vscode-inputOption-activeBorder, transparent);
+}
+
+.find-bar .glyph {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.find-count {
+  flex: none;
+  min-width: 64px;
+  padding: 0 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+
+.find-bar.no-results .find-count {
+  color: var(--vscode-errorForeground);
+}
+
+/* Highlights sit over the canvas, so dark pages do not invert them; clicks go to the page below. */
+.find-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.find-hit {
+  position: absolute;
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+  border-radius: 1px;
+}
+
+.find-hit.current {
+  background: var(--vscode-editor-findMatchBackground, rgba(255, 150, 50, 0.6));
+  outline: 1px solid var(--vscode-editor-findMatchBorder, transparent);
+}
+
+body.presenting .find-layer,
+body.presenting .find-bar {
+  display: none;
+}

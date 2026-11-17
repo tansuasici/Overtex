@@ -5,6 +5,8 @@ import { inReadingOrder, isDone, noteSummary } from '../src/shared/notes';
 import type { Note } from '../src/shared/notes';
 import { toBytes } from '../src/shared/bytes';
 import { wordAt } from '../src/shared/clickedWord';
+import { findCounter, findInPage, normalizeQuery, pageText, stepMatch } from '../src/shared/pdfFind';
+import type { FindItem, FindSpan } from '../src/shared/pdfFind';
 import type { ClickedWord } from '../src/shared/clickedWord';
 import { startBlobWorker } from '../src/shared/blobWorker';
 import { isDarkScheme, isDarkThemeKind, parseColorScheme } from '../src/shared/colorScheme';
@@ -38,6 +40,8 @@ interface PageView {
   height: number;
   el: HTMLDivElement;
   notesEl: HTMLDivElement;
+  /** Find highlights, drawn only while the page is near the screen. */
+  findEl: HTMLDivElement;
   canvas: HTMLCanvasElement | null;
   renderedScale: number;
   task: RenderTask | null;
@@ -96,8 +100,12 @@ const visibility = new IntersectionObserver(
       }
       if (entry.isIntersecting) {
         render(view);
+        findShown.add(view.index);
+        drawFind(view);
       } else {
         release(view);
+        findShown.delete(view.index);
+        view.findEl.replaceChildren();
       }
     }
   },
@@ -132,7 +140,7 @@ async function load(data: Uint8Array): Promise<void> {
   for (let i = 1; i <= next.numPages; i++) {
     const page = await next.getPage(i);
     const vp = page.getViewport({ scale: 1 });
-    views.push({ index: i - 1, page, width: vp.width, height: vp.height, el: null!, notesEl: null!, canvas: null, renderedScale: 0, task: null });
+    views.push({ index: i - 1, page, width: vp.width, height: vp.height, el: null!, notesEl: null!, findEl: null!, canvas: null, renderedScale: 0, task: null });
   }
   if (seq !== loadSeq) {
     void next.loadingTask.destroy();
@@ -142,6 +150,10 @@ async function load(data: Uint8Array): Promise<void> {
   const previous = doc;
   doc = next;
   pages = views;
+  pageRuns = new Map();
+  // Old matches are not drawn on the new pages while the search runs again.
+  findHits = [];
+  findByPage = new Map();
   emptyEl.hidden = true;
   rebuildPageElements();
   if (presenting) {
@@ -159,6 +171,9 @@ async function load(data: Uint8Array): Promise<void> {
     }, 2000);
   }
   void previous?.loadingTask.destroy();
+  if (findOpen) {
+    void runFind(false); // The same search on the new build, without moving the view.
+  }
   if (e2e) {
     vscode.postMessage({ type: 'e2e:loaded', pages: pages.length });
   }
@@ -166,6 +181,7 @@ async function load(data: Uint8Array): Promise<void> {
 
 function rebuildPageElements(): void {
   visibility.disconnect();
+  findShown.clear();
   scale = resolveScale();
   const fragment = document.createDocumentFragment();
   for (const view of pages) {
@@ -174,6 +190,9 @@ function rebuildPageElements(): void {
     el.dataset.index = String(view.index);
     setPageSize(el, view);
     view.el = el;
+    view.findEl = document.createElement('div');
+    view.findEl.className = 'find-layer';
+    el.appendChild(view.findEl);
     view.notesEl = document.createElement('div');
     view.notesEl.className = 'notes-layer';
     el.appendChild(view.notesEl);
@@ -363,6 +382,7 @@ function setPresenting(on: boolean): void {
       return;
     }
     closeEditor();
+    closeFind();
     slide = captureAnchor()?.page ?? 0;
     presenting = true;
     syncPresentUi();
@@ -439,6 +459,9 @@ function onSlideKey(event: KeyboardEvent): void {
   }
   if ((event.key === 'Enter' || event.key === ' ') && event.target instanceof HTMLButtonElement) {
     return; // The Exit button.
+  }
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+    return;
   }
   if (event.key === 'Escape') {
     setPresenting(false);
@@ -1071,6 +1094,350 @@ async function clickedWord(view: PageView | undefined, x: number, y: number): Pr
   return wordAt(text, offset + char);
 }
 
+// ---- Find ----
+
+/** A text run with where it sits on the page, in PDF user space. */
+interface Run extends FindItem {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface PageRuns {
+  runs: Run[];
+  /** The page at scale 1, to turn PDF user space into page coordinates. */
+  viewport: ReturnType<PDFPageProxy['getViewport']>;
+}
+
+/** A highlight box as percentages of the page, so zooming moves it with the page. */
+interface FindBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface FindHit {
+  page: number;
+  boxes: FindBox[];
+}
+
+const findBar = document.getElementById('find-bar') as HTMLDivElement;
+const findInput = document.getElementById('find-input') as HTMLInputElement;
+const findCaseButton = document.getElementById('find-case') as HTMLButtonElement;
+const findWordButton = document.getElementById('find-word') as HTMLButtonElement;
+const findCount = document.getElementById('find-count') as HTMLSpanElement;
+const findPrev = document.getElementById('find-prev') as HTMLButtonElement;
+const findNext = document.getElementById('find-next') as HTMLButtonElement;
+const findToggle = document.getElementById('find-toggle') as HTMLButtonElement;
+
+/** Each page's text, read once per build: reading it is the slow part of a search. */
+let pageRuns = new Map<number, Promise<PageRuns>>();
+/** Pages near the screen; only these have highlight boxes, so a one-letter search stays light. */
+const findShown = new Set<number>();
+let findOpen = false;
+let findHits: FindHit[] = [];
+let findByPage = new Map<number, number[]>();
+let findCurrent = -1;
+let findPending = false;
+let findSeq = 0;
+let findTimer: number | undefined;
+
+function readRuns(view: PageView): Promise<PageRuns> {
+  let runs = pageRuns.get(view.index);
+  if (!runs) {
+    runs = view.page.getTextContent().then((content) => ({
+      viewport: view.page.getViewport({ scale: 1 }),
+      runs: content.items.flatMap((item) =>
+        'str' in item
+          ? [{ str: item.str, hasEOL: item.hasEOL, x: item.transform[4], y: item.transform[5], width: item.width, height: item.height || Math.abs(item.transform[3]) }]
+          : [],
+      ),
+    }));
+    pageRuns.set(view.index, runs);
+  }
+  return runs;
+}
+
+/**
+ * The box of part of a run. Glyph widths are not known here, so the part is placed by its share of
+ * the run's characters; the box reaches a little below the baseline for descenders.
+ */
+function spanBox(view: PageView, { runs, viewport }: PageRuns, span: FindSpan): FindBox | undefined {
+  const run = runs[span.item];
+  const length = run.str.length;
+  if (!length || run.width <= 0) {
+    return undefined;
+  }
+  const x0 = run.x + (run.width * span.start) / length;
+  const x1 = run.x + (run.width * span.end) / length;
+  const [ax, ay] = viewport.convertToViewportPoint(x0, run.y - run.height * 0.25);
+  const [bx, by] = viewport.convertToViewportPoint(x1, run.y + run.height * 0.85);
+  return {
+    left: percent(Math.min(ax, bx), view.width),
+    top: percent(Math.min(ay, by), view.height),
+    width: percent(Math.abs(bx - ax), view.width),
+    height: percent(Math.abs(by - ay), view.height),
+  };
+}
+
+function findOptions() {
+  return { caseSensitive: findCaseButton.getAttribute('aria-pressed') === 'true', wholeWord: findWordButton.getAttribute('aria-pressed') === 'true' };
+}
+
+/**
+ * Searches every page for what the find box holds. `jump` moves to the first match from the page in
+ * view, as typing does; without it (a new build) the current match is kept and the view stays put.
+ */
+async function runFind(jump: boolean): Promise<void> {
+  const seq = ++findSeq;
+  clearTimeout(findTimer);
+  const query = findInput.value;
+  const options = findOptions();
+  const list = pages;
+  if (!findOpen || !normalizeQuery(query, options.caseSensitive)) {
+    setFindHits([], -1);
+    void reportFind();
+    return;
+  }
+  findPending = true;
+  syncFindUi();
+  const hits: FindHit[] = [];
+  for (const view of list) {
+    let runs: PageRuns;
+    try {
+      runs = await readRuns(view);
+    } catch {
+      runs = { runs: [], viewport: view.page.getViewport({ scale: 1 }) }; // A page whose text cannot be read is skipped.
+    }
+    if (seq !== findSeq || list !== pages) {
+      return; // A newer search or build took over.
+    }
+    const text = pageText(runs.runs, options.caseSensitive);
+    for (const spans of findInPage(text, query, options)) {
+      const boxes = spans.flatMap((span) => spanBox(view, runs, span) ?? []);
+      if (boxes.length) {
+        hits.push({ page: view.index, boxes });
+      }
+    }
+  }
+  if (!hits.length) {
+    setFindHits(hits, -1);
+  } else if (jump) {
+    const here = presenting ? slide : (captureAnchor()?.page ?? 0);
+    const first = hits.findIndex((hit) => hit.page >= here);
+    setFindHits(hits, first === -1 ? 0 : first);
+    showFindHit();
+  } else {
+    setFindHits(hits, Math.min(Math.max(findCurrent, 0), hits.length - 1));
+  }
+  void reportFind();
+}
+
+function setFindHits(hits: FindHit[], current: number): void {
+  findHits = hits;
+  findCurrent = current;
+  findByPage = new Map();
+  hits.forEach((hit, i) => {
+    const list = findByPage.get(hit.page) ?? [];
+    list.push(i);
+    findByPage.set(hit.page, list);
+  });
+  findPending = false;
+  for (const view of pages) {
+    if (findShown.has(view.index)) {
+      drawFind(view);
+    } else {
+      view.findEl.replaceChildren();
+    }
+  }
+  syncFindUi();
+}
+
+function drawFind(view: PageView): void {
+  const boxes: HTMLDivElement[] = [];
+  for (const i of findByPage.get(view.index) ?? []) {
+    for (const box of findHits[i].boxes) {
+      const el = document.createElement('div');
+      el.className = i === findCurrent ? 'find-hit current' : 'find-hit';
+      el.style.left = `${box.left}%`;
+      el.style.top = `${box.top}%`;
+      el.style.width = `${box.width}%`;
+      el.style.height = `${box.height}%`;
+      boxes.push(el);
+    }
+  }
+  view.findEl.replaceChildren(...boxes);
+}
+
+/** Scrolls the current match into view, unless it already is. */
+function showFindHit(): void {
+  const hit = findHits[findCurrent];
+  const view = hit && pages[hit.page];
+  if (!view) {
+    return;
+  }
+  if (presenting) {
+    showSlide(view.index);
+    return;
+  }
+  const box = hit.boxes[0];
+  const height = view.el.offsetHeight;
+  const width = view.el.offsetWidth;
+  const top = view.el.offsetTop + (box.top / 100) * height;
+  const bottom = top + (box.height / 100) * height;
+  const left = view.el.offsetLeft + (box.left / 100) * width;
+  const right = left + (box.width / 100) * width;
+  const target: ScrollToOptions = {};
+  if (top < viewer.scrollTop || bottom > viewer.scrollTop + viewer.clientHeight) {
+    target.top = Math.max(0, top - viewer.clientHeight / 3);
+  }
+  if (left < viewer.scrollLeft || right > viewer.scrollLeft + viewer.clientWidth) {
+    target.left = Math.max(0, left - viewer.clientWidth / 3);
+  }
+  if (target.top !== undefined || target.left !== undefined) {
+    viewer.scrollTo({ ...target, behavior: 'smooth' });
+  }
+}
+
+function stepFind(direction: 1 | -1): void {
+  if (findPending || !findHits.length) {
+    return;
+  }
+  setFindHits(findHits, stepMatch(findCurrent, findHits.length, direction));
+  showFindHit();
+  void reportFind();
+}
+
+function syncFindUi(): void {
+  findBar.hidden = !findOpen;
+  findToggle.setAttribute('aria-pressed', String(findOpen));
+  findCount.textContent = findOpen ? findCounter(findCurrent, findHits.length, findPending, findInput.value) : '';
+  findBar.classList.toggle('no-results', findOpen && findCount.textContent === findCounter(-1, 0, false, 'x'));
+  findPrev.disabled = findNext.disabled = findPending || findHits.length === 0;
+}
+
+function openFind(): void {
+  if (presenting || !pages.length) {
+    return;
+  }
+  const wasOpen = findOpen;
+  findOpen = true;
+  syncFindUi();
+  findInput.focus();
+  findInput.select();
+  if (!wasOpen && findInput.value) {
+    void runFind(true);
+  }
+}
+
+function closeFind(): void {
+  if (!findOpen) {
+    return;
+  }
+  findOpen = false;
+  findSeq++;
+  clearTimeout(findTimer);
+  const hadFocus = findBar.contains(document.activeElement);
+  setFindHits([], -1);
+  if (hadFocus) {
+    viewer.focus({ preventScroll: true });
+  }
+  void reportFind();
+}
+
+function toggleFindOption(button: HTMLButtonElement): void {
+  button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+  findInput.focus();
+  void runFind(true);
+}
+
+findToggle.addEventListener('click', () => (findOpen ? closeFind() : openFind()));
+findCaseButton.addEventListener('click', () => toggleFindOption(findCaseButton));
+findWordButton.addEventListener('click', () => toggleFindOption(findWordButton));
+findPrev.addEventListener('click', () => stepFind(-1));
+findNext.addEventListener('click', () => stepFind(1));
+document.getElementById('find-close')!.addEventListener('click', closeFind);
+findInput.addEventListener('input', () => {
+  clearTimeout(findTimer);
+  findSeq++; // Drops a search still reading pages for the old text.
+  findPending = normalizeQuery(findInput.value, false) !== '';
+  syncFindUi();
+  findTimer = window.setTimeout(() => void runFind(true), 150);
+});
+// Keys typed in the bar stay there: Space and arrows are not slide keys, Escape only closes find.
+findBar.addEventListener('keydown', (event) => {
+  event.stopPropagation();
+  const key = event.key.toLowerCase();
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeFind();
+  } else if (event.key === 'Enter' && event.target === findInput) {
+    event.preventDefault();
+    if (findPending) {
+      void runFind(true);
+    } else {
+      stepFind(event.shiftKey ? -1 : 1);
+    }
+  } else if (event[modifierKey] && key === 'f') {
+    event.preventDefault();
+    findInput.select();
+  } else if (isFindStepKey(event)) {
+    event.preventDefault();
+    stepFind(event.shiftKey ? -1 : 1);
+  }
+});
+
+/**
+ * F3 steps through matches, and ⌘G on a Mac. Ctrl+G is left alone elsewhere: VS Code also gets the
+ * key and would open Go to Line.
+ */
+function isFindStepKey(event: KeyboardEvent): boolean {
+  return event.key === 'F3' || (modifierKey === 'metaKey' && event.metaKey && !event.altKey && event.key.toLowerCase() === 'g');
+}
+
+function onFindKey(event: KeyboardEvent): void {
+  if (event[modifierKey] && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
+    event.preventDefault();
+    openFind();
+  } else if (findOpen && isFindStepKey(event)) {
+    event.preventDefault();
+    stepFind(event.shiftKey ? -1 : 1);
+  }
+}
+
+async function reportFind(): Promise<void> {
+  if (!e2e) {
+    return;
+  }
+  await scrollSettled();
+  const hit = findHits[findCurrent];
+  const view = hit && pages[hit.page];
+  let inView = false;
+  let box: PageRect | null = null;
+  if (view) {
+    const b = hit.boxes[0];
+    box = { page: view.index + 1, x: (b.left / 100) * view.width, y: (b.top / 100) * view.height, width: (b.width / 100) * view.width, height: (b.height / 100) * view.height };
+    const top = view.el.offsetTop + (hit.boxes[0].top / 100) * view.el.offsetHeight - viewer.scrollTop;
+    const bottom = top + (hit.boxes[0].height / 100) * view.el.offsetHeight;
+    inView = top >= 0 && bottom <= viewer.clientHeight;
+  }
+  vscode.postMessage({
+    type: 'e2e:found',
+    open: findOpen,
+    counter: findCount.textContent ?? '',
+    total: findHits.length,
+    current: findCurrent,
+    page: hit ? hit.page + 1 : 0,
+    inView,
+    shown: getComputedStyle(findBar).display !== 'none',
+    box,
+    highlights: document.querySelectorAll('.find-hit').length,
+    currentBoxes: document.querySelectorAll('.find-hit.current').length,
+  });
+}
+
 // ---- Wiring ----
 
 function report(message: string): void {
@@ -1109,6 +1476,7 @@ zoomSelect.addEventListener('change', () => {
 
 presentButton.addEventListener('click', () => setPresenting(true));
 document.getElementById('present-exit')!.addEventListener('click', () => setPresenting(false));
+window.addEventListener('keydown', onFindKey);
 window.addEventListener('keydown', onSlideKey);
 window.addEventListener('mousemove', () => {
   if (presenting) {
@@ -1235,6 +1603,20 @@ window.addEventListener('message', (event: MessageEvent<ToViewerMessage>) => {
       if (e2e) {
         applyZoom(msg.zoom);
         e2eReportNotes();
+      }
+      break;
+    case 'e2e:find':
+      if (e2e) {
+        findCaseButton.setAttribute('aria-pressed', String(msg.caseSensitive ?? false));
+        findWordButton.setAttribute('aria-pressed', String(msg.wholeWord ?? false));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', [modifierKey]: true, cancelable: true }));
+        findInput.value = msg.query;
+        findInput.dispatchEvent(new Event('input'));
+      }
+      break;
+    case 'e2e:findKey':
+      if (e2e) {
+        findInput.dispatchEvent(new KeyboardEvent('keydown', { key: msg.key, shiftKey: msg.shift ?? false, bubbles: true, cancelable: true }));
       }
       break;
   }

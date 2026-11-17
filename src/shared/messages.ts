@@ -61,7 +61,11 @@ export type E2eToViewerMessage =
   /** Sets the zoom, then reports where the pins are. */
   | { type: 'e2e:zoom'; zoom: 'page-width' | number }
   /** Presses a key in the viewer, as a user would during a slideshow. */
-  | { type: 'e2e:key'; key: string };
+  | { type: 'e2e:key'; key: string }
+  /** Opens find, sets its toggles and types `query`, then reports the matches once found. */
+  | { type: 'e2e:find'; query: string; caseSensitive?: boolean; wholeWord?: boolean }
+  /** Presses a key in the find box (Enter, Escape), then reports the matches. */
+  | { type: 'e2e:findKey'; key: string; shift?: boolean };
 
 export type E2eFromViewerMessage =
   | { type: 'e2e:loaded'; pages: number }
@@ -101,7 +105,29 @@ export type E2eFromViewerMessage =
       position: number;
       /** The viewer's scroll box, for a failure message. */
       layout: { scrollTop: number; height: number; scrollHeight: number; zoom: string };
-    };
+    }
+  | E2eFoundMessage;
+
+/**
+ * Sent when a find has run, stepped or closed. `current` is 0-based (-1 for none), `page` the 1-based
+ * page of the current match (0 for none), `inView` whether it is on screen, and `highlights` how
+ * many highlight boxes are drawn, `currentBoxes` how many of them belong to the current match.
+ */
+export type E2eFoundMessage = {
+  type: 'e2e:found';
+  open: boolean;
+  counter: string;
+  total: number;
+  current: number;
+  page: number;
+  inView: boolean;
+  /** Whether the find bar is on screen, as the page lays it out. */
+  shown: boolean;
+  /** The current match's first box, in PDF points from the page's top-left corner. */
+  box: PageRect | null;
+  highlights: number;
+  currentBoxes: number;
+};
 
 export function isE2eMessage(msg: { type: string }): msg is E2eFromViewerMessage {
   return msg.type.startsWith('e2e:');
