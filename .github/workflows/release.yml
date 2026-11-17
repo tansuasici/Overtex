@@ -18,7 +18,7 @@ jobs:
       # Job level so the Open VSX step's condition can see whether it is set.
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v5
         with:
