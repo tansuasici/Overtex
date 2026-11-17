@@ -208,6 +208,12 @@
         "category": "Overtex"
       },
       {
+        "command": "overtex.searchLiterature",
+        "title": "Search Papers (OpenAlex, arXiv)",
+        "category": "Overtex",
+        "icon": "$(search)"
+      },
+      {
         "command": "overtex.insertTable",
         "title": "Insert Table from CSV",
         "category": "Overtex"
@@ -573,6 +579,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "overtex.searchLiterature",
+          "when": "view == overtex.papers",
+          "group": "navigation@0"
+        },
         {
           "command": "overtex.library.add",
           "when": "view == overtex.papers",

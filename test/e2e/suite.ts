@@ -904,6 +904,10 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('Search Papers is registered (it needs the network, so it is not run)', async () => {
+    assert.ok((await vscode.commands.getCommands(true)).includes('overtex.searchLiterature'));
+  });
+
   await step('Papers panel groups the .bib by citation and cites a paper', async () => {
     const bib = path.join(root, 'refs.bib');
     const tex = path.join(root, 'papers-e2e.tex');

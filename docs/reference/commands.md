@@ -20,6 +20,7 @@ Change a shortcut in **Preferences: Open Keyboard Shortcuts** by searching for t
 | Overtex: New LaTeX Document | `overtex.newDocument` |  |
 | Overtex: Getting Started | `overtex.gettingStarted` |  |
 | Overtex: Add Citation from DOI or arXiv | `overtex.addCitation` |  |
+| Overtex: Search Papers (OpenAlex, arXiv) | `overtex.searchLiterature` |  |
 | Overtex: Insert Table from CSV | `overtex.insertTable` |  |
 | Overtex: Insert Figure | `overtex.insertFigure` |  |
 | Overtex: Show Math Symbols | `overtex.showSymbols` |  |

@@ -204,6 +204,18 @@ export function prepareEntry(raw: string, taken: Iterable<string>): { key: strin
   return { key, text: rewriteBibtex(raw, key) };
 }
 
+/**
+ * Records the arXiv preprint of a paper fetched by its published DOI, so the arXiv PDF
+ * can still be downloaded. Left alone when the entry already names an eprint.
+ */
+export function addEprint(entry: string, arxiv: string): string {
+  const id = parseIdentifier(`arXiv:${arxiv}`);
+  if (id?.kind !== 'arxiv' || /^\s*eprint\s*=/im.test(entry) || !entry.endsWith('\n}\n')) {
+    return entry;
+  }
+  return `${entry.slice(0, -3)},\n  eprint = {${id.id}},\n  archiveprefix = {arXiv}\n}\n`;
+}
+
 export function normalizeDoi(doi: string): string {
   return doi
     .trim()

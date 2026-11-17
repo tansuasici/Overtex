@@ -15,6 +15,18 @@ The key is the first author's surname, the year and the first important word of 
 
 This is one of the few features that uses the internet; see [Privacy](privacy.md).
 
+## Search for papers
+
+**Overtex: Search Papers (OpenAlex, arXiv)**, or the magnifier in the Papers panel, finds papers you do not have yet:
+
+1. Type words from the title, the authors or the topic. Text selected in the editor is filled in.
+2. Overtex asks [OpenAlex](https://openalex.org/) and arXiv at once. A paper both know, or a preprint and its published version, is shown once, with its authors, year, venue and how often it is cited.
+3. Pick one or more papers. Papers already in your `.bib` files are marked with a check and skipped.
+
+Each pick is added as with Add Citation: the BibTeX comes from doi.org, never from the search results. A paper with a journal DOI and an arXiv preprint gets the journal's entry with `eprint` and `archiveprefix` added, so **Download Paper PDF from arXiv** still works. Results with neither a DOI nor an arXiv ID are not shown, as there is nothing to fetch BibTeX from. Nothing is cited at the cursor; use the Papers panel or completion for that.
+
+The words you search for are sent to api.openalex.org and export.arxiv.org, with no account, key or email address. OpenAlex lets anonymous users run about a hundred searches a day from one internet address; after that it answers "try again later", and Overtex still shows arXiv's results. If one service cannot be reached, the other's results are shown with a warning.
+
 ## Cite from Zotero
 
 If you keep your papers in [Zotero](https://www.zotero.org/), install its [Better BibTeX](https://retorque.re/zotero-better-bibtex/) add-on and keep Zotero running. Then **Overtex: Cite from Zotero**:
