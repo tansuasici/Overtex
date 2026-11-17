@@ -62,14 +62,16 @@ class PaperItem extends vscode.TreeItem {
     readonly paper: IndexedEntry,
     readonly pdf: string | undefined,
     readonly uses: PaperUse[],
-    group: string
+    group: string,
+    nth = 0
   ) {
     super(
       plainTex(paper.rawTitle ?? paper.title) || paper.key,
       uses.length ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
     );
-    // Keys can repeat across .bib files, so the file is part of the id.
-    this.id = `overtex.papers.${group}.${paper.file.toString()}#${paper.key}`;
+    // Keys can repeat across .bib files, so the file is part of the id; a key repeated
+    // inside one file gets its occurrence number, so the tree never sees an id twice.
+    this.id = `overtex.papers.${group}.${paper.file.toString()}#${paper.key}${nth ? `~${nth}` : ''}`;
     const byline = [shortAuthors(paper.rawAuthor ?? paper.author), paperYear(paper)].filter(Boolean).join(', ');
     this.description = uses.length ? [`${uses.length}×`, byline].filter(Boolean).join(' · ') : byline;
     this.tooltip = new vscode.MarkdownString(citationHoverMarkdown(paper));
@@ -125,9 +127,16 @@ class PapersProvider implements vscode.TreeDataProvider<Node> {
         uses.set(key, all);
       }
     }
+    const seen = new Map<string, number>();
+    const nth = (p: IndexedEntry): number => {
+      const id = `${p.file.toString()}#${p.key}`;
+      const n = seen.get(id) ?? 0;
+      seen.set(id, n + 1);
+      return n;
+    };
     return groupPapers(entries, citationCounts(scanned.map((s) => s.value)), this.sort())
       .filter(({ group }) => !this.uncitedOnly() || group === 'Not cited')
-      .map(({ group, papers }) => new GroupItem(group, papers.map((p) => new PaperItem(p, pdfOf(p), uses.get(p.key) ?? [], group))));
+      .map(({ group, papers }) => new GroupItem(group, papers.map((p) => new PaperItem(p, pdfOf(p), uses.get(p.key) ?? [], group, nth(p)))));
   }
 
   /** Where the paper is cited, each with its page in the PDF when SyncTeX can tell. */

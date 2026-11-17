@@ -65,6 +65,11 @@ describe('citedKeys', () => {
     ].join('\n');
     expect([...citedKeys(tex)].sort()).toEqual(['after', 'kept', 'same']);
   });
+
+  it('does not start verbatim mode from inside \\verb', () => {
+    const tex = String.raw`\verb|\begin{verbatim}| \cite{kept}` + '\n' + String.raw`\cite{also}`;
+    expect([...citedKeys(tex)].sort()).toEqual(['also', 'kept']);
+  });
 });
 
 describe('citationUses', () => {

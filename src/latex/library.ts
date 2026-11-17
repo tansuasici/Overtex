@@ -55,15 +55,17 @@ export function maskNonCode(tex: string): string {
       }
       const at = commentStart(rest);
       const code = at < 0 ? rest : rest.substring(0, at);
-      const begin = BEGIN_VERBATIM.exec(code);
+      // Mask \verb first, so \verb|\begin{verbatim}| does not start a verbatim block.
+      const plain = maskVerb(code);
+      const begin = BEGIN_VERBATIM.exec(plain);
       if (begin) {
         const after = begin.index + begin[0].length;
-        masked += maskVerb(rest.substring(0, after));
+        masked += plain.substring(0, after);
         verbatimEnd = `\\end{${begin[1]}`;
         rest = rest.substring(after);
         continue;
       }
-      masked += maskVerb(code) + blank(rest.substring(code.length));
+      masked += plain + blank(rest.substring(code.length));
       break;
     }
     out.push(masked);

@@ -112,6 +112,7 @@
     "viewsWelcome": [
       {
         "view": "overtex.papers",
+        "when": "!overtex.papers.uncitedOnly",
         "contents": "No papers yet. Papers are read from the .bib files in this workspace.\n[Add Paper](command:overtex.library.add)"
       },
       {
