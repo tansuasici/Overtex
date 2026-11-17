@@ -29,7 +29,9 @@ export interface OvertexE2e {
   /** Does what happens when VS Code brings the preview back after a reload, which a test cannot trigger. */
   restoreViewer(panel: vscode.WebviewPanel): Promise<void>;
   /** What the Papers panel lists: its groups in order, with the paper keys in order. */
-  paperGroups(): Promise<{ group: string; keys: string[] }[]>;
+  paperGroups(): Promise<{ group: string; keys: string[]; counts: number[] }[]>;
+  /** Where the Papers panel says the paper with this key is cited, with the PDF page when SyncTeX gives one. */
+  paperUses(key: string): Promise<{ file: string; line: number; section?: string; page?: number }[]>;
   /** What the Labels panel lists: its groups in order, with the label keys in order. */
   labelGroups(): Promise<{ group: string; keys: string[] }[]>;
   /** Inserts what dropping `files` at the cursor of the active .tex editor inserts. False if nothing was inserted. */

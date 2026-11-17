@@ -4,12 +4,14 @@ import * as path from 'path';
 import { arxivIdOf } from '../src/latex/bibCheck';
 import { BibEntry, parseBib } from '../src/latex/bibParser';
 import {
+  citationCounts,
+  citationUses,
   citedKeys,
   fetchArxivPdf,
   filePathsIn,
   findPdf,
   groupPapers,
-  mergeCited,
+  maskNonCode,
   paperPdfPath,
   paperUrl,
   paperYear,
@@ -25,38 +27,87 @@ function entry(key: string, over: Partial<BibEntry> = {}): BibEntry {
 
 describe('citedKeys', () => {
   it('finds keys across cite commands, with options and several keys', () => {
-    const { keys, all } = citedKeys(String.raw`\cite{a, b} \citep[p.~2]{c} \parencite*[see][1]{d} \Autocite{e} \nocite{f}`);
+    const keys = citedKeys(String.raw`\cite{a, b} \citep[p.~2]{c} \parencite*[see][1]{d} \Autocite{e} \nocite{f}`);
     expect([...keys].sort()).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
-    expect(all).toBe(false);
   });
 
   it("reads each group of biblatex's \\cites", () => {
-    const { keys } = citedKeys(String.raw`\cites[1]{a}[2]{b,c}{d} and {not}`);
+    const keys = citedKeys(String.raw`\cites[1]{a}[2]{b,c}{d} and {not}`);
     expect([...keys].sort()).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('ignores comments but not an escaped percent', () => {
-    const { keys } = citedKeys('% \\cite{gone}\n50\\% \\cite{kept} % \\cite{gone2}\n');
+    const keys = citedKeys('% \\cite{gone}\n50\\% \\cite{kept} % \\cite{gone2}\n');
     expect([...keys]).toEqual(['kept']);
   });
 
-  it('treats \\nocite{*} as citing everything', () => {
-    expect(citedKeys(String.raw`\nocite{*}`).all).toBe(true);
+  it('does not count \\nocite{*}', () => {
+    expect([...citedKeys(String.raw`\nocite{*} \nocite{a,*}`)]).toEqual(['a']);
   });
 
-  it('does not take setup commands for citations', () => {
-    expect(citedKeys(String.raw`\citestyle{ieee} \newcite{x}`).keys.size).toBe(0);
+  it('does not take setup commands or macro parameters for citations', () => {
+    expect(citedKeys(String.raw`\citestyle{ieee} \newcite{x}`).size).toBe(0);
+    expect(citedKeys(String.raw`\newcommand{\mycite}[1]{\cite{#1}} \def\c{\cite{\key}}`).size).toBe(0);
   });
 
   it('survives an unclosed group', () => {
-    expect(citedKeys(String.raw`\cite{a`).keys.size).toBe(0);
-    expect(citedKeys(String.raw`\cite[p`).keys.size).toBe(0);
+    expect(citedKeys(String.raw`\cite{a`).size).toBe(0);
+    expect(citedKeys(String.raw`\cite[p`).size).toBe(0);
   });
 
-  it('merges files', () => {
-    const merged = mergeCited([citedKeys(String.raw`\cite{a}`), citedKeys(String.raw`\nocite{*}\cite{b}`)]);
-    expect([...merged.keys].sort()).toEqual(['a', 'b']);
-    expect(merged.all).toBe(true);
+  it('ignores verbatim environments and \\verb', () => {
+    const tex = [
+      String.raw`\begin{verbatim}\cite{v1}`,
+      String.raw`\cite{v2}`,
+      String.raw`\end{verbatim} \cite{after}`,
+      String.raw`\begin{lstlisting}\cite{v3}\end{lstlisting}\cite{same}`,
+      String.raw`\verb|\cite{v4}| \cite{kept}`,
+    ].join('\n');
+    expect([...citedKeys(tex)].sort()).toEqual(['after', 'kept', 'same']);
+  });
+
+  it('does not start verbatim mode from inside \\verb', () => {
+    const tex = String.raw`\verb|\begin{verbatim}| \cite{kept}` + '\n' + String.raw`\cite{also}`;
+    expect([...citedKeys(tex)].sort()).toEqual(['also', 'kept']);
+  });
+});
+
+describe('citationUses', () => {
+  it('gives the line and column of each key, multi-line groups included', () => {
+    const uses = citationUses('x \\cite{a,\n  b} \\cite{a}');
+    expect(uses.get('a')).toEqual([
+      { line: 0, column: 8 },
+      { line: 1, column: 11 },
+    ]);
+    expect(uses.get('b')).toEqual([{ line: 1, column: 2 }]);
+  });
+
+  it('names the heading a citation comes under', () => {
+    const tex = [
+      String.raw`\cite{pre}`,
+      String.raw`\section[Short]{Related {\em Work}}`,
+      String.raw`\cite{a}`,
+      String.raw`% \section{Commented}`,
+      String.raw`\cite{b}`,
+      String.raw`\begin{frame}{Results \& more}\cite{c}`,
+    ].join('\n');
+    const uses = citationUses(tex);
+    expect(uses.get('pre')?.[0].section).toBeUndefined();
+    expect(uses.get('a')?.[0].section).toBe('Related Work');
+    expect(uses.get('b')?.[0].section).toBe('Related Work');
+    expect(uses.get('c')?.[0].section).toBe('Results & more');
+  });
+
+  it('counts across files', () => {
+    const counts = citationCounts([citationUses(String.raw`\cite{a,b}\cite{a}`), citationUses(String.raw`\nocite{a}`)]);
+    expect(Object.fromEntries(counts)).toEqual({ a: 3, b: 1 });
+  });
+
+  it('keeps every offset where it was', () => {
+    const tex = 'a % c\n\\begin{verbatim}\nx\n\\end{verbatim}\n\\verb|y| é';
+    const masked = maskNonCode(tex);
+    expect(masked.length).toBe(tex.length);
+    expect(masked.split('\n').map((l) => l.length)).toEqual(tex.split('\n').map((l) => l.length));
   });
 });
 
@@ -111,13 +162,13 @@ describe('sorting and grouping', () => {
   });
 
   it('groups and leaves out empty groups', () => {
-    const groups = groupPapers(papers, { keys: new Set(['old']), all: false }, 'year');
+    const groups = groupPapers(papers, new Map([['old', 2], ['new', 0]]), 'year');
     expect(groups.map((g) => [g.group, g.papers.map((p) => p.key)])).toEqual([
       ['Cited', ['old']],
       ['Not cited', ['new', 'none']],
     ]);
-    expect(groupPapers(papers, { keys: new Set(), all: true }, 'year').map((g) => g.group)).toEqual(['Cited']);
-    expect(groupPapers([], { keys: new Set(), all: false }, 'year')).toEqual([]);
+    expect(groupPapers(papers, new Map(), 'year').map((g) => g.group)).toEqual(['Not cited']);
+    expect(groupPapers([], new Map(), 'year')).toEqual([]);
   });
 });
 

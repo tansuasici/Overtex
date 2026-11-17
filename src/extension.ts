@@ -94,7 +94,15 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   const bibCheck = new BibliographyCheck(mainFile, userAgent);
   const grammar = new GrammarCheck(mainFile, context.extensionPath);
   context.subscriptions.push(grammar);
-  const papers = registerLibrary(context, { index: bibIndex, mainFile, userAgent, showPdf: (pdf) => pdfPanel.show(pdf) });
+  const papers = registerLibrary(context, {
+    index: bibIndex,
+    mainFile,
+    userAgent,
+    showPdf: (pdf) => pdfPanel.show(pdf),
+    pdfFor,
+    forward: (pdf, file, line, column) => synctex.forward(pdf, file, line, column),
+    onDidBuild: onDidEndBuild.event,
+  });
   const labels = registerLabels(context, {
     useFallbackProviders: () => !server.isRunning && !vscode.extensions.getExtension(TEXLAB_EXTENSION_ID),
   });
@@ -435,6 +443,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     viewerColumn: () => pdfPanel.column,
     restoreViewer: (panel) => pdfPanel.restore(panel),
     paperGroups: () => papers.groups(),
+    paperUses: (key) => papers.uses(key),
     labelGroups: () => labels.groups(),
     insertFiles: (files) => insertHelpers.insertFiles(files),
     snapshots: () => history.snapshots(),

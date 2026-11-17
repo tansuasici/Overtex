@@ -1,27 +1,148 @@
 // The logic behind the Papers panel. No vscode import, so it is unit-testable.
 import * as path from 'path';
 
-import { stripComments } from './arxiv';
+import { VERBATIM_ENVS, commentStart } from './arxiv';
 import { arxivIdOf } from './bibCheck';
 import { BibEntry } from './bibParser';
 import { CitationNotFoundError, normalizeDoi } from './citationImport';
+import { isHeadingLine } from '../shared/headings';
 
-export interface CitedKeys {
-  keys: Set<string>;
-  /** `\nocite{*}` is there, so every entry counts as cited. */
-  all: boolean;
+/** Where a key is cited: a 0-based line and column, and the heading the citation falls under, if any. */
+export interface CitationUse {
+  line: number;
+  column: number;
+  section?: string;
 }
+
+/** Each cited key with where it is cited, in source order. */
+export type CitationUses = Map<string, CitationUse[]>;
 
 export type PaperSort = 'year' | 'author' | 'title';
 
 const CITE_COMMAND = /\\([a-z]*cite[a-z]*)\*?/gi;
 /** Commands with `cite` in the name that set things up rather than cite. */
 const NOT_A_CITATION = /^(?:citestyle|citeindex|declare|new|renew|provide|def)/i;
+const BEGIN_VERBATIM = new RegExp(`\\\\begin\\s*\\{(${VERBATIM_ENVS})\\*?\\}`);
+const VERB = /\\verb\*?([^a-zA-Z\s*])[^\n]*?\1/g;
+const SECTION_TITLE =
+  /\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph|addpart|addchap|addsec|minisec|frametitle)\*?\s*(?:\[[^\]]*\]\s*)?\{/;
+const FRAME_TITLE = /\\begin\s*\{frame\}\s*(?:<[^>]*>\s*)?(?:\[[^\]]*\]\s*)?\{/;
 
-/** The keys `\cite`-like commands name, including biblatex's `\cites[a]{x}[b]{y}`. Comments do not count. */
-export function citedKeys(tex: string): CitedKeys {
-  const text = stripComments(tex);
-  const found: CitedKeys = { keys: new Set(), all: false };
+const blank = (text: string) => text.replace(/[^\n]/g, ' ');
+
+/**
+ * The source with comments, verbatim environments and `\verb` turned into spaces. Every other
+ * character stays where it was, so an offset into the mask is an offset into the source.
+ */
+export function maskNonCode(tex: string): string {
+  const out: string[] = [];
+  let verbatimEnd: string | undefined;
+  for (const line of tex.split('\n')) {
+    let rest = line;
+    let masked = '';
+    while (rest) {
+      if (verbatimEnd) {
+        const end = rest.indexOf(verbatimEnd);
+        if (end < 0) {
+          masked += blank(rest);
+          break;
+        }
+        const after = end + verbatimEnd.length;
+        masked += blank(rest.substring(0, after));
+        rest = rest.substring(after);
+        verbatimEnd = undefined;
+        continue;
+      }
+      const at = commentStart(rest);
+      const code = at < 0 ? rest : rest.substring(0, at);
+      // Mask \verb first, so \verb|\begin{verbatim}| does not start a verbatim block.
+      const plain = maskVerb(code);
+      const begin = BEGIN_VERBATIM.exec(plain);
+      if (begin) {
+        const after = begin.index + begin[0].length;
+        masked += plain.substring(0, after);
+        verbatimEnd = `\\end{${begin[1]}`;
+        rest = rest.substring(after);
+        continue;
+      }
+      masked += plain + blank(rest.substring(code.length));
+      break;
+    }
+    out.push(masked);
+  }
+  return out.join('\n');
+}
+
+function maskVerb(code: string): string {
+  return code.replace(VERB, (verb) => '\\verb' + blank(verb.substring(5)));
+}
+
+/** The text of the group that opens at `open` (a `{`), braces matched, or undefined if it does not close soon. */
+function braced(text: string, open: number): string | undefined {
+  let depth = 0;
+  for (let i = open; i < text.length && i < open + 500; i++) {
+    if (text[i] === '\\') {
+      i++;
+    } else if (text[i] === '{') {
+      depth++;
+    } else if (text[i] === '}' && --depth === 0) {
+      return text.substring(open + 1, i);
+    }
+  }
+  return undefined;
+}
+
+/** Where each heading starts in the masked source, with its title as plain text. */
+function headings(masked: string): { offset: number; title: string }[] {
+  const found: { offset: number; title: string }[] = [];
+  let offset = 0;
+  for (const line of masked.split('\n')) {
+    if (isHeadingLine(line)) {
+      const m = SECTION_TITLE.exec(line) ?? FRAME_TITLE.exec(line);
+      const title = m && braced(masked, offset + m.index + m[0].length - 1);
+      const plain = title ? plainTex(title) : '';
+      if (plain) {
+        found.push({ offset, title: plain });
+      }
+    }
+    offset += line.length + 1;
+  }
+  return found;
+}
+
+/**
+ * Where each key is cited by a `\cite`-like command, biblatex's `\cites[a]{x}[b]{y}` included.
+ * Comments and verbatim text do not count, nor does `\nocite{*}`; `\nocite{key}` does. Keys
+ * with `#` or `\` in them come from macro definitions, not citations, and are left out.
+ */
+export function citationUses(tex: string): CitationUses {
+  const text = maskNonCode(tex);
+  const uses: CitationUses = new Map();
+  const lineStarts = [0];
+  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) {
+    lineStarts.push(i + 1);
+  }
+  const heads = headings(text);
+  let head = -1;
+  let line = 0;
+  const add = (key: string, offset: number) => {
+    while (line + 1 < lineStarts.length && lineStarts[line + 1] <= offset) {
+      line++;
+    }
+    while (head + 1 < heads.length && heads[head + 1].offset <= offset) {
+      head++;
+    }
+    const use: CitationUse = { line, column: offset - lineStarts[line] };
+    if (head >= 0) {
+      use.section = heads[head].title;
+    }
+    const list = uses.get(key);
+    if (list) {
+      list.push(use);
+    } else {
+      uses.set(key, [use]);
+    }
+  };
   for (const m of text.matchAll(CITE_COMMAND)) {
     if (NOT_A_CITATION.test(m[1])) {
       continue;
@@ -44,13 +165,13 @@ export function citedKeys(tex: string): CitedKeys {
         if (end < 0) {
           break;
         }
+        let at = i + 1;
         for (const part of text.substring(i + 1, end).split(',')) {
           const key = part.trim();
-          if (key === '*') {
-            found.all = true;
-          } else if (key) {
-            found.keys.add(key);
+          if (key && key !== '*' && !/[#\\]/.test(key)) {
+            add(key, at + part.indexOf(key));
           }
+          at += part.length + 1;
         }
         i = end + 1;
         if (!several) {
@@ -61,16 +182,23 @@ export function citedKeys(tex: string): CitedKeys {
       }
     }
   }
-  return found;
+  return uses;
 }
 
-export function mergeCited(all: Iterable<CitedKeys>): CitedKeys {
-  const merged: CitedKeys = { keys: new Set(), all: false };
-  for (const one of all) {
-    one.keys.forEach((k) => merged.keys.add(k));
-    merged.all ||= one.all;
+/** The keys `\cite`-like commands name; see {@link citationUses}. */
+export function citedKeys(tex: string): Set<string> {
+  return new Set(citationUses(tex).keys());
+}
+
+/** How many times each key is cited across the files. */
+export function citationCounts(all: Iterable<CitationUses>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const uses of all) {
+    for (const [key, list] of uses) {
+      counts.set(key, (counts.get(key) ?? 0) + list.length);
+    }
   }
-  return merged;
+  return counts;
 }
 
 const ACCENTS: Record<string, string> = {
@@ -155,13 +283,13 @@ export function sortPapers<T extends Sortable>(entries: readonly T[], sort: Pape
   });
 }
 
-/** Cited papers and the rest, leaving out a group with nothing in it. */
+/** Cited papers (cited at least once) and the rest, leaving out a group with nothing in it. */
 export function groupPapers<T extends Sortable>(
   entries: readonly T[],
-  cited: CitedKeys,
+  counts: ReadonlyMap<string, number>,
   sort: PaperSort
 ): { group: 'Cited' | 'Not cited'; papers: T[] }[] {
-  const isCited = (entry: T) => cited.all || cited.keys.has(entry.key);
+  const isCited = (entry: T) => (counts.get(entry.key) ?? 0) > 0;
   const sorted = sortPapers(entries, sort);
   return [
     { group: 'Cited' as const, papers: sorted.filter(isCited) },

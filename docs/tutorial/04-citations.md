@@ -71,6 +71,8 @@ Save. The PDF shows both numbers in one bracket.
 
 Open the **Papers** view in the Overtex sidebar. It lists every entry in your `.bib` files, in two groups: **Cited** and **Not cited**.
 
+- Each cited paper shows how often you cite it, for example `3×`. Expand it to see every place it is cited, with the section, file and line, and the PDF page once the PDF is built. Click a place to jump there.
+- The filter icon at the top shows only the papers you do not cite yet.
 - Hover over a paper to see its details.
 - With the cursor in your text, click the quote icon beside a paper to cite it there.
 - Right-click a paper: **Open Paper Page** opens it on the web, and for arXiv papers **Download Paper PDF from arXiv** saves the PDF into a `papers/` folder, so you can read it in the preview.

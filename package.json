@@ -112,6 +112,7 @@
     "viewsWelcome": [
       {
         "view": "overtex.papers",
+        "when": "!overtex.papers.uncitedOnly",
         "contents": "No papers yet. Papers are read from the .bib files in this workspace.\n[Add Paper](command:overtex.library.add)"
       },
       {
@@ -287,6 +288,18 @@
         "title": "Sort Papers",
         "category": "Overtex",
         "icon": "$(list-ordered)"
+      },
+      {
+        "command": "overtex.library.showUncited",
+        "title": "Show Only Uncited Papers",
+        "category": "Overtex",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "overtex.library.showAll",
+        "title": "Show All Papers",
+        "category": "Overtex",
+        "icon": "$(filter-filled)"
       },
       {
         "command": "overtex.library.refresh",
@@ -571,9 +584,19 @@
           "group": "navigation@2"
         },
         {
+          "command": "overtex.library.showUncited",
+          "when": "view == overtex.papers && !overtex.papers.uncitedOnly",
+          "group": "navigation@3"
+        },
+        {
+          "command": "overtex.library.showAll",
+          "when": "view == overtex.papers && overtex.papers.uncitedOnly",
+          "group": "navigation@3"
+        },
+        {
           "command": "overtex.library.refresh",
           "when": "view == overtex.papers",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "overtex.labels.refresh",
@@ -771,6 +794,14 @@
       "commandPalette": [
         {
           "command": "overtex.library.sort",
+          "when": "false"
+        },
+        {
+          "command": "overtex.library.showUncited",
+          "when": "false"
+        },
+        {
+          "command": "overtex.library.showAll",
           "when": "false"
         },
         {
