@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { parseBib } from '../src/latex/bibParser';
 import {
   SearchHit,
   arxivUrl,
+  bibliographyMatcher,
   cleanText,
   hitIdentifier,
   mergeHits,
@@ -84,7 +86,9 @@ describe('URLs', () => {
     expect(url.origin + url.pathname).toBe('https://export.arxiv.org/api/query');
     expect(url.searchParams.get('search_query')).toBe('all:tiblack AND all:holes AND all:Hawking AND all:radiation AND all:x');
     expect(url.searchParams.get('max_results')).toBe('25');
+    expect(new URL(arxivUrl('Attention is all you need')!).searchParams.get('search_query')).toBe('all:Attention AND all:all AND all:you AND all:need');
     expect(arxivUrl('"" () :')).toBeUndefined();
+    expect(arxivUrl('the of a')).toBeUndefined();
     expect(new URL(arxivUrl('a b c d e f g h i j k l m n')!).searchParams.get('search_query')!.split(' AND ')).toHaveLength(12);
   });
 });
@@ -159,6 +163,14 @@ describe('mergeHits', () => {
     expect(merged).toHaveLength(2);
   });
 
+  it('keeps different arXiv papers apart even when their titles match', () => {
+    const merged = mergeHits(
+      [hit({ title: 'Notes on gauge theories', arxiv: '2001.00001', sources: ['arXiv'] })],
+      [hit({ title: 'Notes on Gauge Theories', arxiv: '2002.00002', sources: ['arXiv'] })]
+    );
+    expect(merged).toHaveLength(2);
+  });
+
   it('does not merge on short titles', () => {
     expect(mergeHits([hit({ title: 'Reply' })], [hit({ title: 'Reply' })])).toHaveLength(2);
   });
@@ -167,6 +179,30 @@ describe('mergeHits', () => {
     const a = [hit({ title: 'a1', doi: '10.1/a1' }), hit({ title: 'a2', doi: '10.1/a2' })];
     const b = [hit({ title: 'b1', doi: '10.1/b1' }), hit({ title: 'b2', doi: '10.1/b2' })];
     expect(mergeHits(a, b).map((h) => h.title)).toEqual(['a1', 'b1', 'a2', 'b2']);
+  });
+});
+
+describe('bibliographyMatcher', () => {
+  const entries = parseBib(`
+@article{epr, title = {EPR}, doi = {10.1103/PhysRev.47.777}}
+@misc{vaswani, title = {Attention}, eprint = {1706.03762v5}, archiveprefix = {arXiv}}
+@misc{datacite, title = {Old}, doi = {10.48550/ARXIV.hep-th/9711200}}
+@misc{linked, title = {Linked}, url = {https://arxiv.org/abs/2101.00001}}
+`);
+  const match = bibliographyMatcher(entries);
+
+  it('finds entries by DOI whatever its case', () => {
+    expect(match(hit({ doi: '10.1103/physrev.47.777' }))?.key).toBe('epr');
+  });
+
+  it('finds entries by arXiv ID in eprint, an arXiv DOI or a URL', () => {
+    expect(match(hit({ arxiv: '1706.03762' }))?.key).toBe('vaswani');
+    expect(match(hit({ arxiv: 'hep-th/9711200' }))?.key).toBe('datacite');
+    expect(match(hit({ doi: '10.9999/journal', arxiv: '2101.00001' }))?.key).toBe('linked');
+  });
+
+  it('finds nothing for a new paper', () => {
+    expect(match(hit({ doi: '10.9999/new', arxiv: '2201.00001' }))).toBeUndefined();
   });
 });
 

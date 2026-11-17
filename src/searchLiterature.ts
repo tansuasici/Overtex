@@ -1,11 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
-import { addByIdentifier, chooseBibFile } from './addCitation';
-import { arxivIdOf } from './latex/bibCheck';
+import { addByIdentifier, chooseBibFile, readBibEntries } from './addCitation';
 import { BibEntry } from './latex/bibParser';
-import { normalizeDoi } from './latex/citationImport';
-import { SearchHit, hitIdentifier, searchLiterature } from './latex/literature';
+import { SearchHit, bibliographyMatcher, hitIdentifier, searchLiterature } from './latex/literature';
 
 export interface SearchOptions {
   mainFile: () => string | null;
@@ -43,7 +41,8 @@ export async function searchPapers(options: SearchOptions, initial?: string): Pr
       const abort = new AbortController();
       const sub = token.onCancellationRequested(() => abort.abort());
       try {
-        return await searchLiterature(query, { userAgent: options.userAgent, signal: abort.signal });
+        const found = await searchLiterature(query, { userAgent: options.userAgent, signal: abort.signal });
+        return abort.signal.aborted ? undefined : found;
       } finally {
         sub.dispose();
       }
@@ -62,8 +61,8 @@ export async function searchPapers(options: SearchOptions, initial?: string): Pr
     void vscode.window.showWarningMessage(`Overtex: ${result.failures.join('. ')}. Showing the other results.`);
   }
 
-  const inBib = existingKeys(await options.entries());
-  const items: HitItem[] = result.hits.map((hit) => hitItem(hit, inBib));
+  const inBib = bibliographyMatcher(await options.entries());
+  const items: HitItem[] = result.hits.map((hit) => hitItem(hit, inBib(hit)?.key));
   const picks = await vscode.window.showQuickPick(items, {
     title: `Search Papers: ${result.hits.length} found`,
     placeHolder: 'Pick the papers to add to your bibliography',
@@ -88,8 +87,10 @@ export async function searchPapers(options: SearchOptions, initial?: string): Pr
   // One at a time: each key is picked against what the previous one wrote.
   for (const { hit } of wanted) {
     const id = hitIdentifier(hit);
+    // The chosen file may have the paper even when the workspace index did not.
+    const before = new Set((await readBibEntries(bib)).map((e) => e.key));
     const key = id ? await addByIdentifier(id, bib, hit.arxiv) : undefined;
-    if (key) {
+    if (key && !before.has(key)) {
       added.push(key);
     }
   }
@@ -105,29 +106,12 @@ function selectedText(): string {
   return text.length <= 200 ? text : '';
 }
 
-/** Keys of the bibliography entries, by normalised DOI and by arXiv ID. */
-function existingKeys(entries: BibEntry[]): Map<string, string> {
-  const keys = new Map<string, string>();
-  for (const e of entries) {
-    if (e.doi) {
-      keys.set(`doi:${normalizeDoi(e.doi)}`, e.key);
-    }
-    const arxiv = arxivIdOf(e);
-    if (arxiv) {
-      keys.set(`arxiv:${arxiv.toLowerCase()}`, e.key);
-    }
-  }
-  return keys;
-}
-
 /** Text from a remote service, so `$(…)` cannot turn into an icon. */
 function plain(s: string): string {
-  return s.replace(/\$\(/g, '$​(');
+  return s.replace(/\$\(/g, '$\u200b(');
 }
 
-function hitItem(hit: SearchHit, inBib: Map<string, string>): HitItem {
-  const existing =
-    (hit.doi ? inBib.get(`doi:${hit.doi}`) : undefined) ?? (hit.arxiv ? inBib.get(`arxiv:${hit.arxiv.toLowerCase()}`) : undefined);
+function hitItem(hit: SearchHit, existing: string | undefined): HitItem {
   const authors = hit.authors.length > 3 ? `${hit.authors.slice(0, 3).join(', ')} et al.` : hit.authors.join(', ');
   const detail = [
     hit.doi ? `DOI ${hit.doi}` : '',

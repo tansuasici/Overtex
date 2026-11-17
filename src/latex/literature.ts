@@ -1,3 +1,5 @@
+import { arxivIdOf } from './bibCheck';
+import type { BibEntry } from './bibParser';
 import { CitationId, fold, normalizeDoi, parseIdentifier } from './citationImport';
 
 /** One paper found by a literature search. */
@@ -26,15 +28,20 @@ export function openAlexUrl(query: string, perPage = SEARCH_RESULTS): string {
   return `https://api.openalex.org/works?${params}`;
 }
 
+/** Words arXiv does not index, so requiring one finds nothing, and its query operators. */
+const STOP_WORDS = new Set(
+  'a an and andnot are as at be but by for if in into is it no not of on or such that the their then there these they this to was will with'.split(' ')
+);
+
 /**
- * arXiv's search, every word required. Words are reduced to letters and digits, so what
- * the user typed cannot become query syntax (fields, quotes, AND/OR/ANDNOT, parentheses).
+ * arXiv's search, every word required except stop words. Words are reduced to letters and
+ * digits, so what the user typed cannot become query syntax (fields, quotes, AND/OR/ANDNOT, parentheses).
  */
 export function arxivUrl(query: string, maxResults = SEARCH_RESULTS): string | undefined {
   const words = query
     .split(/\s+/)
     .map((w) => w.replace(/[^\p{L}\p{N}-]/gu, '').replace(/^-+|-+$/g, ''))
-    .filter((w) => w && !/^(and|or|andnot)$/i.test(w))
+    .filter((w) => w && !STOP_WORDS.has(w.toLowerCase()))
     .slice(0, 12);
   if (words.length === 0) {
     return undefined;
@@ -174,8 +181,8 @@ function samePaper(a: SearchHit, b: SearchHit): boolean {
       return false;
     }
   }
-  if (a.arxiv && a.arxiv === b.arxiv) {
-    return true;
+  if (a.arxiv && b.arxiv) {
+    return a.arxiv === b.arxiv;
   }
   const t = titleKey(a);
   return t.length >= 12 && t === titleKey(b);
@@ -225,6 +232,24 @@ export function hitIdentifier(hit: SearchHit): CitationId | undefined {
   return (hit.doi ? parseIdentifier(hit.doi) : undefined) ?? (hit.arxiv ? parseIdentifier(`arXiv:${hit.arxiv}`) : undefined);
 }
 
+/**
+ * Finds the bibliography entry a hit already has: one with the same DOI, or with its
+ * arXiv ID in `eprint`, an arXiv DOI or an arxiv.org URL.
+ */
+export function bibliographyMatcher(entries: BibEntry[]): (hit: SearchHit) => BibEntry | undefined {
+  const byDoi = new Map<string, BibEntry>();
+  const byArxiv = new Map<string, BibEntry>();
+  for (const e of entries) {
+    if (e.doi && !byDoi.has(normalizeDoi(e.doi))) {
+      byDoi.set(normalizeDoi(e.doi), e);
+    }
+    const arxiv = arxivIdOf(e)?.toLowerCase();
+    if (arxiv && !byArxiv.has(arxiv)) {
+      byArxiv.set(arxiv, e);
+    }
+  }
+  return (hit) => (hit.doi ? byDoi.get(normalizeDoi(hit.doi)) : undefined) ?? (hit.arxiv ? byArxiv.get(hit.arxiv.toLowerCase()) : undefined);
+}
 
 interface SearchOptions {
   userAgent: string;
