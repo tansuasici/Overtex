@@ -7,6 +7,7 @@ import type { PageRect } from './shared/messages';
 
 const TEX_LANGUAGES = new Set(['latex', 'tex']);
 const DEBOUNCE_MS = 200;
+const SOURCE = /\.(tex|bib|sty|cls)$/i;
 
 export interface OutlineSyncDeps {
   mainFile(): string | null | undefined;
@@ -49,6 +50,10 @@ export class OutlineSync implements vscode.Disposable {
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (e.contentChanges.length > 0) {
           this.editedAt.set(e.document.uri.fsPath, Date.now());
+          if (SOURCE.test(e.document.fileName)) {
+            // Any source edit makes the PDF stale again, whichever file the next jump lands in.
+            this.builtFor = undefined;
+          }
         }
       }),
       vscode.window.onDidChangeTextEditorSelection((e) => this.onSelection(e)),
@@ -99,7 +104,13 @@ export class OutlineSync implements vscode.Disposable {
     }
     const pending = { file, line: active.line, version: doc.version };
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.sync(pending, true), DEBOUNCE_MS);
+    this.timer = setTimeout(() => {
+      // A cursor that passed over the heading (another extension's motion, a scripted move) has left it by now.
+      const editor = vscode.window.activeTextEditor;
+      if (editor?.document.uri.fsPath === file && editor.selection.isEmpty && editor.selection.active.line === pending.line) {
+        void this.sync(pending, true);
+      }
+    }, DEBOUNCE_MS);
   }
 
   private async sync(pending: Pending, mayBuild: boolean): Promise<void> {
@@ -154,7 +165,7 @@ export class OutlineSync implements vscode.Disposable {
   }
 
   private dirtyCount(): number {
-    return vscode.workspace.textDocuments.filter((d) => d.isDirty && d.uri.scheme === 'file' && /\.(tex|bib|sty|cls)$/i.test(d.fileName)).length;
+    return vscode.workspace.textDocuments.filter((d) => d.isDirty && d.uri.scheme === 'file' && SOURCE.test(d.fileName)).length;
   }
 
   dispose(): void {

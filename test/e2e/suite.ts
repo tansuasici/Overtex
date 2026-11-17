@@ -136,7 +136,7 @@ export async function run(): Promise<void> {
     assert.ok(jump.target.y > targets['part.tex'].y, `the heading (y ${jump.target.y}) is below the paragraph before it (y ${targets['part.tex'].y})`);
     targets['heading'] = jump.target;
 
-    // The Outline view itself, with a symbol provider standing in for TexLab.
+    // Go to Symbol, a jump the workbench makes, with a symbol provider standing in for TexLab.
     const provider = vscode.languages.registerDocumentSymbolProvider({ language: 'latex' }, {
       provideDocumentSymbols: (doc) => {
         const range = doc.lineAt(heading).range;
@@ -145,22 +145,28 @@ export async function run(): Promise<void> {
     });
     try {
       await openAt(part, 0);
+      await new Promise((r) => setTimeout(r, 300));
       revealed = nextMessage(e2e, 'e2e:revealed', 10000);
-      await vscode.commands.executeCommand('outline.focus');
-      await new Promise((r) => setTimeout(r, 500));
-      await vscode.commands.executeCommand('list.focusFirst');
-      await vscode.commands.executeCommand('list.select');
-      const fromOutline = await revealed.catch(() => undefined);
-      if (fromOutline) {
-        assert.strictEqual(fromOutline.target.page, 3, 'page from the Outline view');
-        assert.ok(cursorAt(part, heading), 'the Outline view put the cursor on the heading');
-      } else {
-        console.log(`    (the Outline view did not select the heading here; cursor at line ${vscode.window.activeTextEditor?.selection.active.line})`);
-      }
+      await vscode.commands.executeCommand('workbench.action.quickOpen', '@Results');
+      await new Promise((r) => setTimeout(r, 1000));
+      await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
+      const fromSymbol = await revealed;
+      assert.strictEqual(fromSymbol.target.page, 3, 'page from Go to Symbol');
+      assert.ok(cursorAt(part, heading), 'Go to Symbol put the cursor on the heading');
     } finally {
       provider.dispose();
-      await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
     }
+
+    // A cursor that only passes over the heading (another extension's motion) is not a jump.
+    await openAt(part, 1);
+    await new Promise((r) => setTimeout(r, 300));
+    await quiet('a cursor passing over the heading', async () => {
+      const ed = vscode.window.activeTextEditor!;
+      ed.selection = new vscode.Selection(heading, 0, heading, 0);
+      await new Promise((r) => setTimeout(r, 50));
+      ed.selection = new vscode.Selection(heading + 1, 0, heading + 1, 0);
+    });
 
     // Arrow keys onto the heading are reading, not navigating.
     await openAt(part, 1);
