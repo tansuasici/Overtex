@@ -156,6 +156,7 @@ export class GrammarCheck implements vscode.Disposable, vscode.CodeActionProvide
   private harperLinter(): Promise<HarperLinter> {
     if (!this.harper) {
       const out = path.join(this.extensionPath ?? path.join(__dirname, '..'), 'out');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- loads a separately bundled file on first use
       const { createHarperLinter } = require(path.join(out, 'harperLinter.js')) as typeof import('./harperLoader');
       const linter = createHarperLinter(path.join(out, 'harper_wasm_slim_bg.wasm'));
       this.harper = linter.setup().then(() => linter);

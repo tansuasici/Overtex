@@ -93,7 +93,7 @@ export function arxivIdOf(entry: BibEntry): string | undefined {
     }
   }
   for (const text of [entry.fields.journal ?? '', entry.fields.note ?? '']) {
-    const m = /arxiv:\s*([\w.\/-]+)/i.exec(text);
+    const m = /arxiv:\s*([\w./-]+)/i.exec(text);
     const id = m ? parseIdentifier(m[1]) : undefined;
     if (id?.kind === 'arxiv') {
       return id.id;

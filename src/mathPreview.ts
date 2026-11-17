@@ -33,6 +33,7 @@ export class MathRenderer {
 
   /** The span rendered as hover Markdown; MathJax is loaded on first use. */
   markdown(doc: vscode.TextDocument, span: MathSpan): vscode.MarkdownString {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- loads a separately bundled file on first use
     this.render ??= (require(path.join(this.extensionPath, 'out', 'mathRender.js')) as { renderMath: Render }).renderMath;
     const result = this.render(span.tex, span.display, this.macrosFor(doc));
     const md = new vscode.MarkdownString();
@@ -47,6 +48,7 @@ export class MathRenderer {
 
   /** `tex` as inline SVG coloured with currentColor, or undefined when MathJax cannot render it. */
   svg(tex: string): string | undefined {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- loads a separately bundled file on first use
     this.render ??= (require(path.join(this.extensionPath, 'out', 'mathRender.js')) as { renderMath: Render }).renderMath;
     const result = this.render(tex, false, []);
     return 'error' in result ? undefined : prepareSvg(result.svg, 1, 'currentColor');
