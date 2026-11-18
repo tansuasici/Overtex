@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { activeTexEditor, addByIdentifier, appendToBib, askForIdentifier, chooseBibFile, citeKeys, readBibEntries } from './addCitation';
+import { searchPapers } from './searchLiterature';
 import { arxivIdOf } from './latex/bibCheck';
 import { BibIndex, IndexedEntry } from './latex/bibIndex';
 import { parseBib } from './latex/bibParser';
@@ -356,6 +357,9 @@ export function registerLibrary(context: vscode.ExtensionContext, options: Libra
       return url ? vscode.env.openExternal(vscode.Uri.parse(url, true)) : undefined;
     })),
     register('overtex.library.add', addPaper),
+    register('overtex.searchLiterature', (initial?: string) =>
+      searchPapers({ mainFile, userAgent, entries: () => index.entries(), onAdded: () => index.invalidate() }, typeof initial === 'string' ? initial : undefined)
+    ),
     register('overtex.library.refresh', () => index.invalidate()),
     register('overtex.library.sort', async (choice?: PaperSort) => {
       const next =

@@ -9,6 +9,7 @@ Only these features go online, and only when you run them:
 | Feature | Talks to |
 | --- | --- |
 | Add Citation from DOI or arXiv, Add Paper | doi.org (arXiv IDs too, through their DOI) |
+| Search Papers | api.openalex.org and export.arxiv.org get the words you search for; doi.org gets the papers you add |
 | Check Bibliography | doi.org (Crossref and DataCite) and the arXiv API |
 | Download Paper PDF from arXiv | arxiv.org |
 | Open Paper Page | Your web browser opens the paper's page |

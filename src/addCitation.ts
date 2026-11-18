@@ -6,6 +6,7 @@ import { BibEntry, parseBib } from './latex/bibParser';
 import {
   CitationId,
   CitationNotFoundError,
+  addEprint,
   bibResourcesIn,
   citeInsertion,
   fetchBibtex,
@@ -52,8 +53,11 @@ export async function askForIdentifier(title: string): Promise<CitationId | unde
   return input ? parseIdentifier(input) : undefined;
 }
 
-/** The paper's key in the bibliography, fetching and appending its BibTeX unless the DOI is already there. */
-export async function addByIdentifier(id: CitationId, bib: BibTarget): Promise<string | undefined> {
+/**
+ * The paper's key in the bibliography, fetching and appending its BibTeX unless the DOI
+ * is already there. `arxiv` is the paper's preprint, recorded when the DOI is a journal's.
+ */
+export async function addByIdentifier(id: CitationId, bib: BibTarget, arxiv?: string): Promise<string | undefined> {
   const entries = await readBibEntries(bib);
 
   const existing = findByDoi(entries, id.doi);
@@ -78,7 +82,8 @@ export async function addByIdentifier(id: CitationId, bib: BibTarget): Promise<s
   }
 
   const entry = prepareEntry(raw, entries.map((e) => e.key));
-  return (await appendToBib(bib, entry.text)) ? entry.key : undefined;
+  const text = arxiv && id.kind === 'doi' ? addEprint(entry.text, arxiv) : entry.text;
+  return (await appendToBib(bib, text)) ? entry.key : undefined;
 }
 
 export function activeTexEditor(): vscode.TextEditor | undefined {

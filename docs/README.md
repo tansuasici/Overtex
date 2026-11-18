@@ -19,7 +19,7 @@ Already set up and something is wrong? See **[Troubleshooting](troubleshooting.m
 | [Building](building.md) | Main file, engines, build on save, the Problems panel, Tectonic and Docker, cleaning up |
 | [PDF preview and SyncTeX](pdf-preview.md) | The preview, jumping between source and PDF, find in the PDF, dark pages, slides, PDF notes |
 | [Writing](writing.md) | Live checking, math preview, math symbols, references and labels, tables and figures, to-dos, word count, spelling and grammar |
-| [Bibliography](bibliography.md) | Citations from a DOI, arXiv or Zotero, the Papers panel, Check Bibliography |
+| [Bibliography](bibliography.md) | Citations from a DOI, arXiv or Zotero, searching OpenAlex and arXiv, the Papers panel, Check Bibliography |
 | [Reviewing and history](reviewing.md) | Notes on the text, Track Changes, Compare Versions, review copies, History |
 | [Working with co-authors](collaboration.md) | Share Changes and Get Changes, Invite Co-author, invite codes, Overleaf |
 | [Submitting](submitting.md) | Check Submission, Export for arXiv |

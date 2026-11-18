@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseBib } from '../src/latex/bibParser';
 import {
+  addEprint,
   bibResourcesIn,
   citeInsertion,
   CitationNotFoundError,
@@ -103,6 +104,22 @@ describe('prepareEntry', () => {
   it('generates the key from the fetched fields', () => {
     expect(prepareEntry(CROSSREF, []).key).toBe('einstein1935quantum');
     expect(prepareEntry(DATACITE, ['vaswani2017attention']).key).toBe('vaswani2017attentiona');
+  });
+});
+
+describe('addEprint', () => {
+  it('records the preprint of a journal entry', () => {
+    const entry = prepareEntry(CROSSREF, []).text;
+    const withEprint = addEprint(entry, '2101.00001v2');
+    expect(withEprint).toMatch(/,\n {2}eprint = \{2101\.00001\},\n {2}archiveprefix = \{arXiv\}\n\}\n$/);
+    expect(parseBib(withEprint)[0].fields.eprint).toBe('2101.00001');
+  });
+
+  it('leaves the entry alone when it has an eprint or the ID is not arXiv', () => {
+    const entry = prepareEntry(CROSSREF, []).text;
+    const once = addEprint(entry, '2101.00001');
+    expect(addEprint(once, '2101.00002')).toBe(once);
+    expect(addEprint(entry, 'not an id')).toBe(entry);
   });
 });
 
