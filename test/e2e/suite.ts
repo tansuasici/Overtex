@@ -1412,11 +1412,13 @@ export async function run(): Promise<void> {
     }
   });
 
-  await step('invite codes: GitHub and GitLab copies give each other read access, empty project starts from the co-author, a new GitLab copy is made', async () => {
+  await step('invite codes: GitHub and GitLab copies give each other read access, empty project starts from the co-author, a new GitLab copy is made, also for an empty folder', async () => {
     const box = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-codes-')));
     const git = (cwd: string, ...args: string[]) =>
       execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' }).trim();
     const calls: { method: string; url: string; auth?: string; token?: string; body: string }[] = [];
+    // Whose account a new GitLab project is made in.
+    let glOwner = 'cy';
     // Stand-ins for api.github.com and gitlab.com/api/v4 (under /gl).
     const server = http.createServer((req, res) => {
       let body = '';
@@ -1425,10 +1427,10 @@ export async function run(): Promise<void> {
         calls.push({ method: req.method ?? '', url: req.url ?? '', auth: req.headers.authorization, token: req.headers['private-token'] as string | undefined, body });
         const ok =
           req.method === 'POST' &&
-          ['/repos/ada/paper/keys', '/gl/projects/bo%2Fpaper/deploy_keys', '/gl/projects/cy%2Fpaper/deploy_keys', '/gl/projects'].includes(req.url ?? '');
+          ['/repos/ada/paper/keys', '/gl/projects/bo%2Fpaper/deploy_keys', '/gl/projects/cy%2Fpaper/deploy_keys', '/gl/projects/dee%2Fpaper/deploy_keys', '/gl/projects'].includes(req.url ?? '');
         const made =
           req.url === '/gl/projects'
-            ? { path_with_namespace: 'cy/paper', ssh_url_to_repo: 'git@gitlab.com:cy/paper.git', http_url_to_repo: 'https://gitlab.com/cy/paper.git' }
+            ? { path_with_namespace: `${glOwner}/paper`, ssh_url_to_repo: `git@gitlab.com:${glOwner}/paper.git`, http_url_to_repo: `https://gitlab.com/${glOwner}/paper.git` }
             : {};
         res.writeHead(ok ? 201 : 404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(ok ? made : { message: 'Not Found' }));
@@ -1570,6 +1572,45 @@ export async function run(): Promise<void> {
       assert.strictEqual(git(cyBare, 'log', '-1', '--format=%s', 'main'), 'Cy start', "Cy's project went to the new GitLab copy");
       const cyData = JSON.parse(Buffer.from(cyAnswer.slice('overtex-join:'.length), 'base64url').toString());
       assert.deepStrictEqual({ host: cyData.host, path: cyData.path }, { host: 'gitlab.com', path: 'cy/paper' });
+
+      // Dee has only an empty folder with git, no commits and no online copy: entering the invite makes a
+      // private GitLab project and sends nothing to it, Get Changes starts from Ada's copy, Share goes to Dee's.
+      const deeBare = path.join(box, 'dee.git');
+      git(box, 'init', '--bare', deeBare);
+      const dee = path.join(box, 'dee');
+      git(box, 'init', dee);
+      git(dee, 'config', 'user.name', 'Dee');
+      git(dee, 'config', 'user.email', 'dee@example.invalid');
+      mapTo(dee, deeBare, 'git@gitlab.com:dee/paper.git');
+      glOwner = 'dee';
+      calls.length = 0;
+      const deeAnswer = (await vscode.commands.executeCommand('overtex.enterInviteCode', {
+        uri: vscode.Uri.file(dee),
+        code: invite,
+        yes: true,
+        host: 'gitlab.com',
+        repoName: 'paper',
+      })) as string;
+      assert.match(deeAnswer ?? '', /^overtex-join:/);
+      assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.url}`), ['POST /gl/projects', 'POST /gl/projects/dee%2Fpaper/deploy_keys']);
+      assert.strictEqual(git(dee, 'config', '--get', 'remote.origin.url'), 'git@gitlab.com:dee/paper.git');
+      assert.strictEqual(git(deeBare, 'for-each-ref'), '', 'nothing was sent to the new empty copy');
+      const deeData = JSON.parse(Buffer.from(deeAnswer.slice('overtex-join:'.length), 'base64url').toString());
+      assert.deepStrictEqual({ host: deeData.host, path: deeData.path }, { host: 'gitlab.com', path: 'dee/paper' });
+      assert.strictEqual(git(dee, 'config', '--get', 'remote.coauthor-ada.pushurl'), 'overtex-read-only://do-not-push');
+
+      mapTo(dee, adaBare, git(dee, 'config', '--get', 'remote.coauthor-ada.url'));
+      await vscode.commands.executeCommand('overtex.getChanges', { uri: vscode.Uri.file(dee) });
+      assert.strictEqual(
+        fs.readFileSync(path.join(dee, 'main.tex'), 'utf8').replace(/\r\n/g, '\n'),
+        git(adaBare, 'show', 'main:main.tex') + '\n',
+        "Dee's empty folder starts from Ada's project"
+      );
+      fs.appendFileSync(path.join(dee, 'main.tex'), 'and dee\n');
+      const adaBeforeDee = git(adaBare, 'rev-parse', 'main');
+      await vscode.commands.executeCommand('overtex.shareChanges', { uri: vscode.Uri.file(dee), message: 'Dee edit' });
+      assert.strictEqual(git(deeBare, 'log', '-1', '--format=%s', 'main'), 'Dee edit', "Dee's copy got the change");
+      assert.strictEqual(git(adaBare, 'rev-parse', 'main'), adaBeforeDee, "nothing was sent to Ada's copy");
     } finally {
       delete process.env.OVERTEX_E2E_GITHUB_API;
       delete process.env.OVERTEX_E2E_GITLAB_API;
