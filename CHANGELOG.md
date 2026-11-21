@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 (2026-11-21)
 
 - **Search Papers**: find papers on OpenAlex and arXiv from the command palette or the magnifier in the Papers panel, and add the ones you pick to your `.bib` file. A paper both services know, or a preprint and its published version, is listed once with its authors, year, venue and citation count; papers already in your bibliography are marked. BibTeX still comes from doi.org, and a journal paper with an arXiv preprint gets its `eprint` too. No account, key or email address is sent; OpenAlex allows about a hundred anonymous searches a day per internet address.
 - **Citation counts** in the Papers panel: each cited paper shows how many times it is cited (**3×**), and expands to every place it is cited, with the section, the file and line, and its page in the PDF from SyncTeX when the PDF is up to date. A filter button shows only the papers the project does not cite. Citations in comments, verbatim environments and `\verb` no longer count.
