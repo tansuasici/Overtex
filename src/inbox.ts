@@ -68,7 +68,8 @@ export function registerInbox(context: vscode.ExtensionContext): void {
   const inbox = new Inbox(context);
   context.subscriptions.push(
     inbox,
-    vscode.commands.registerCommand('overtex.pendingInvitations', (args?: InboxArgs) => inbox.open(args))
+    // The answers in `args` skip every question, so only the end-to-end tests may pass them.
+    vscode.commands.registerCommand('overtex.pendingInvitations', (args?: InboxArgs) => inbox.open(process.env.OVERTEX_E2E ? args : undefined))
   );
   inbox.start();
 }
@@ -76,7 +77,7 @@ export function registerInbox(context: vscode.ExtensionContext): void {
 class Inbox implements vscode.Disposable {
   private readonly item = vscode.window.createStatusBarItem('overtex.invitations', vscode.StatusBarAlignment.Left, 48);
   private readonly disposables: vscode.Disposable[] = [this.item];
-  private checking: Promise<InboxItem[]> | undefined;
+  private quiet: Promise<InboxItem[]> | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.item.name = 'Overtex Invitations';
@@ -106,6 +107,8 @@ class Inbox implements vscode.Disposable {
       void vscode.window.showErrorMessage(`Overtex: ${message(err)}`);
       return undefined;
     }
+    // You are looking at them now: a background look should not bring them up again.
+    await this.markNotified(items);
     if (args?.label !== undefined) {
       const item = items.find((i) => i.label === args.label);
       return item && this.offer(item, args);
@@ -145,7 +148,7 @@ class Inbox implements vscode.Disposable {
     if (!fresh.length) {
       return;
     }
-    await this.context.globalState.update(NOTIFIED, [...notified, ...fresh.map((i) => i.key)].slice(-200));
+    await this.markNotified(fresh);
     if (fresh.length === 1) {
       await this.offer(fresh[0]);
     } else if ((await vscode.window.showInformationMessage(`Overtex: ${fresh.length} new project invitations are waiting for you.`, 'Show')) === 'Show') {
@@ -153,22 +156,64 @@ class Inbox implements vscode.Disposable {
     }
   }
 
-  /** Looks for invitations now. `interactive`: you asked, so GitHub may ask you to sign in. */
-  private check(interactive: boolean): Promise<InboxItem[]> {
-    this.checking ??= this.doCheck(interactive).finally(() => (this.checking = undefined));
-    return this.checking;
+  private async markNotified(items: InboxItem[]): Promise<void> {
+    const notified = this.context.globalState.get<string[]>(NOTIFIED) ?? [];
+    const add = items.map((i) => i.key).filter((k) => !notified.includes(k));
+    if (add.length) {
+      await this.context.globalState.update(NOTIFIED, [...notified, ...add].slice(-200));
+    }
+  }
+
+  /**
+   * Looks for invitations now. `interactive`: you asked, so GitHub may ask you to sign in and
+   * problems are shown. Background looks share one request; yours waits for it, then looks itself.
+   */
+  private async check(interactive: boolean): Promise<InboxItem[]> {
+    if (!interactive) {
+      this.quiet ??= this.doCheck(false).finally(() => (this.quiet = undefined));
+      return this.quiet;
+    }
+    await this.quiet?.catch(() => undefined);
+    return this.doCheck(true);
   }
 
   private async doCheck(interactive: boolean): Promise<InboxItem[]> {
     await this.context.globalState.update(LAST_CHECK, Date.now());
-    const gh = await githubClient(interactive);
-    const github = gh ? (await gh.invitations()).map(fromInvitation) : [];
+    const hasGitLab = await this.hasGitLabToken();
+    // Each site on its own: GitHub being offline does not hide GitLab projects, or the other way round.
+    let github: InboxItem[] = [];
+    let problem: unknown;
+    try {
+      // Someone who only uses GitLab is not asked to sign in to GitHub every time.
+      const gh = await githubClient(interactive && !hasGitLab);
+      github = gh ? (await gh.invitations()).map(fromInvitation) : [];
+    } catch (err) {
+      problem = err;
+    }
     const gitlab = await this.gitlabItems(interactive);
     const joined = this.context.globalState.get<InboxItem[]>(TO_CLONE) ?? [];
     const items = [...joined, ...github.filter((g) => !joined.some((j) => j.label === g.label && j.site === g.site)), ...gitlab];
     await this.context.globalState.update(ITEMS, items);
     this.show(items);
+    if (problem && !items.length) {
+      throw problem;
+    }
+    if (problem && interactive) {
+      void vscode.window.showWarningMessage(`Overtex: could not look for GitHub invitations: ${message(problem)}`);
+    }
     return items;
+  }
+
+  private async hasGitLabToken(): Promise<boolean> {
+    if (process.env.OVERTEX_E2E) {
+      return false;
+    }
+    for (const web of gitlabServers(this.context)) {
+      if (await this.context.secrets.get(tokenKey(web))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** New GitLab projects on each server you gave Overtex a token for. A server that fails is skipped. */
@@ -196,7 +241,15 @@ class Inbox implements vscode.Disposable {
         const client = new GitLabClient(token, fetch, fake || `${web}/api/v4`);
         let since = state.since;
         for (const e of await client.joinedSince(state.since)) {
-          const p = await client.getProject(String(e.projectId)).catch(() => undefined);
+          let p: { path: string } | undefined;
+          try {
+            p = await client.getProject(String(e.projectId));
+          } catch (err) {
+            // Gone or not yours any more: skip it. Anything else: try this one again next time.
+            if (!(err instanceof ForgeError && err.status === 404)) {
+              break;
+            }
+          }
           const item = p && fromGitLab(web, p.path);
           if (item && !state.pending.some((x) => x.key === item.key)) {
             state.pending.push(item);
@@ -310,10 +363,16 @@ class Inbox implements vscode.Disposable {
     if (item.kind !== 'github') {
       await this.forget(item);
     }
-    const uri = vscode.Uri.file(target);
     if (process.env.OVERTEX_E2E) {
       return target;
     }
+    // In a remote window (SSH, WSL, a container) Overtex runs, and cloned, on the remote machine.
+    const remote = vscode.workspace.workspaceFolders?.find((f) => f.uri.scheme === 'vscode-remote')?.uri.authority;
+    if (vscode.env.remoteName && !remote) {
+      void vscode.window.showInformationMessage(`Overtex: ${item.label} is in ${target} on ${vscode.env.remoteName}. Open that folder to work on it.`);
+      return target;
+    }
+    const uri = remote ? vscode.Uri.from({ scheme: 'vscode-remote', authority: remote, path: vscode.Uri.file(target).path }) : vscode.Uri.file(target);
     // Opening the folder in this window restarts the extension host: nothing may come after it.
     await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: !!vscode.workspace.workspaceFolders?.length });
     return target;
@@ -439,6 +498,15 @@ function message(err: unknown): string {
   return err instanceof GitHubError || err instanceof ForgeError || err instanceof Error ? err.message : String(err);
 }
 
+function gitAtLeast(git: string, major: number, minor: number): Promise<boolean> {
+  return new Promise((resolve) =>
+    execFile(git, ['--version'], { timeout: 10_000 }, (err, stdout) => {
+      const m = /(\d+)\.(\d+)/.exec(stdout ?? '');
+      resolve(!err && !!m && (Number(m[1]) > major || (Number(m[1]) === major && Number(m[2]) >= minor)));
+    })
+  );
+}
+
 async function gitPath(): Promise<string> {
   try {
     const ext = vscode.extensions.getExtension<GitExtension>('vscode.git');
@@ -454,9 +522,15 @@ async function clone(url: string, target: string, header: { origin: string; valu
   const git = await gitPath();
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
   if (header) {
-    env.GIT_CONFIG_COUNT = '1';
-    env.GIT_CONFIG_KEY_0 = `http.${header.origin}.extraHeader`;
-    env.GIT_CONFIG_VALUE_0 = `Authorization: ${header.value}`;
+    if (!(await gitAtLeast(git, 2, 31))) {
+      throw new Error('Getting a project you were invited to needs git 2.31 or newer. Update git and try again.');
+    }
+    // Added after any GIT_CONFIG_* you set yourself, not over them.
+    const n = Number.parseInt(env.GIT_CONFIG_COUNT ?? '0', 10);
+    const i = Number.isSafeInteger(n) && n > 0 ? n : 0;
+    env.GIT_CONFIG_COUNT = String(i + 1);
+    env[`GIT_CONFIG_KEY_${i}`] = `http.${header.origin}.extraHeader`;
+    env[`GIT_CONFIG_VALUE_${i}`] = `Authorization: ${header.value}`;
   }
   await new Promise<void>((resolve, reject) => {
     execFile(git, ['clone', '--', url, target], { env, timeout: 10 * 60_000 }, (err, _stdout, stderr) => {
@@ -464,7 +538,7 @@ async function clone(url: string, target: string, header: { origin: string; valu
         resolve();
         return;
       }
-      const why = /Authentication failed|could not read Username|403|401/i.test(stderr)
+      const why = /Authentication failed|could not read Username|The requested URL returned error: 40[13]\b/i.test(stderr)
         ? 'the server did not let you in. Check that you accepted the invitation with the same account.'
         : /not found|does not exist/i.test(stderr)
           ? 'the project was not found. It may have been renamed or removed.'
