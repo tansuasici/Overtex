@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Pending Invitations**: projects you were invited to show up in an envelope in the status bar and in **Overtex: Pending Invitations**. A GitHub invitation can be joined (Overtex accepts it, gets the project into `overtex.projectsFolder`, `~/Overtex` by default, and opens it), declined or left for later; a GitLab project you were added to since Overtex first looked can be opened. Overtex looks a few seconds after VS Code starts and when its window comes back into focus, at most every 15 minutes, using only a sign-in or token you already gave it. Joining needs git 2.31 or newer.
+- **Invite Co-author** now tells you that your co-author can join from Pending Invitations.
+- Overtex now starts in every window, so invitations show up there too. TexLab, the setup check, the LaTeX Workshop warning, the sync status item and the Overtex sidebar still wait until the window has a LaTeX file or project.
+
 ## 0.10.0 (2026-11-21)
 
 - **Search Papers**: find papers on OpenAlex and arXiv from the command palette or the magnifier in the Papers panel, and add the ones you pick to your `.bib` file. A paper both services know, or a preprint and its published version, is listed once with its authors, year, venue and citation count; papers already in your bibliography are marked. BibTeX still comes from doi.org, and a journal paper with an arXiv preprint gets its `eprint` too. No account, key or email address is sent; OpenAlex allows about a hundred anonymous searches a day per internet address.

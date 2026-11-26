@@ -376,7 +376,6 @@ export function registerLibrary(context: vscode.ExtensionContext, options: Libra
       }
     })
   );
-  void vscode.commands.executeCommand('setContext', 'overtex.active', true);
   void showUncited(uncitedOnly());
 
   return {

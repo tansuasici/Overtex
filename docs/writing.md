@@ -4,7 +4,7 @@ The editor features that help while you type: checking and completion, math prev
 
 ## Checking and completion with TexLab
 
-When [TexLab](https://github.com/latex-lsp/texlab) is installed, Overtex starts it and you get, before any build:
+When [TexLab](https://github.com/latex-lsp/texlab) is installed, Overtex starts it for LaTeX projects and you get, before any build:
 
 - errors such as unbalanced braces, mismatched `\begin`/`\end` and undefined references, as you type;
 - completion of commands, environments, `\ref` labels and `\cite` keys;
@@ -38,7 +38,7 @@ When a symbol needs `amssymb`, `amsfonts`, `amsmath`, `mathtools` or `mathrsfs` 
 
 ### Reference hover
 
-Hover over the key in `\ref`, `\eqref`, `\cref` and the like to see the number and page LaTeX gave it in the last build, for example "Equation (3), page 5", with the equation rendered. A key no `\label` defines, or one added since the last build, says so.
+Hover over the key in `\ref`, `\eqref`, `\cref` and the like to see the number and page LaTeX gave it in the last build, for example "Equation (3), page 5", with the equation rendered. A key no `\label` defines, or one added since the last build, says so. `overtex.refHover.enabled` turns it off.
 
 ### The Labels panel
 

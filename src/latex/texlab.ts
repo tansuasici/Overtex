@@ -25,6 +25,8 @@ const sendable = (uri: vscode.Uri): boolean => uri.scheme !== 'file' || !texlabC
 export class Texlab implements vscode.Disposable {
   private client: LanguageClient | undefined;
   private starting: Promise<void> | undefined;
+  /** Set by the first start(); until then trust and setting changes must not start TexLab. */
+  private wanted = false;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -46,11 +48,15 @@ export class Texlab implements vscode.Disposable {
   }
 
   start(): Promise<void> {
+    this.wanted = true;
     this.starting ??= this.doStart().finally(() => (this.starting = undefined));
     return this.starting;
   }
 
   async restart(): Promise<void> {
+    if (!this.wanted) {
+      return;
+    }
     await this.starting;
     await this.stop();
     await this.start();

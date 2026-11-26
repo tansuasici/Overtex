@@ -36,7 +36,7 @@ The full installation takes a while. While it runs, go on with step 3.
 
 From a terminal, `code --install-extension tansuasici.overtex` does the same.
 
-An Overtex icon now appears in the bar on the left (the Activity Bar). It opens the Overtex sidebar, which you will use from lesson 3 on.
+When a LaTeX project is open, an Overtex icon appears in the bar on the left (the Activity Bar). It opens the Overtex sidebar, which you will use from lesson 3 on.
 
 ## Step 4: Restart VS Code
 
@@ -61,7 +61,7 @@ TexLab is optional. To install it later: `brew install texlab` on macOS, or a re
 ## Check yourself
 
 - [ ] **Overtex: Check LaTeX Installation** says latexmk, pdfLaTeX and synctex were found.
-- [ ] The Overtex icon is in the Activity Bar.
+- [ ] With a `.tex` file open, the Overtex icon is in the Activity Bar.
 
 ## Optional: a quiet writing profile
 

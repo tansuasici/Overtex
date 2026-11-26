@@ -62,6 +62,13 @@ LaTeX Workshop is building on save too. Overtex offers to turn one of them off; 
 - Sign in with VS Code's Accounts menu when it asks.
 - A conflict stops the share until you pick a version in the marked file; see [Conflicts](collaboration.md#conflicts).
 
+## An invitation does not show up
+
+- Run **Overtex: Pending Invitations** once: it asks you to sign in to GitHub. The quiet check in the background never does.
+- The invitation must be for the GitHub account VS Code is signed in to (the Accounts menu).
+- GitHub invitations run out after 7 days. Ask for a new one.
+- GitLab lists only projects you were added to after Overtex first looked on that server.
+
 ## Still stuck?
 
 [Open an issue](https://github.com/tansuasici/Overtex/issues) with what you did, what you expected, and the relevant part of **Show Build Log**. Do not paste tokens or anything private.

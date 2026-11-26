@@ -4,7 +4,7 @@ Overtex works on files on your computer. It has no server, no account and no tel
 
 ## What uses the network
 
-Only these features go online, and only when you run them:
+Only these features go online. All but one run only when you run them; the exception is the check for project invitations, described below.
 
 | Feature | Talks to |
 | --- | --- |
@@ -16,6 +16,9 @@ Only these features go online, and only when you run them:
 | Share Changes, Get Changes | Your project's git remotes only |
 | Invite Co-author | api.github.com, and your new repository through git |
 | Create and Enter Invite Code | api.github.com, gitlab.com, codeberg.org or the server you named |
+| Pending Invitations | api.github.com, gitlab.com or your own GitLab server, and the project's own server when you join |
+
+Overtex also looks for project invitations on its own: a few seconds after VS Code starts and when its window comes back into focus, at most every 15 minutes. It uses only a GitHub sign-in or GitLab token you already gave VS Code; it never asks you to sign in, and without one it does nothing.
 
 These stay on your computer:
 
@@ -31,6 +34,7 @@ Builds may go online in two cases you choose: [Tectonic](building.md#tectonic) d
 
 - GitHub uses VS Code's own GitHub sign-in.
 - GitLab, Codeberg, Gitea and Forgejo tokens are kept in VS Code's secret storage, sent only to the server they were entered for, and never put in an address.
+- Joining a project you were invited to gives git your sign-in for that one clone, sent only to the project's own server. It is not saved in the cloned project.
 - Invite-code keys are kept in the project's `.git/overtex` folder, one per co-author.
 
 ## Workspace Trust

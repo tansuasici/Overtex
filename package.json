@@ -38,7 +38,8 @@
     "onLanguage:latex",
     "onLanguage:bibtex",
     "workspaceContains:**/*.tex",
-    "onWebviewPanel:overtex.pdfPreview"
+    "onWebviewPanel:overtex.pdfPreview",
+    "onStartupFinished"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
