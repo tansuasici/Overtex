@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 (2026-11-27)
 
 - **Pending Invitations**: projects you were invited to show up in an envelope in the status bar and in **Overtex: Pending Invitations**. A GitHub invitation can be joined (Overtex accepts it, gets the project into `overtex.projectsFolder`, `~/Overtex` by default, and opens it), declined or left for later; a GitLab project you were added to since Overtex first looked can be opened. Overtex looks a few seconds after VS Code starts and when its window comes back into focus, at most every 15 minutes, using only a sign-in or token you already gave it. Joining needs git 2.31 or newer.
 - **Invite Co-author** now tells you that your co-author can join from Pending Invitations.
