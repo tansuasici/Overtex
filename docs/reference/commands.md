@@ -55,3 +55,4 @@ Change a shortcut in **Preferences: Open Keyboard Shortcuts** by searching for t
 | Overtex: Invite Co-author | `overtex.inviteCoauthor` |  |
 | Overtex: Create Invite Code | `overtex.createInviteCode` |  |
 | Overtex: Enter Invite Code | `overtex.enterInviteCode` |  |
+| Overtex: Pending Invitations | `overtex.pendingInvitations` |  |

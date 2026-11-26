@@ -148,11 +148,18 @@ function isServerRecord(x: any): x is ServerRecord {
   );
 }
 
+/** gitlab.com and the GitLab servers of your own Overtex has used (web addresses only, never a secret). */
+export function gitlabServers(context: vscode.ExtensionContext): string[] {
+  const list = context.globalState.get<unknown[]>(SERVERS);
+  const own = (Array.isArray(list) ? list : []).filter(isServerRecord).filter((s) => s.kind === 'gitlab').map((s) => s.web);
+  return [GITLAB_WEB, ...own.filter((w) => w !== GITLAB_WEB)];
+}
+
 /** Codeberg, known without asking: its ssh host key is the one Codeberg documents. */
 const CODEBERG: ServerRecord = { web: CODEBERG_WEB, kind: 'gitea', sshHost: 'codeberg.org', hostKey: CODEBERG_HOST_KEY };
 
 /** Each server's token under its own name; gitlab.com keeps the name it always had. */
-function tokenKey(web: string): string {
+export function tokenKey(web: string): string {
   return web === GITLAB_WEB ? GITLAB_TOKEN : `overtex.token.${web}`;
 }
 
@@ -378,7 +385,7 @@ class GitSync implements vscode.Disposable {
         const text =
           result === 'already'
             ? `Overtex: ${username} can already edit ${target.owner}/${target.name}.`
-            : `Overtex: invited ${username} to ${target.owner}/${target.name}. GitHub emails them; once they accept, they open the link in VS Code with Git: Clone.`;
+            : `Overtex: invited ${username} to ${target.owner}/${target.name}. In VS Code with Overtex, they run Overtex: Pending Invitations (or click the invitation in the status bar) to join and open the project.`;
         void vscode.window.showInformationMessage(text, 'Copy Link').then((c) => c && vscode.env.clipboard.writeText(link));
       },
       { needsRemote: false }

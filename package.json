@@ -553,6 +553,12 @@
         "title": "Enter Invite Code",
         "category": "Overtex",
         "icon": "$(link)"
+      },
+      {
+        "command": "overtex.pendingInvitations",
+        "title": "Pending Invitations",
+        "category": "Overtex",
+        "icon": "$(mail)"
       }
     ],
     "menus": {
@@ -1009,6 +1015,12 @@
     "configuration": {
       "title": "Overtex",
       "properties": {
+        "overtex.projectsFolder": {
+          "type": "string",
+          "default": "~/Overtex",
+          "scope": "machine",
+          "description": "Where Overtex puts projects you join from an invitation (Overtex: Pending Invitations). Each project gets its own folder inside it."
+        },
         "overtex.latex.mainFile": {
           "type": "string",
           "default": "",

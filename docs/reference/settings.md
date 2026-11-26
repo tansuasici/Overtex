@@ -4,6 +4,12 @@
 
 Open **Preferences: Open Settings (UI)** and search for `overtex`, or add these to `settings.json`. In an [untrusted workspace](../privacy.md#workspace-trust) Overtex ignores the workspace values of settings that name a program to run or an address to send text to.
 
+## projectsFolder
+
+| Setting | Values | Default | Description |
+| --- | --- | --- | --- |
+| `overtex.projectsFolder` | string | `"~/Overtex"` | Where Overtex puts projects you join from an invitation (Overtex: Pending Invitations). Each project gets its own folder inside it. |
+
 ## latex
 
 | Setting | Values | Default | Description |
