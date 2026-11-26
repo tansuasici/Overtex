@@ -143,3 +143,67 @@ describe('GitHubClient.addDeployKey', () => {
     await expect(new GitHubClient('tok', notOwner.fn).addDeployKey({ owner: 'ada', name: 'thesis' }, 'Overtex', key)).rejects.toThrow(/only its owner/);
   });
 });
+
+describe('invitations', () => {
+  const raw = (over: Record<string, unknown> = {}) => ({
+    id: 7,
+    repository: { full_name: 'ada/Tez-Calismasi' },
+    inviter: { login: 'ada' },
+    created_at: '2026-11-20T10:00:00Z',
+    expired: false,
+    ...over,
+  });
+
+  it('lists pending invitations, newest first, with a clone URL built from owner/name', async () => {
+    const { fn, calls } = fakeFetch({
+      'GET /user/repository_invitations?per_page=100': {
+        status: 200,
+        body: [raw(), raw({ id: 8, repository: { full_name: 'cy/paper', clone_url: 'https://evil.example/x.git' }, inviter: { login: 'cy' }, created_at: '2026-11-25T10:00:00Z', expired: true })],
+      },
+    });
+    const list = await new GitHubClient('t', fn).invitations();
+    expect(list.map((i) => i.id)).toEqual([8, 7]);
+    expect(list[0]).toMatchObject({ repo: { owner: 'cy', name: 'paper' }, inviter: 'cy', cloneUrl: 'https://github.com/cy/paper.git', expired: true });
+    expect(calls[0].headers.Authorization).toBe('Bearer t');
+  });
+
+  it('leaves out entries that do not look like invitations', async () => {
+    const bad = [
+      raw({ id: -1 }),
+      raw({ id: '7' }),
+      raw({ repository: { full_name: 'ada/../../etc' } }),
+      raw({ repository: { full_name: 'ada/..' } }),
+      raw({ repository: { full_name: '-x/paper' } }),
+      raw({ inviter: { login: 'a b' } }),
+      raw({ repository: null }),
+      null,
+    ];
+    const { fn } = fakeFetch({ 'GET /user/repository_invitations?per_page=100': { status: 200, body: [...bad, raw()] } });
+    expect((await new GitHubClient('t', fn).invitations()).map((i) => i.id)).toEqual([7]);
+  });
+
+  it('accepts and declines by id', async () => {
+    const { fn, calls } = fakeFetch({
+      'PATCH /user/repository_invitations/7': { status: 204 },
+      'DELETE /user/repository_invitations/8': { status: 204 },
+    });
+    const gh = new GitHubClient('t', fn);
+    await gh.acceptInvitation(7);
+    await gh.declineInvitation(8);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      'PATCH https://api.github.com/user/repository_invitations/7',
+      'DELETE https://api.github.com/user/repository_invitations/8',
+    ]);
+  });
+
+  it('says plainly when an invitation is gone or has run out', async () => {
+    const { fn } = fakeFetch({
+      'PATCH /user/repository_invitations/7': { status: 404, body: { message: 'Not Found' } },
+      'PATCH /user/repository_invitations/8': { status: 410, body: { message: 'Gone' } },
+    });
+    const gh = new GitHubClient('t', fn);
+    await expect(gh.acceptInvitation(7)).rejects.toMatchObject({ status: 404, message: expect.stringMatching(/invite you again/) });
+    await expect(gh.acceptInvitation(8)).rejects.toMatchObject({ status: 410, message: expect.stringMatching(/7 days/) });
+    await expect(gh.acceptInvitation(0)).rejects.toBeInstanceOf(GitHubError);
+  });
+});

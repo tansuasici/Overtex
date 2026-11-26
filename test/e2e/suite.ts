@@ -1412,6 +1412,97 @@ export async function run(): Promise<void> {
     }
   });
 
+  await step('pending invitations: join clones and opens a GitHub project, decline answers GitHub, a new GitLab project can be opened', async () => {
+    const box = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-inbox-')));
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8' }).trim();
+    const remotes = path.join(box, 'remotes');
+    const projects = path.join(box, 'projects');
+    const makeRemote = (label: string) => {
+      const seed = path.join(box, 'seed', label);
+      fs.mkdirSync(seed, { recursive: true });
+      git(seed, 'init');
+      fs.writeFileSync(path.join(seed, 'main.tex'), `${label}\n`);
+      git(seed, 'add', '.');
+      git(seed, 'commit', '-qm', 'Start');
+      fs.mkdirSync(path.join(remotes, path.dirname(label)), { recursive: true });
+      git(box, 'clone', '-q', '--bare', seed, path.join(remotes, `${label}.git`));
+    };
+    makeRemote('ada/paper');
+    makeRemote('lab/thesis');
+    // An existing folder called paper: the clone goes next to it, as paper-2.
+    fs.mkdirSync(path.join(projects, 'paper'), { recursive: true });
+
+    let invitations: unknown[] = [
+      { id: 11, repository: { full_name: 'ada/paper' }, inviter: { login: 'ada' }, created_at: '2026-11-20T10:00:00Z', expired: false },
+      { id: 12, repository: { full_name: 'bob/notes' }, inviter: { login: 'bob' }, created_at: '2026-11-21T10:00:00Z', expired: false },
+      { id: 13, repository: { full_name: '../evil' }, inviter: { login: 'eve' }, created_at: '2026-11-22T10:00:00Z' },
+    ];
+    // A project you were in before Overtex first looked: not news.
+    let joined: unknown[] = [{ project_id: 42, created_at: '2020-01-01T00:00:00Z' }];
+    const calls: { method: string; url: string; auth?: string }[] = [];
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on('end', () => {
+        calls.push({ method: req.method ?? '', url: req.url ?? '', auth: (req.headers.authorization ?? req.headers['private-token']) as string | undefined });
+        const send = (status: number, data?: unknown) => {
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(data === undefined ? undefined : JSON.stringify(data));
+        };
+        const answer = /^\/user\/repository_invitations\/(\d+)$/.exec(req.url ?? '');
+        if (req.method === 'GET' && req.url === '/user/repository_invitations?per_page=100') {
+          send(200, invitations);
+        } else if (answer && (req.method === 'PATCH' || req.method === 'DELETE')) {
+          invitations = invitations.filter((i: any) => String(i.id) !== answer[1]);
+          send(204);
+        } else if (req.method === 'GET' && req.url?.startsWith('/gl/events?action=joined&')) {
+          send(200, joined);
+        } else if (req.method === 'GET' && req.url === '/gl/projects/42') {
+          send(200, { path_with_namespace: 'lab/thesis', ssh_url_to_repo: 'git@gitlab.com:lab/thesis.git', http_url_to_repo: 'https://gitlab.com/lab/thesis.git' });
+        } else {
+          send(404, { message: 'Not Found' });
+        }
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    process.env.OVERTEX_E2E_GITHUB_API = api;
+    process.env.OVERTEX_E2E_GITLAB_API = `${api}/gl`;
+    process.env.OVERTEX_E2E_CLONE_BASE = vscode.Uri.file(remotes).toString();
+    try {
+      // Joining accepts the invitation and clones the project into the projects folder.
+      const target = await vscode.commands.executeCommand<string>('overtex.pendingInvitations', { label: 'ada/paper', choice: 'Join', folder: projects });
+      assert.strictEqual(target, path.join(projects, 'paper-2'), 'cloned next to the folder already there');
+      assert.strictEqual(fs.readFileSync(path.join(target, 'main.tex'), 'utf8'), 'ada/paper\n');
+      assert.ok(calls.some((c) => c.method === 'PATCH' && c.url === '/user/repository_invitations/11'), 'the invitation was accepted');
+      assert.ok(!calls.some((c) => c.url.includes('/13')), 'an invitation with a bad name is left alone');
+
+      // Declining answers GitHub; nothing is cloned.
+      calls.length = 0;
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.pendingInvitations', { label: 'bob/notes', choice: 'Decline', folder: projects }), 'declined');
+      assert.ok(calls.some((c) => c.method === 'DELETE' && c.url === '/user/repository_invitations/12'));
+      assert.ok(!fs.existsSync(path.join(projects, 'notes')));
+      assert.ok(calls.filter((c) => !c.url.startsWith('/gl/')).every((c) => c.auth === 'Bearer e2e'), 'every GitHub call is signed in');
+
+      // GitLab: the first look (with the Join above) only noted the time, so the old project is not offered.
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.pendingInvitations', { label: 'lab/thesis', choice: 'Open', folder: projects }), undefined);
+      assert.ok(!calls.some((c) => c.url === '/gl/projects/42'), 'nothing asked about a project you were already in');
+      // A project you are added to after that shows up, and Open clones it.
+      joined = [{ project_id: 42, created_at: new Date(Date.now() + 60_000).toISOString() }];
+      const thesis = await vscode.commands.executeCommand<string>('overtex.pendingInvitations', { label: 'lab/thesis', choice: 'Open', folder: projects });
+      assert.strictEqual(thesis, path.join(projects, 'thesis'));
+      assert.strictEqual(fs.readFileSync(path.join(thesis, 'main.tex'), 'utf8'), 'lab/thesis\n');
+      // Opened once, it is not offered again.
+      assert.strictEqual(await vscode.commands.executeCommand('overtex.pendingInvitations', { label: 'lab/thesis', choice: 'Open', folder: projects }), undefined);
+    } finally {
+      delete process.env.OVERTEX_E2E_GITHUB_API;
+      delete process.env.OVERTEX_E2E_GITLAB_API;
+      delete process.env.OVERTEX_E2E_CLONE_BASE;
+      server.close();
+      removeScratch(box);
+    }
+  });
+
   await step('invite codes: GitHub and GitLab copies give each other read access, empty project starts from the co-author, a new GitLab copy is made, also for an empty folder', async () => {
     const box = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'overtex-codes-')));
     const git = (cwd: string, ...args: string[]) =>

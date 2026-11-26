@@ -43,6 +43,7 @@ import { registerHistory } from './history';
 import { registerTrackChanges } from './trackChanges';
 import { registerSourceNotes } from './sourceNotes';
 import { registerGitSync } from './gitSync';
+import { registerInbox } from './inbox';
 import { registerTodos } from './todos';
 import { OutlineSync } from './outlineSync';
 
@@ -154,6 +155,7 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     requireTrust,
     log,
   });
+  registerInbox(context);
   registerTodos(context);
   void texlab.start();
 

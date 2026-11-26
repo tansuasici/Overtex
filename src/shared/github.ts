@@ -74,7 +74,7 @@ export function validRepoName(name: string): boolean {
   return /^[A-Za-z0-9._-]{1,100}$/.test(name) && name !== '.' && name !== '..';
 }
 
-type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{
+type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; redirect?: 'error' }) => Promise<{
   status: number;
   json(): Promise<unknown>;
 }>;
@@ -99,6 +99,8 @@ export class GitHubClient {
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
+      // The token is for GitHub only: a redirect elsewhere would take the header along.
+      redirect: 'error',
       });
     } catch {
       throw new GitHubError(0, 'Could not reach GitHub. Check your internet connection and try again.');
@@ -162,6 +164,48 @@ export class GitHubClient {
   }
 
   /**
+   * Invitations to other people's repositories waiting for you to accept or decline, newest first.
+   * Entries GitHub sends in a shape Overtex does not expect are left out.
+   */
+  async invitations(): Promise<Invitation[]> {
+    const { status, data } = await this.call('GET', '/user/repository_invitations?per_page=100');
+    if (status !== 200 || !Array.isArray(data)) {
+      throw failure(status, data);
+    }
+    return data
+      .map(asInvitation)
+      .filter((i): i is Invitation => !!i)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  /** Accepts an invitation: you can then edit the repository. */
+  async acceptInvitation(id: number): Promise<void> {
+    await this.answerInvitation('PATCH', id);
+  }
+
+  /** Declines an invitation: the owner has to invite you again to let you in. */
+  async declineInvitation(id: number): Promise<void> {
+    await this.answerInvitation('DELETE', id);
+  }
+
+  private async answerInvitation(method: 'PATCH' | 'DELETE', id: number): Promise<void> {
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new GitHubError(0, 'That is not a GitHub invitation.');
+    }
+    const { status, data } = await this.call(method, `/user/repository_invitations/${id}`);
+    if (status === 204) {
+      return;
+    }
+    if (status === 404) {
+      throw new GitHubError(404, 'GitHub no longer has that invitation: it was answered, withdrawn or has run out. Ask the owner to invite you again.');
+    }
+    if (status === 409 || status === 410) {
+      throw new GitHubError(status, 'That invitation has run out (GitHub keeps them for 7 days). Ask the owner to invite you again.');
+    }
+    throw failure(status, data);
+  }
+
+  /**
    * Gives a public key read-only access to the repository (a deploy key). 'already' means the
    * repository has that key already. GitHub lets a key be a deploy key of one repository only.
    */
@@ -186,6 +230,43 @@ export class GitHubClient {
     }
     throw failure(status, data);
   }
+}
+
+/** An invitation to edit someone else's GitHub repository. */
+export interface Invitation {
+  id: number;
+  repo: GitHubRepo;
+  /** The login of the person who invited you. */
+  inviter: string;
+  /** https://github.com/owner/name.git, rebuilt from owner/name rather than taken from the answer. */
+  cloneUrl: string;
+  createdAt: string;
+  /** GitHub keeps an invitation for 7 days; after that it can only be declined. */
+  expired: boolean;
+}
+
+const LOGIN = /^[A-Za-z\d](?:[A-Za-z\d]|-(?=[A-Za-z\d])){0,38}$/;
+
+/** An invitation from GitHub's answer, or undefined if it does not look like one. */
+export function asInvitation(raw: any): Invitation | undefined {
+  const id = raw?.id;
+  const full = raw?.repository?.full_name;
+  const inviter = raw?.inviter?.login;
+  if (!Number.isSafeInteger(id) || id <= 0 || typeof full !== 'string' || typeof inviter !== 'string' || !LOGIN.test(inviter)) {
+    return undefined;
+  }
+  const [owner, name, ...rest] = full.split('/');
+  if (rest.length || !owner || !LOGIN.test(owner) || !name || !validRepoName(name)) {
+    return undefined;
+  }
+  return {
+    id,
+    repo: { owner, name },
+    inviter,
+    cloneUrl: `https://github.com/${owner}/${name}.git`,
+    createdAt: typeof raw.created_at === 'string' ? raw.created_at : '',
+    expired: raw.expired === true,
+  };
 }
 
 function failure(status: number, data: any): GitHubError {

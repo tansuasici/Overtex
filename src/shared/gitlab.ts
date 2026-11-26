@@ -96,6 +96,25 @@ export class GitLabClient {
     throw new GitLabError(status, `The server did not answer like GitLab does (HTTP ${status}).`);
   }
 
+  /**
+   * Projects you were made a member of after `since` (an ISO time), oldest first: GitLab records a
+   * "joined" event for you when someone adds you. Only ids and times; getProject gives the rest.
+   */
+  async joinedSince(since: string): Promise<{ projectId: number; at: string }[]> {
+    const day = since.slice(0, 10);
+    const after = new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    const { status, data } = await this.call('GET', `/events?action=joined&after=${after}&sort=asc&per_page=100`);
+    if (status === 401) {
+      throw new GitLabError(401, 'GitLab did not accept the access token. Make a new one and try again.');
+    }
+    if (status !== 200 || !Array.isArray(data)) {
+      throw new GitLabError(status, `The server did not answer like GitLab does (HTTP ${status}).`);
+    }
+    return data
+      .filter((e: any) => Number.isSafeInteger(e?.project_id) && e.project_id > 0 && typeof e?.created_at === 'string' && Date.parse(e.created_at) > Date.parse(since))
+      .map((e: any) => ({ projectId: e.project_id as number, at: e.created_at as string }));
+  }
+
   /** Gives a public key read-only access to the project (a deploy key). */
   async addDeployKey(projectPath: string, title: string, key: string): Promise<'added' | 'already'> {
     const base = `/projects/${encodeURIComponent(projectPath)}/deploy_keys`;
