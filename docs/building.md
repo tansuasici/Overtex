@@ -14,7 +14,7 @@ A TeX distribution that provides `latexmk`, `synctex` and `texcount`: [TeX Live]
 - checks that the Times metrics are there for `times`, `mathptmx` and `newtxtext`;
 - warns about lineno 5.7, which draws line numbers over the text of two-column pages with LaTeX from June 2025 on.
 
-For what is missing it types the `tlmgr install` command into a terminal, for you to run; it installs nothing itself. MiKTeX's packages are left to MiKTeX Console. If latexmk is missing when Overtex starts, it offers this check once.
+For what is missing it types the `tlmgr install` command into a terminal, for you to run; it installs nothing itself. MiKTeX's packages are left to MiKTeX Console. If what the build tool needs is missing when you open a LaTeX project, Overtex says so and offers this check, until you choose **Don't Show Again**.
 
 ## Build
 
@@ -109,7 +109,7 @@ If a program is installed somewhere VS Code does not look, give its full path: `
 
 ## TexLab
 
-[TexLab](https://github.com/latex-lsp/texlab) is an optional helper that checks your LaTeX as you type, before any build, and completes commands, environments, labels and citation keys. Overtex starts it when it is installed (`brew install texlab`, `cargo install texlab` or a release binary). Turn it off with `overtex.texlab.enabled`, or turn on ChkTeX's style warnings with `overtex.texlab.chktex`. If the official TexLab extension is installed, Overtex leaves the language server to it.
+[TexLab](https://github.com/latex-lsp/texlab) is an optional helper that checks your LaTeX as you type, before any build, and completes commands, environments, labels and citation keys. Overtex starts it when it is installed and you open a LaTeX file or project (`brew install texlab`, `cargo install texlab` or a release binary). Turn it off with `overtex.texlab.enabled`, or turn on ChkTeX's style warnings with `overtex.texlab.chktex`. If the official TexLab extension is installed, Overtex leaves the language server to it.
 
 ## Next to LaTeX Workshop
 

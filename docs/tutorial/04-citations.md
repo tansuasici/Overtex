@@ -57,7 +57,7 @@ A DOI works the same way: paste `10.1103/PhysRev.47.777`, or a whole `https://do
 
 Don't know the ID? Run **Overtex: Search Papers (OpenAlex, arXiv)**, type `attention is all you need`, and tick the paper in the list. It goes into `refs.bib` the same way; then cite it with `\cite{vaswani2017attention}`.
 
-> **What goes online?** Only the ID you typed, sent to doi.org or arXiv, or the words you searched for, sent to OpenAlex and arXiv. Overtex uses the internet only when you run a command that needs it; [Privacy and security](../privacy.md) lists them all.
+> **What goes online?** Only the ID you typed, sent to doi.org or arXiv, or the words you searched for, sent to OpenAlex and arXiv. Apart from a quiet check for project invitations, Overtex uses the internet only when you run a command that needs it; [Privacy and security](../privacy.md) lists them all.
 
 ## Step 3: Cite several papers at once
 

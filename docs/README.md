@@ -21,7 +21,7 @@ Already set up and something is wrong? See **[Troubleshooting](troubleshooting.m
 | [Writing](writing.md) | Live checking, math preview, math symbols, references and labels, tables and figures, to-dos, word count, spelling and grammar |
 | [Bibliography](bibliography.md) | Citations from a DOI, arXiv or Zotero, searching OpenAlex and arXiv, the Papers panel, Check Bibliography |
 | [Reviewing and history](reviewing.md) | Notes on the text, Track Changes, Compare Versions, review copies, History |
-| [Working with co-authors](collaboration.md) | Share Changes and Get Changes, Invite Co-author, invite codes, Overleaf |
+| [Working with co-authors](collaboration.md) | Share Changes and Get Changes, Invite Co-author, joining a project, invite codes, Overleaf |
 | [Submitting](submitting.md) | Check Submission, Export for arXiv |
 | [Privacy and security](privacy.md) | What goes online and when, Workspace Trust |
 

@@ -57,7 +57,7 @@ Your project is now online. The status bar shows how many changes there are to s
 
 ## Step 5: Invite a co-author
 
-Run **Overtex: Invite Co-author** and type your co-author's GitHub username. GitHub emails them an invitation. Once they accept, they open the project in VS Code with Overtex and can work on it.
+Run **Overtex: Invite Co-author** and type your co-author's GitHub username. GitHub emails them an invitation. In VS Code with Overtex they run **Overtex: Pending Invitations**, or click the envelope in the status bar, and choose **Join**: Overtex accepts the invitation, gets the project and opens it. See [Joining a project](../collaboration.md#joining-a-project-you-were-invited-to).
 
 From then on, the routine is simple:
 

@@ -82,7 +82,9 @@ export function buildSettings() {
   const props = pkg.contributes.configuration.properties;
   const groups = new Map();
   for (const [key, v] of Object.entries(props)) {
-    const group = key.split('.')[1];
+    // Two-part keys such as overtex.projectsFolder have no group of their own.
+    const parts = key.split('.');
+    const group = parts.length > 2 ? parts[1] : 'general';
     if (!groups.has(group)) {
       groups.set(group, []);
     }

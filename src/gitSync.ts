@@ -89,6 +89,9 @@ interface Deps {
   builtPdf: () => string | undefined;
   requireTrust: (action: string) => boolean;
   log: (text: string) => void;
+  /** The status item is for LaTeX projects; other Git repositories in the window don't get it. */
+  showStatus: () => boolean;
+  onDidChangeShowStatus: vscode.Event<void>;
 }
 
 /** Thrown to end a flow after the person has already been told why. */
@@ -228,6 +231,7 @@ class GitSync implements vscode.Disposable {
   ) {
     this.item.name = 'Overtex Sync';
     this.item.command = 'overtex.shareChanges';
+    this.disposables.push(deps.onDidChangeShowStatus(() => this.render()));
   }
 
   /** Waits for the Git extension in the background and keeps the status item current. */
@@ -306,7 +310,7 @@ class GitSync implements vscode.Disposable {
 
   private render(): void {
     const repo = this.watched;
-    if (!repo || !repo.state.remotes.length) {
+    if (!repo || !repo.state.remotes.length || !this.deps.showStatus()) {
       this.item.hide();
       return;
     }

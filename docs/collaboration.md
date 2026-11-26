@@ -9,7 +9,7 @@ Overtex has no server and no account. Each co-author keeps a copy of the project
 | **Overtex: Share Changes** | Saves all your edits as one version, with an optional short description (an empty one becomes "Update"), gets your co-authors' versions, combines them with yours, and sends the result to your online copy. |
 | **Overtex: Get Changes** | Only gets your co-authors' versions and combines them with yours. |
 
-The status bar shows how many versions there are to get (↓) and to send (↑), and a dot for edits not shared yet. Click it to share.
+The status bar shows how many versions there are to get (↓) and to send (↑), and a dot for edits not shared yet. Click it to share. A second item, an envelope with a number, shows invitations waiting for you.
 
 **Routine:** Get Changes before you start writing; Share Changes when you have done some work.
 
@@ -39,6 +39,21 @@ Share Changes uses VS Code's built-in Git and its sign-in.
 If your copy is not on GitHub yet, Overtex first makes a private repository under your account (you pick the name), saves your edits as a version and sends the project there; Share Changes goes to it from then on. An existing remote stays as a copy you get changes from.
 
 You sign in with VS Code's own GitHub account (the Accounts menu). Inviting needs you to own the repository or be an admin of it.
+
+They can join from VS Code; see [Joining a project you were invited to](#joining-a-project-you-were-invited-to).
+
+## Joining a project you were invited to
+
+**Overtex: Pending Invitations**, or the envelope in the status bar, lists the projects waiting for you.
+
+- **GitHub:** invitations to edit someone's repository. **Join** accepts the invitation, gets the project and opens it. **Decline** answers GitHub (Overtex asks once to be sure). **Later** leaves it on the list. GitHub keeps an invitation for 7 days; one that has run out can only be removed, so ask for a new one.
+- **GitLab:** GitLab adds you to a project without an invitation to accept, so Overtex lists the projects you were added to since it first looked on that server, using the access token you gave it. **Open** gets the project and opens it; **Later** keeps it; **Don't Show Again** takes it off the list.
+
+Projects go into `overtex.projectsFolder` (`~/Overtex` unless you change it), each in its own folder. If a folder with that name is already there, the new one gets `-2`, `-3` and so on. A window that already has a folder open stays as it is: the project opens in a new window.
+
+Overtex looks on its own a few seconds after VS Code starts and when its window comes back into focus, at most every 15 minutes, and only with a GitHub sign-in or GitLab token you already gave it. Running the command is what asks you to sign in to GitHub.
+
+Codeberg, Gitea and Forgejo are not checked: use [invite codes](#invite-codes) there. Joining needs git 2.31 or newer.
 
 ## Invite codes
 

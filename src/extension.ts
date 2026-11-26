@@ -44,6 +44,7 @@ import { registerTrackChanges } from './trackChanges';
 import { registerSourceNotes } from './sourceNotes';
 import { registerGitSync } from './gitSync';
 import { registerInbox } from './inbox';
+import { LatexWorkspace } from './latexWorkspace';
 import { registerTodos } from './todos';
 import { OutlineSync } from './outlineSync';
 
@@ -53,6 +54,9 @@ let texlab: Texlab | undefined;
 
 export function activate(context: vscode.ExtensionContext): OvertexApi {
   const output = vscode.window.createOutputChannel('Overtex');
+  // Overtex activates in every window (for Pending Invitations); LaTeX-only work waits for this.
+  const latex = new LatexWorkspace();
+  context.subscriptions.push(latex);
   const log = (text: string) => output.append(text);
 
   const builder = new Builder(buildSettings, log);
@@ -154,10 +158,12 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
     },
     requireTrust,
     log,
+    showStatus: () => latex.active,
+    onDidChangeShowStatus: latex.onDidBecomeLatex,
   });
   registerInbox(context);
   registerTodos(context);
-  void texlab.start();
+  latex.whenLatex(() => void server.start());
 
   // ---- Main file and output paths ----
 
@@ -436,8 +442,12 @@ export function activate(context: vscode.ExtensionContext): OvertexApi {
   updateStatusVisibility();
   context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(updateStatusVisibility));
 
-  warnAboutLatexWorkshop(context);
-  nudgeIfSetupMissing(context);
+  latex.whenLatex(() => {
+    // The Overtex sidebar (Papers, Labels, History...) shows only in LaTeX windows.
+    void vscode.commands.executeCommand('setContext', 'overtex.active', true);
+    warnAboutLatexWorkshop(context);
+    nudgeIfSetupMissing(context);
+  });
 
   const e2e: OvertexE2e | undefined = e2eEvents && {
     onViewerMessage: e2eEvents.event,

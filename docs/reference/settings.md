@@ -4,7 +4,7 @@
 
 Open **Preferences: Open Settings (UI)** and search for `overtex`, or add these to `settings.json`. In an [untrusted workspace](../privacy.md#workspace-trust) Overtex ignores the workspace values of settings that name a program to run or an address to send text to.
 
-## projectsFolder
+## general
 
 | Setting | Values | Default | Description |
 | --- | --- | --- | --- |
